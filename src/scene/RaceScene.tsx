@@ -134,9 +134,7 @@ export function RaceScene({
       s.syncState = 'waiting'
       telemetry.syncState = 'waiting'
       s.ship.d = isHost ? -5 : 5
-      if (s.opponent) {
-        s.opponent.d = isHost ? 5 : -5
-      }
+      s.opponent = { s: 0, d: isHost ? 5 : -5, v: 0, yaw: 0, finished: false }
     } else {
       s.syncState = 'running'
       telemetry.syncState = 'ready'
@@ -153,15 +151,13 @@ export function RaceScene({
       network.onMessage = (msg) => {
         if (msg.type === 'state_update') {
           sim.current.opponent = msg.state
+          if (sim.current.syncState === 'waiting') {
+            sim.current.syncState = 'running'
+            telemetry.syncState = 'ready'
+            sim.current.syncStartTime = Date.now() + 500
+          }
         } else if (msg.type === 'race_finish') {
           useGame.getState().setOpponentFinish(msg.timeMs)
-        } else if (msg.type === 'lobby_ready' && sim.current.syncState === 'waiting') {
-          sim.current.syncState = 'syncing'
-          network.send({ type: 'race_start' })
-        } else if (msg.type === 'race_start' && sim.current.syncState !== 'running') {
-          sim.current.syncState = 'running'
-          telemetry.syncState = 'ready'
-          sim.current.syncStartTime = Date.now() + 500
         }
       }
     }
@@ -179,22 +175,17 @@ export function RaceScene({
     const s = sim.current
     if (!s.started || paused) return
 
+    let isWaiting = false
     if (isMultiplayer) {
       if (s.syncState === 'waiting') {
-        if (Date.now() - s.lastNetSend > 100) {
-          network.send({ type: 'lobby_ready' })
-          s.lastNetSend = Date.now()
-        }
-        return
-      } else if (s.syncState === 'syncing') {
-        return
+        isWaiting = true
       } else if (s.syncState === 'running' && s.syncStartTime > Date.now()) {
-        return
+        isWaiting = true
       }
     }
 
     // T35 countdown: hold the grid, fire the song at GO
-    if (s.countdown > -1) {
+    if (!isWaiting && s.countdown > -1) {
       const prev = s.countdown
       s.countdown -= dt
       telemetry.countdown = s.countdown
@@ -204,7 +195,7 @@ export function RaceScene({
     }
 
     readShipInput(s.input)
-    const steps = s.countdown > 0 ? 0 : accumulateSteps(s.accumulator, dt)
+    const steps = (isWaiting || s.countdown > 0) ? 0 : accumulateSteps(s.accumulator, dt)
     let wallEvent = 0
     let boostEvent = false
     let finishedEvent = false
