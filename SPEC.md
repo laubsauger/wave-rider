@@ -156,7 +156,7 @@ T100|x|now-playing: row flicker OFF (energy-opacity removed), full ARTIST — TI
 T101|x|trails keep owner color: narrow age-faded white core (0.78–0.99), accent-dominant, brightness cap ↓ ⊥ bloom whiteout|C11
 T102|x|photosensitivity warning: one-time ack gate before menu (localStorage), points at FX slider|V10
 T103|x|menu backdrop: drifting star shell + breathing nebula disc ⊥ pure black; now-playing font ↓|C11
-T104|.|AAA fidelity arc → ROADMAP R9a–R9g (GLTF hulls, loops, post polish, env reflections, sparks, biomes, surface detail)|—
+T104|~|AAA fidelity arc → ROADMAP R9a–R9g (GLTF hulls, loops, post polish, env reflections, sparks, biomes, surface detail)|—
 
 ## §B bugs
 
