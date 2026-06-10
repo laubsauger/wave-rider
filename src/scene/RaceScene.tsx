@@ -24,7 +24,7 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
-import { createGhostRecorder } from '../lib/network/ghost'
+import { createGhostRecorder, deserializeGhost } from '../lib/network/ghost'
 import { network, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
@@ -33,6 +33,51 @@ import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import { NetworkShip } from './NetworkShip'
 import type { TrackData } from '../lib/track/generate'
+
+function getOpponentColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16) / 255
+  const g = parseInt(hex.slice(3, 5), 16) / 255
+  const b = parseInt(hex.slice(5, 7), 16) / 255
+
+  const max = Math.max(r, g, b), min = Math.min(r, g, b)
+  let h = 0, s = 0, l = (max + min) / 2
+
+  if (max !== min) {
+    const d = max - min
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break
+      case g: h = (b - r) / d + 2; break
+      case b: h = (r - g) / d + 4; break
+    }
+    h /= 6
+  }
+
+  h = (h + 0.5) % 1
+  l = Math.max(0.6, l) 
+
+  let r2, g2, b2
+  if (s === 0) {
+    r2 = g2 = b2 = l
+  } else {
+    const hue2rgb = (p: number, q: number, t: number) => {
+      if (t < 0) t += 1
+      if (t > 1) t -= 1
+      if (t < 1/6) return p + (q - p) * 6 * t
+      if (t < 1/2) return q
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6
+      return p
+    }
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s
+    const p = 2 * l - q
+    r2 = hue2rgb(p, q, h + 1/3)
+    g2 = hue2rgb(p, q, h)
+    b2 = hue2rgb(p, q, h - 1/3)
+  }
+
+  const toHex = (x: number) => Math.round(x * 255).toString(16).padStart(2, '0')
+  return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`
+}
 
 const tmpMatrix = new THREE.Matrix4()
 const tmpEye = new THREE.Vector3(0, 0, 0)
@@ -147,8 +192,10 @@ export function RaceScene({
       s.ghostRecorder = createGhostRecorder(songTitle)
     }
     
+    let handleMsg: ((msg: NetworkMessage) => void) | null = null
+
     if (isMultiplayer) {
-      network.onMessage = (msg) => {
+      handleMsg = (msg: NetworkMessage) => {
         if (msg.type === 'state_update') {
           sim.current.opponent = msg.state
           if (sim.current.syncState === 'waiting') {
@@ -160,6 +207,7 @@ export function RaceScene({
           useGame.getState().setOpponentFinish(msg.timeMs)
         }
       }
+      network.onMessage = handleMsg
     }
 
     return () => {
@@ -167,7 +215,9 @@ export function RaceScene({
       detachKeys()
       s.song?.stop()
       s.song = null
-      if (isMultiplayer) network.onMessage = () => {}
+      if (isMultiplayer && handleMsg && network.onMessage === handleMsg) {
+        network.onMessage = () => {}
+      }
     }
   }, [songBuffer, toggleCamera, isMultiplayer, ghostPlayback])
 
@@ -365,7 +415,7 @@ export function RaceScene({
       <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
         <ShipMesh
-          accent={isMultiplayer && !isHost ? '#b4ff39' : track.theme.edge}
+          accent={isMultiplayer && !isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
           power={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
         />
       </group>
@@ -375,7 +425,7 @@ export function RaceScene({
           [-0.45, 0.22, 1.6],
           [0.45, 0.22, 1.6],
         ]}
-        color={isMultiplayer && !isHost ? '#b4ff39' : track.theme.edge}
+        color={isMultiplayer && !isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
         intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
       />
       {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
@@ -386,7 +436,7 @@ export function RaceScene({
           v={sim.current.opponent.v} 
           yaw={sim.current.opponent.yaw} 
           frames={frames} 
-          accent={isHost ? '#b4ff39' : track.theme.edge}
+          accent={isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
           finished={sim.current.opponent.finished}
         />
       )}

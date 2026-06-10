@@ -11,7 +11,7 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    network.onStateChange = (s) => {
+    const handleState = (s: P2PState) => {
       setP2pState(s)
       if (s === 'connected' && network.isHost) {
         const state = useGame.getState()
@@ -31,9 +31,13 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
         state.startRace()
       }
     }
-    network.onMessage = (msg) => {
+
+    const handleMsg = (msg: NetworkMessage) => {
       handleNetworkMessage(msg).catch((e) => setError(String(e)))
     }
+
+    network.onStateChange = handleState
+    network.onMessage = handleMsg
 
     if (initialJoinId) {
       network.join(initialJoinId)
@@ -42,8 +46,8 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
     }
 
     return () => {
-      network.onStateChange = () => {}
-      network.onMessage = () => {}
+      if (network.onStateChange === handleState) network.onStateChange = () => {}
+      if (network.onMessage === handleMsg) network.onMessage = () => {}
     }
   }, [initialJoinId])
 
