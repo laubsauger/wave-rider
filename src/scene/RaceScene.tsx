@@ -357,7 +357,8 @@ export function RaceScene({
     // taps, speed scale calms it at pace, slow filter smooths the rest
     const sIn = ship.steerSmooth
     const speedCalm = 0.45 + 0.55 * (1 - Math.min(1, ship.v / 220))
-    s.camSteer += (sIn * sIn * sIn * speedCalm - s.camSteer) * Math.min(1, dt * 2.2)
+    // T143: slower filter — micro-corrections never reach the camera
+    s.camSteer += (sIn * sIn * sIn * speedCalm - s.camSteer) * Math.min(1, dt * 1.5)
 
     // ship world transform — air height rides on top of hover (V16)
     poseAt(frames, ship.s, ship.d, HOVER_HEIGHT + ship.air, s.pose)
@@ -379,7 +380,8 @@ export function RaceScene({
       // V18: bank from USER STEER only (B6). +right lean; after the
       // rotateY(π) model flip below, +Z roll renders as LEFT dip, so negate (B5).
       const targetRoll = computeLean(ship.steerSmooth, ship.v)
-      s.roll += (targetRoll - s.roll) * Math.min(1, dt * 8)
+      // T143: roll low-passed harder — leans into real corners, ignores twitches
+      s.roll += (targetRoll - s.roll) * Math.min(1, dt * 5)
       // airborne: nose follows vertical velocity
       const targetPitch = ship.airborne ? Math.max(-0.32, Math.min(0.4, -ship.vy * 0.012)) : 0
       s.airPitch += (targetPitch - s.airPitch) * Math.min(1, dt * 6)

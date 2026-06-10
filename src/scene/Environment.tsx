@@ -89,9 +89,10 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
   }, [track.theme.glow, uPulse])
 
   useFrame((_, dt) => {
-    // T118: the floor does NOT flicker — slow drift toward the section's
-    // energy level only. Selective reactivity: rails/pads own the beat.
-    const target = 0.16 + telemetry.energy * 0.2 * track.theme.pulse
+    // T118/T149: the floor is BACKDROP — quiet, slow, never competing.
+    // energy² keeps it dim until the song actually pushes.
+    const e = telemetry.energy
+    const target = 0.09 + e * e * 0.14 * track.theme.pulse
     uPulse.value += (target - uPulse.value) * Math.min(1, dt * 0.6)
   })
 
@@ -187,16 +188,55 @@ export function WaveformHorizon({
   // sit just inside the fog falloff so the silhouette reads
   const radius = Math.min(900, 2.1 / track.theme.fogDensity)
 
+  // T139: per-bar character — widths, height scale, palette mix, shade. A
+  // skyline, not a uniform EQ. Seeded (render-side but deterministic).
+  const barProps = useMemo(() => {
+    const rng = mulberry32((track.seed ^ 0x5ca11e) >>> 0)
+    return Array.from({ length: WF_BARS * 2 }, () => ({
+      w: rngRange(rng, 0.45, 1.7),
+      hMul: rngRange(rng, 0.6, 1.45),
+      mixT: rng(),
+      bright: rngRange(rng, 0.35, 1.1),
+    }))
+  }, [track.seed])
+
+  // T149: skyline colors EVOLVE — base drifts toward the section palette
+  // like the rails do, per-bar mix/shade variation layered on top
+  const wfDrift = useMemo(
+    () => ({
+      base: new THREE.Color(track.theme.glow),
+      target: new THREE.Color(track.theme.glow),
+      edge: new THREE.Color(track.theme.edge),
+      tmp: new THREE.Color(),
+    }),
+    [track.theme],
+  )
+
   useFrame(({ camera }, dt) => {
     const group = groupRef.current
     if (!group || !farRef.current || !nearRef.current || !capRef.current) return
     group.position.set(camera.position.x, 0, camera.position.z)
 
+    // T149: drift the skyline base color toward the live section palette
+    const sectionColor = track.sectionPalettes[telemetry.sectionIndex]
+    if (sectionColor) wfDrift.target.set(sectionColor)
+    wfDrift.base.lerp(wfDrift.target, Math.min(1, dt * 0.4))
+    const caps = capRef.current
+    const near = nearRef.current
+    for (let i = 0; i < WF_BARS; i++) {
+      const p = barProps[WF_BARS + i]
+      wfDrift.tmp.copy(wfDrift.base).lerp(wfDrift.edge, p.mixT).multiplyScalar(p.bright)
+      caps.setColorAt(i, wfDrift.tmp)
+      near.setColorAt(i, wfDrift.tmp.multiplyScalar(0.25))
+    }
+    if (caps.instanceColor) caps.instanceColor.needsUpdate = true
+    if (near.instanceColor) near.instanceColor.needsUpdate = true
+
     const fi = Math.floor(telemetry.songTime / frameInterval)
-    const k = Math.min(1, dt * 1.6) // heavy smooth — breathes, never strobes
     const layers = [
-      { mesh: farRef.current, r: radius, hMax: 210, base: 30, phase: 0, slot: 0 },
-      { mesh: nearRef.current, r: radius * 0.8, hMax: 120, base: 16, phase: Math.PI / WF_BARS, slot: 1 },
+      // T139: far ring drifts SLOWER than the near one — parallax in time
+      { mesh: farRef.current, r: radius, hMax: 230, base: 26, phase: 0, slot: 0, k: Math.min(1, dt * 0.5) },
+      { mesh: nearRef.current, r: radius * 0.8, hMax: 130, base: 14, phase: Math.PI / WF_BARS, slot: 1, k: Math.min(1, dt * 1.6) },
     ]
     for (const L of layers) {
       for (let i = 0; i < WF_BARS; i++) {
@@ -204,19 +244,20 @@ export function WaveformHorizon({
         const idx = Math.min(energyCurve.length - 1, Math.max(0, fi + off))
         const e = energyCurve[idx] ?? 0
         const hi = L.slot * WF_BARS + i
-        heights[hi] += (L.base + e * L.hMax - heights[hi]) * k
+        const props = barProps[hi]
+        heights[hi] += (L.base + e * L.hMax * props.hMul - heights[hi]) * L.k
         const a = (i / WF_BARS) * Math.PI * 2 + L.phase
         const h = heights[hi]
         wfObj.position.set(Math.cos(a) * L.r, -85 + h / 2, Math.sin(a) * L.r)
         wfObj.rotation.set(0, -a, 0)
-        // slim bars with gaps — silhouette, not a wall
-        wfObj.scale.set(L.r * 0.028, h, 7)
+        // T139: per-bar width — towers, slivers, gaps
+        wfObj.scale.set(L.r * 0.026 * props.w, h, 5 + props.w * 4)
         wfObj.updateMatrix()
         L.mesh.setMatrixAt(i, wfObj.matrix)
         // glow caps ride the NEAR ring tips only
         if (L.slot === 1) {
           wfObj.position.y = -85 + h
-          wfObj.scale.set(L.r * 0.028, 1.2, 7)
+          wfObj.scale.set(L.r * 0.026 * props.w, 0.9 + props.w * 0.5, 5 + props.w * 4)
           wfObj.updateMatrix()
           capRef.current.setMatrixAt(i, wfObj.matrix)
         }
@@ -236,10 +277,10 @@ export function WaveformHorizon({
         <boxGeometry />
         <meshStandardMaterial color="#070a16" metalness={0.3} roughness={0.8} emissive={track.theme.glow} emissiveIntensity={0.06} flatShading />
       </instancedMesh>
-      {/* tip caps — the skyline's faint neon crest */}
+      {/* tip caps — the skyline's faint neon crest (per-bar palette mix) */}
       <instancedMesh ref={capRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
         <boxGeometry />
-        <meshBasicMaterial color={track.theme.glow} transparent opacity={0.28} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+        <meshBasicMaterial color="#ffffff" transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </instancedMesh>
     </group>
   )

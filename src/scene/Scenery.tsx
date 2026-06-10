@@ -257,16 +257,19 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
 
   useFrame((_, dt) => {
     // T57: each channel owns its instruments — energy = sustained glow,
-    // beat = percussive flashes (gates/pads), centroid = high-end sparkle
-    const e = telemetry.energy * track.theme.pulse
+    // beat = percussive flashes (gates/pads), centroid = high-end sparkle.
+    // T149: squared curves + lower floors — real dynamic range, not pegged.
+    const eRaw = telemetry.energy * track.theme.pulse
+    const e = eRaw * eRaw
     const b = telemetry.beat * track.theme.pulse
-    const c = telemetry.centroid * track.theme.pulse
+    const cRaw = telemetry.centroid * track.theme.pulse
+    const c = cRaw * cRaw
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
-    if (glowMat.current) glowMat.current.color.setScalar(0.4 + secE * 0.8 + e * 2.2)
-    if (archMat.current) archMat.current.color.setScalar(0.5 + secE * 0.9 + e * 2)
-    if (ringMat.current) ringMat.current.opacity = 0.12 + secE * 0.15 + e * 0.45
-    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.22 + secE * 0.3 + e * 0.9
-    if (chevronMat.current) chevronMat.current.color.setScalar(0.8 + c * 2.6)
+    if (glowMat.current) glowMat.current.color.setScalar(0.22 + secE * 0.6 + e * 2.6)
+    if (archMat.current) archMat.current.color.setScalar(0.3 + secE * 0.7 + e * 2.4)
+    if (ringMat.current) ringMat.current.opacity = 0.08 + secE * 0.12 + e * 0.55
+    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.14 + secE * 0.25 + e * 1.1
+    if (chevronMat.current) chevronMat.current.color.setScalar(0.45 + c * 3.2)
     // R9f: crystal cavern breathes with the section energy
     if (biomeMat.current && data.biome === 'cavern') {
       biomeMat.current.emissiveIntensity = 0.18 + secE * 0.35 + e * 0.7
@@ -288,7 +291,8 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       for (let gi = 0; gi < data.gateS.length; gi++) {
         const dist = Math.abs(data.gateS[gi] - playerS)
         const prox = Math.max(0, 1 - dist / 500)
-        const lit = 0.7 + b * 3 * prox * prox + gateFlash.current * 2.5 * prox
+        // T149: dimmer idle, harder beat pop
+        const lit = 0.4 + b * 3.6 * prox * prox + gateFlash.current * 2.8 * prox
         waveColor.copy(data.gateColors[gi]).multiplyScalar(lit)
         gm.setColorAt(gi, waveColor)
       }
@@ -320,14 +324,14 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         <torusGeometry args={[14, 0.6, 6, 24]} />
         <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive={track.theme.glow} emissiveIntensity={0.35} metalness={0.7} roughness={0.4} />
       </Instanced>
-      {/* T121: dark casing wraps the gate — emissive is an inset bar, not
-          the whole slab */}
+      {/* T121/T140: MATTE black outer frame (zero glow) + chunkier profile —
+          the beat-lit bar is a slim inset channel inside it */}
       <Instanced matrices={data.gateMatrices}>
-        <boxGeometry args={[1.004, 1.6, 1.6]} />
-        <meshStandardMaterial color="#0c0f1c" metalness={0.7} roughness={0.45} emissive={track.theme.glow} emissiveIntensity={0.05} />
+        <boxGeometry args={[1.006, 2.1, 2.1]} />
+        <meshStandardMaterial color="#07090f" metalness={0.15} roughness={0.85} envMapIntensity={0.05} />
       </Instanced>
       <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh}>
-        <boxGeometry args={[0.99, 0.62, 0.62]} />
+        <boxGeometry args={[0.99, 0.55, 0.55]} />
         <meshBasicMaterial ref={gateMat} color="#ffffff" toneMapped={false} />
       </Instanced>
       <Instanced matrices={data.chevronMatrices} colors={data.chevronColors}>
@@ -365,13 +369,13 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           />
         )}
       </Instanced>
-      {/* T121: rings get a dark housing, glow runs as an inset channel */}
+      {/* T121/T140: matte ring housing (zero glow), slim lit channel inside */}
       <Instanced matrices={data.ringMatrices}>
-        <torusGeometry args={[11, 0.5, 6, 36]} />
-        <meshStandardMaterial color="#0a0d18" metalness={0.7} roughness={0.4} emissive={track.theme.glow} emissiveIntensity={0.05} />
+        <torusGeometry args={[11, 0.65, 6, 36]} />
+        <meshStandardMaterial color="#07090f" metalness={0.15} roughness={0.85} envMapIntensity={0.05} />
       </Instanced>
       <Instanced matrices={data.ringMatrices} colors={data.ringColors}>
-        <torusGeometry args={[11, 0.2, 8, 48]} />
+        <torusGeometry args={[11, 0.22, 8, 48]} />
         <meshBasicMaterial
           ref={ringMat}
           color="#ffffff"

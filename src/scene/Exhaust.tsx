@@ -38,18 +38,23 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     // T101: hot core is NARROW and fades with age — accent owns the trail,
     // white only kisses the first meters (was blooming everything to white)
     const core = smoothstep(0.78, 0.99, cross).mul(sub(1, v).pow(2))
-    // T127: the head IS the flame — white-hot burst right at the nozzle,
-    // power-scaled, melting into the accent trail
-    const flameHead = sub(1, v).pow(8).mul(uPower.mul(0.9))
-    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.6).add(flameHead).min(1)).mul(
-      float(1.05).add(uPower.mul(0.45)).add(flameHead.mul(0.8)),
+    // T127/T141: the head IS the flame — but the ACCENT owns it; white only
+    // kisses the core so the player color reads through
+    const flameHead = sub(1, v).pow(8).mul(uPower.mul(0.5))
+    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.5).add(flameHead).min(0.8)).mul(
+      float(1.05).add(uPower.mul(0.4)).add(flameHead.mul(0.45)),
     )
-    const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.12).add(0.88)
+    // T141: flicker calmed — texture, not strobe
+    const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.06).add(0.94)
+    // T141: soft leading edge — the ribbon blooms out of the nozzle instead
+    // of starting as a razor cut
+    const headEase = smoothstep(0.0, 0.045, v).mul(0.45).add(0.55)
     m.opacityNode = cross
       .pow(1.6)
       .mul(sub(1, v).pow(2.6))
       .mul(uPower.min(1.5))
       .mul(flicker)
+      .mul(headEase)
     return m
   }, [accent, uPower, uTime])
 
@@ -155,9 +160,10 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
         else tmp.side.set(0, 1, 0)
 
         const age = i / POINTS
-        // T127: head at FULL width — it's the flame now, widest at the
-        // nozzle, tapering down the trail
-        const w = 0.22 * (1 - age * 0.72) * (0.3 + Math.min(1.5, power) * 0.65)
+        // T127/T141: mach-diamond read — bulge right at the nozzle exit,
+        // pinch, then the long taper down the trail
+        const bulge = 1 + Math.exp(-i * 0.85) * 0.55
+        const w = 0.22 * (1 - age * 0.72) * (0.3 + Math.min(1.5, power) * 0.65) * bulge
         trail.positions.set(
           [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
           i * 6,

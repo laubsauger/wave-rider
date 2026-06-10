@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { touch } from '../game/input'
 
 /**
@@ -7,6 +7,13 @@ import { touch } from '../game/input'
  */
 export function TouchControls() {
   const steerZone = useRef<HTMLDivElement>(null)
+  // T138: first-time hint — fades once the player actually steers (or 8s)
+  const [hint, setHint] = useState(true)
+
+  useEffect(() => {
+    const t = setTimeout(() => setHint(false), 8000)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     const zone = steerZone.current
@@ -21,6 +28,7 @@ export function TouchControls() {
     const down = (e: PointerEvent) => {
       activeId = e.pointerId
       steerFrom(e.clientX)
+      setHint(false)
     }
     const move = (e: PointerEvent) => {
       if (e.pointerId === activeId) steerFrom(e.clientX)
@@ -57,6 +65,16 @@ export function TouchControls() {
     <div className="absolute inset-0 hidden touch-none select-none [@media(pointer:coarse)]:block">
       <div ref={steerZone} className="absolute top-0 bottom-0 left-0 w-1/2">
         <div className="absolute bottom-6 left-6 text-xs tracking-[0.3em] text-white/30">◄ STEER ►</div>
+        {/* T138: first-run hint — your LEFT THUMB drives */}
+        {hint && (
+          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 transition-opacity duration-700">
+            <div className="glass-panel animate-pulse px-5 py-3 text-center">
+              <p className="text-2xl">👈 👆 👉</p>
+              <p className="mt-1 text-xs tracking-[0.3em] text-white/80">LEFT THUMB HERE</p>
+              <p className="text-[10px] tracking-[0.25em] text-white/50">DRAG TO STEER</p>
+            </div>
+          </div>
+        )}
       </div>
       <div className="hud-safe absolute right-0 bottom-0 flex items-end gap-3 pb-24">
         <button

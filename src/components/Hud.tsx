@@ -301,7 +301,14 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
           opacity: 0,
         }}
       >
-        <span className="glass-panel inline-block px-12 py-5" style={{ display: 'none' }} />
+        {/* T146: soft halo, not a box — radial shade pools behind the glyphs */}
+        <span
+          className="inline-block px-16 py-8"
+          style={{
+            display: 'none',
+            background: 'radial-gradient(ellipse 60% 50% at center, rgba(2,4,10,0.72), rgba(2,4,10,0.35) 55%, transparent 75%)',
+          }}
+        />
       </div>
 
       <div className="hud-safe absolute inset-0 flex flex-col justify-between p-5">

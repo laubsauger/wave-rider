@@ -26,9 +26,10 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     if (fxIntensity <= 0) return null
     const scenePass = pass(scene, camera)
     const raw = scenePass.getTextureNode('output')
-    // T137: depth of field — focus held mid-distance ahead of the ship,
-    // bokeh swells with speed. Subtle by design; FX slider scales it away.
-    const focused = dof(raw, scenePass.getViewZNode(), 38, 36, uBokeh)
+    // T137 → T148: focus sits ON the ship (~9m from the chase cam) with a
+    // wide near band — you and the road ahead stay SHARP, the far world
+    // melts away with speed. Bokeh ∝ speed via uBokeh.
+    const focused = dof(raw, scenePass.getViewZNode(), 12, 55, uBokeh)
     const color = convertToTexture(focused)
     const bloomNode = bloom(color, 1.25 * fxIntensity, 0.6, 0.78)
 

@@ -20,6 +20,10 @@ export interface NpcSpec {
   /** 0..1 — how little corners slow them down */
   cornerSkill: number
   phase: number
+  /** T145: grid row (0 front) — staggers the launch */
+  gridRow: number
+  /** T145: grid lateral start — formation held early */
+  gridD: number
 }
 
 export interface NpcState {
@@ -32,7 +36,8 @@ export interface NpcState {
 
 const NAMES = ['VEKTOR', 'NYX-7', 'KAIROS', 'BLUR', 'SABLE'] as const
 const ACCENTS = ['#ff5533', '#ffd23d', '#7bff8a', '#b07bff', '#ff7bd5'] as const
-const BASE_PACE = [1.32, 1.24, 1.17, 1.1, 1.02] as const
+// T145: top of the field is real competition now
+const BASE_PACE = [1.5, 1.4, 1.28, 1.16, 1.05] as const
 
 export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
   const rng = mulberry32((track.seed ^ 0x4e9c11) >>> 0)
@@ -47,8 +52,11 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
       lanePref: rngRange(rng, -0.7, 0.7),
       wobbleFreq: rngRange(rng, 0.25, 0.7),
       wobbleAmp: rngRange(rng, 0.5, 2),
-      cornerSkill: rngRange(rng, 0.35, 0.95),
+      // T145: nobody is hopeless in corners anymore
+      cornerSkill: rngRange(rng, 0.55, 0.95),
       phase: rngRange(rng, 0, Math.PI * 2),
+      gridRow: Math.floor(i / 2),
+      gridD: i % 2 === 0 ? -5 : 5,
     })
   }
   return specs
@@ -77,15 +85,18 @@ export function stepNpc(
   const k = Math.abs(curvatureAt(frames, i))
   // corners scare the unskilled
   const cornerFactor = Math.max(0.45, 1 - k * state.v * 0.35 * (1 - spec.cornerSkill))
-  // T135: staggered launch — the field spools up over the first seconds
-  // instead of slamming through the player off the line
-  const launch = Math.min(1, 0.2 + state.time / 5)
+  // T135/T145: row-staggered launch — front row releases first, back rows
+  // hold a beat, everyone spools up smoothly. No pileup through the player.
+  const launch = Math.min(1, Math.max(0, state.time - spec.gridRow * 0.45) / 3.5 + 0.12)
   const targetV = track.avgSpeed * spec.pace * cornerFactor * launch
   state.v += (targetV - state.v) * Math.min(1, dt * 0.9)
 
   const halfW = (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, i))]) / 2 - 1.6
-  const targetD =
+  // T145: hold the formation lane off the line, blend to racing line 2s→6s
+  const formation = Math.min(1, Math.max(0, (state.time - 2) / 4))
+  const raceD =
     spec.lanePref * halfW * 0.55 + Math.sin(state.time * spec.wobbleFreq * Math.PI * 2 + spec.phase) * spec.wobbleAmp
+  const targetD = spec.gridD * (1 - formation) + raceD * formation
   state.d += (targetD - state.d) * Math.min(1, dt * 1.6)
   state.d = Math.min(halfW, Math.max(-halfW, state.d))
 

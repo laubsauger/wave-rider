@@ -144,16 +144,19 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
   // beat = sharp onset spikes layered on top of the energy floor.
   useFrame((_, dt) => {
-    // T57: rails+stripes track ENERGY (loudness), pads flash on BEAT only
-    const e = telemetry.energy * track.theme.pulse
+    // T57: rails+stripes track ENERGY (loudness), pads flash on BEAT only.
+    // T149: energy² + lower floors — songs idle around e≈0.6, so the linear
+    // curves sat pegged near max. Square it: quiet is QUIET, drops still slam.
+    const eRaw = telemetry.energy * track.theme.pulse
+    const e = eRaw * eRaw
     const b = telemetry.beat * track.theme.pulse
     // T98: base brightness follows the SECTION's energy — breakdowns dim the
     // whole world so drops have somewhere to go
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
-    uEnergy.value = e * (0.4 + secE * 0.8)
-    uRail.value = 0.5 + secE * 1.1 + e * 2.4
+    uEnergy.value = e * (0.25 + secE * 0.85)
+    uRail.value = 0.3 + secE * 0.9 + e * 2.8
     if (padMat.current) {
-      const s = 1.8 + b * 3.2
+      const s = 1.2 + b * 3.8
       padMat.current.color.setRGB(s, s, s)
     }
     const cd = telemetry.countdown

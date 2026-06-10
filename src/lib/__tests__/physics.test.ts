@@ -87,10 +87,17 @@ describe('ship physics (T5, V5)', () => {
     const ev = noEvents()
     for (let i = 0; i < 20000; i++) {
       stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
-      // T77: walls follow the LOCAL width (speedway 1.6×, wallride 1.15×…)
+      // T77: walls follow the LOCAL width (speedway 1.6×, wallride 1.15×…).
+      // +0.5m transition tolerance (clamp uses the pre-advance sample).
+      // T78: rail-less ridges have NO walls — there the edge margin is the
+      // falloff threshold (+1.2m) before the ship plunges instead.
+      // T131: while plunging off a ridge the ship is legitimately outside
+      // the road — walls only bind grounded ships
+      if (ship.falling) continue
       const fi = Math.min(frames.count - 1, Math.max(0, Math.round(ship.s / frames.ds)))
       const limit = (track.width * frames.widths[fi]) / 2
-      expect(Math.abs(ship.d)).toBeLessThanOrEqual(limit)
+      const margin = frames.walls[fi] > 0.5 ? 0.5 : 1.8
+      expect(Math.abs(ship.d)).toBeLessThanOrEqual(limit + margin)
     }
   })
 

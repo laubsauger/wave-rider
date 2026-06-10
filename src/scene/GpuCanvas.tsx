@@ -10,7 +10,7 @@ declare module '@react-three/fiber' {
 extend(THREE as unknown as Parameters<typeof extend>[0])
 
 /** WebGPU-only canvas (C2). Callers must have passed detectWebGPU first. */
-export function GpuCanvas({ children, ...rest }: { children: ReactNode } & Record<string, unknown>) {
+export function GpuCanvas({ children, alpha = false, ...rest }: { children: ReactNode; alpha?: boolean } & Record<string, unknown>) {
   return (
     <Canvas
       {...rest}
@@ -20,6 +20,7 @@ export function GpuCanvas({ children, ...rest }: { children: ReactNode } & Recor
           ...(props as ConstructorParameters<typeof THREE.WebGPURenderer>[0]),
           antialias: true,
           forceWebGL: false,
+          alpha,
         })
         await renderer.init()
         return renderer

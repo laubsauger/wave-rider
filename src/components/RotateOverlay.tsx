@@ -8,21 +8,45 @@ import { requestFullscreen } from '../lib/fullscreen'
  */
 export function RotateOverlay() {
   const [portrait, setPortrait] = useState(false)
+  // T147: rotation happened but the browser refused gesture-less fullscreen →
+  // surface a one-tap banner
+  const [fsBanner, setFsBanner] = useState(false)
 
   useEffect(() => {
     const mq = window.matchMedia('(orientation: portrait) and (pointer: coarse)')
     let wasPortrait = mq.matches
     const update = () => {
       setPortrait(mq.matches)
-      // T129: rotating into landscape → grab fullscreen (best effort; some
-      // browsers demand a tap — the overlay tap covers those)
-      if (wasPortrait && !mq.matches) void requestFullscreen()
+      if (wasPortrait && !mq.matches) {
+        // T129/T147: try gesture-less first; if the browser refuses, offer a tap
+        void requestFullscreen()
+        setTimeout(() => {
+          if (!document.fullscreenElement) {
+            setFsBanner(true)
+            setTimeout(() => setFsBanner(false), 6000)
+          }
+        }, 400)
+      }
       wasPortrait = mq.matches
     }
     update()
     mq.addEventListener('change', update)
     return () => mq.removeEventListener('change', update)
   }, [])
+
+  if (!portrait && fsBanner) {
+    return (
+      <button
+        className="glass-panel absolute top-3 left-1/2 z-50 -translate-x-1/2 px-5 py-2 text-xs tracking-[0.3em] text-(--color-neon)"
+        onClick={() => {
+          void requestFullscreen()
+          setFsBanner(false)
+        }}
+      >
+        ⛶ TAP FOR FULLSCREEN
+      </button>
+    )
+  }
 
   if (!portrait) return null
   return (

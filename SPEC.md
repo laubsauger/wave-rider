@@ -191,6 +191,18 @@ T134|x|tail light pulse: ONE shared material both outers (right one read dead �
 T135|x|NPC launch ramp: staggered accel first seconds ⊥ GO pileup into player|V15,V17
 T136|x|countdown READY/digits/GO get glass chip backdrop ⊥ lost in space|V6,C11
 T137|x|DoF: TSL DepthOfFieldNode — focus tracks mid-distance, bokeh ∝ speed, fx-scaled|V10,C7
+T138|x|touch hint @ start: left-zone STEER / right-zone THRUST labels, fade after first input|C4,V4
+T139|x|skyline v3: per-bar width+color variation (instanceColor gradient), sluggish far ring — ⊥ homogenous flat EQ|C11
+T140|x|furniture frames v2: outer casing MATTE black (zero emissive), inset glows w/ beat — gates + rings|C11,V19
+T141|x|exhaust flare: nozzle bulge (mach-diamond read), soft leading edge, flicker ↓, accent ↑ vs white|C11
+T142|x|global elevation trend: seeded start→end climb/descent (~±200m) — upcoming segments READ|V3
+T143|x|feel: outward drift ↓ (0.38→0.31) + yaw response ↑; camera: slower steer filter + roll low-pass (⊥ twitch on micro-inputs)|V18,C11
+T144|x|persistent backdrop: ONE canvas across menu/setup/lobbies/analyzing (⊥ swap flicker); menu canvas transparent overlay for ships|C11
+T145|x|NPC grid launch: hold formation lanes + row-staggered release (⊥ GO pileup squeeze); top NPCs faster + sharper (real competition)|V15,V17,V13
+T146|x|countdown text: soft radial shadow halo ⊥ chunky glass box|C11,V6
+T147|x|mobile fit v2: short-viewport alignment top+scroll (⊥ center-cutoff), density ↓↓; rotate→landscape w/o fullscreen → one-tap fullscreen banner|C3,C8
+T148|x|DoF refocus: ship + near field SHARP (focus ≈ cam→ish), distance blurs ∝ speed|V10,C11
+T149|x|dynamic range pass: audio-reactive brightness floors ↓ + energy² curves (⊥ pegged @ max), horizon EQ colors drift w/ section palette + per-bar shading variation, floor grid toned ↓|V3,V19,C11
 
 ## §B bugs
 

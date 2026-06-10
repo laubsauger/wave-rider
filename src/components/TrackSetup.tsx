@@ -62,8 +62,8 @@ export function TrackSetup() {
   }
 
   return (
-    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center p-8 text-white short:p-3">
-      <div className="glass-panel flex w-full max-w-xl flex-col items-center px-8 py-8 short:px-4 short:py-3">
+    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center overflow-y-auto p-8 text-white short:justify-start short:p-2">
+      <div className="glass-panel my-auto flex w-full max-w-xl flex-col items-center px-8 py-8 short:my-1 short:px-4 short:py-2">
       <h1 className="mb-8 text-4xl font-bold tracking-[0.2em] text-(--color-neon) short:mb-3 short:text-2xl">TRACK SETUP</h1>
 
       <div className="relative -skew-x-6 w-full max-w-lg overflow-hidden border border-(--color-neon-2)/40 bg-black/60 px-6 py-6 shadow-[0_0_30px_rgba(255,47,214,0.15)] short:px-4 short:py-3">

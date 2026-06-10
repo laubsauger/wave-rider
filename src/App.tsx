@@ -14,9 +14,9 @@ import { deserializeGhost } from './lib/network/ghost'
 import { GpuCanvas } from './scene/GpuCanvas'
 import { MenuBackdrop } from './scene/MenuBackdrop'
 
-/** T110: screens that get the living backdrop behind their DOM (menu mounts
- * its own canvas with the ship showcase) */
-const BACKDROP_SCREENS = new Set(['track-setup', 'multiplayer-lobby', 'ghost-lobby', 'analyzing', 'results'])
+/** T110/T144: ONE persistent backdrop canvas behind every non-race screen —
+ * including the menu — so screen swaps never flash to black */
+const BACKDROP_SCREENS = new Set(['menu', 'track-setup', 'multiplayer-lobby', 'ghost-lobby', 'analyzing', 'results'])
 
 export default function App() {
   const screen = useGame((s) => s.screen)

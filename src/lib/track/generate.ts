@@ -227,6 +227,10 @@ function layoutCourse(
     (sec) => ((sec.end - sec.start) / features.duration) * totalLength,
   )
 
+  // T142: whole-course elevation trend — the track climbs or sinks ~±0.7%
+  // overall so upcoming segments stack into actual vistas
+  const globalTrend = rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1)
+
   // V20/B10: curvature must scale with design speed — target max lateral
   // accel ~50 m/s² at the reference max curve k of 0.012
   const kScale = Math.min(1, 50 / (avgSpeed * avgSpeed * 0.012))
@@ -238,7 +242,7 @@ function layoutCourse(
     // T38: each section trends up or down — vertical separation where the
     // course crosses itself, and the skyline keeps changing
     // T114: amplitude ↑ — the course should climb and dive, not simmer
-    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.02 + (sec.energy - 0.5) * 0.032
+    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.02 + (sec.energy - 0.5) * 0.032 + globalTrend
     let remaining = secLen
 
     while (remaining > 1) {

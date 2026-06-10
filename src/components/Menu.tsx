@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { GpuCanvas } from '../scene/GpuCanvas'
-import { MenuBackdrop } from '../scene/MenuBackdrop'
 import { ShipMesh } from '../scene/ShipMesh'
 import { BUILTIN_SONGS } from '../lib/audio/builtin'
 import { BUNDLED_SONGS, getBundledMeta, type BundledMeta, type BundledSong } from '../lib/audio/bundled'
@@ -75,7 +74,7 @@ function BundledCard({ song }: { song: BundledSong }) {
       onClick={() => void startBundledRace(song.url, song.artist ? `${song.artist} — ${song.title}` : song.title)}
     >
       {meta && <Waveform peaks={meta.waveform} color="#2ff3ff" />}
-      <span className="relative block text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon)">
+      <span className="relative block text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon) short:text-sm">
         {song.title}
       </span>
       {song.artist && (
@@ -188,20 +187,22 @@ export function Menu() {
           }}
         />
       )}
-      <GpuCanvas camera={{ position: [0, 1.2, 5], fov: 50 }}>
-        <color attach="background" args={['#05060f']} />
+      {/* T144: backdrop lives in the App-level persistent canvas now — this
+          one is a transparent overlay carrying only the ship showcase */}
+      <GpuCanvas alpha camera={{ position: [0, 1.2, 5], fov: 50 }}>
         {/* T54: key + rim + fill hangar lighting */}
         <ambientLight intensity={0.35} />
         <directionalLight position={[5, 7, 4]} intensity={3} color="#dfeaff" />
         <directionalLight position={[-6, 2, -4]} intensity={1.6} color="#2ff3ff" />
         <pointLight position={[-3, -2, 2]} intensity={14} color="#ff2fd6" />
         <pointLight position={[6, 3, -3]} intensity={10} color="#2ff3ff" />
-        <MenuBackdrop />
         <ShowcaseShips />
       </GpuCanvas>
 
-      <div className="hud-safe absolute inset-0 flex items-start justify-center overflow-y-auto sm:items-center">
-        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8 short:my-2 short:gap-2.5 short:px-4 short:py-4">
+      {/* T147: short viewports anchor to TOP and scroll — centering tall
+          content on a 360px-high phone cut off both ends */}
+      <div className="hud-safe absolute inset-0 flex items-center justify-center overflow-y-auto short:items-start">
+        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8 short:my-2 short:max-w-xl short:gap-2 short:px-3 short:py-3">
           <div className="text-center">
             <h1
               className="text-6xl font-bold tracking-[0.35em] text-(--color-neon) short:text-3xl"
