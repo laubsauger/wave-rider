@@ -23,6 +23,7 @@ function fakeFeatures(overrides: Partial<AudioFeatures> = {}): AudioFeatures {
     ],
     mood: 'energetic',
     intensity: 0.7,
+    events: [],
     ...overrides,
   }
 }

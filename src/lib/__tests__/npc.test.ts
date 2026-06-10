@@ -22,6 +22,7 @@ function features(duration = 60): AudioFeatures {
     ],
     mood: 'energetic',
     intensity: 0.6,
+    events: [],
   }
 }
 
