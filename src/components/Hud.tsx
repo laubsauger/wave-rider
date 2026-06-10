@@ -4,8 +4,6 @@ import { useGame } from '../game/store'
 import { NPC_ACCENTS } from '../lib/physics/npc'
 import type { TrackData } from '../lib/track/generate'
 
-const PROG_BARS = 64
-
 const MAP_W = 230
 const MAP_H = 190
 // T49: oblique 2.5D — z compressed, altitude lifts the line
@@ -154,7 +152,6 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const boostCells = useRef<(HTMLDivElement | null)[]>([])
   const cameraMode = useGame((s) => s.cameraMode)
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
-  const features = useGame((s) => s.features)
 
   const fxRef = useRef(fxIntensity)
   fxRef.current = fxIntensity
