@@ -1,0 +1,154 @@
+import { describe, expect, it } from 'vitest'
+import { generateTrack } from '../track/generate'
+import { sampleTrack } from '../track/sample'
+import { initialShip, stepShip, PHYSICS_DT, type ShipInput, type StepEvents } from '../physics/ship'
+import { accumulateSteps } from '../physics/loop'
+import type { AudioFeatures } from '../audio/analyze'
+
+function features(duration = 60): AudioFeatures {
+  const frameInterval = 1024 / 44100
+  const frames = Math.floor(duration / frameInterval)
+  return {
+    duration,
+    sampleRate: 44100,
+    bpm: 120,
+    energy: new Float32Array(frames).fill(0.6),
+    centroid: new Float32Array(frames).fill(0.5),
+    frameInterval,
+    onsets: Array.from({ length: 100 }, (_, i) => i * 0.6),
+    sections: [
+      { start: 0, end: 30, energy: 0.7, brightness: 0.5 },
+      { start: 30, end: 60, energy: 0.3, brightness: 0.3 },
+    ],
+    mood: 'energetic',
+    intensity: 0.6,
+  }
+}
+
+const noEvents = (): StepEvents => ({ wallHit: false, wallImpact: 0, boostFired: false, finished: false })
+
+function scriptedInput(step: number): ShipInput {
+  return {
+    steer: Math.sin(step / 60) * 0.8,
+    thrust: 1,
+    brakeLeft: step % 400 < 30,
+    brakeRight: false,
+  }
+}
+
+describe('ship physics (T5, V5)', () => {
+  const track = generateTrack(features())
+  const frames = sampleTrack(track, 3)
+
+  it('V5: identical input sequence → bit-identical state', () => {
+    const a = initialShip()
+    const b = initialShip()
+    const ev = noEvents()
+    for (let i = 0; i < 5000; i++) {
+      stepShip(a, scriptedInput(i), track, frames, ev)
+    }
+    for (let i = 0; i < 5000; i++) {
+      stepShip(b, scriptedInput(i), track, frames, ev)
+    }
+    expect(a).toEqual(b)
+  })
+
+  it('V5: accumulator yields same step count regardless of frame chunking', () => {
+    // 2.5 simulated seconds delivered as 60fps vs ragged chunks
+    const even = { acc: 0 }
+    const ragged = { acc: 0 }
+    let stepsEven = 0
+    let stepsRagged = 0
+    for (let i = 0; i < 150; i++) stepsEven += accumulateSteps(even, 1 / 60)
+    const chunks = [0.013, 0.021, 0.008, 0.033, 0.025]
+    let t = 0
+    let ci = 0
+    while (t < 2.5 - 1e-9) {
+      const dt = Math.min(chunks[ci++ % chunks.length], 2.5 - t)
+      t += dt
+      stepsRagged += accumulateSteps(ragged, dt)
+    }
+    // both consumed exactly 2.5s of sim time → equal whole steps (±1 for residue)
+    expect(Math.abs(stepsEven - stepsRagged)).toBeLessThanOrEqual(1)
+  })
+
+  it('ship stays inside walls forever', () => {
+    const ship = initialShip()
+    const ev = noEvents()
+    const limit = track.width / 2
+    for (let i = 0; i < 20000; i++) {
+      stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      expect(Math.abs(ship.d)).toBeLessThanOrEqual(limit)
+    }
+  })
+
+  it('reaches finish and stops (V2 runtime side)', () => {
+    const ship = initialShip()
+    const ev = noEvents()
+    const maxSteps = Math.ceil((track.duration * 4) / PHYSICS_DT)
+    let finishedAt = -1
+    for (let i = 0; i < maxSteps; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      if (ev.finished) {
+        finishedAt = ship.time
+        break
+      }
+    }
+    expect(finishedAt).toBeGreaterThan(0)
+    expect(ship.finished).toBe(true)
+    expect(ship.s).toBe(track.length)
+    // post-finish steps are no-ops
+    const frozen = { ...ship }
+    stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    expect(ship).toEqual(frozen)
+  })
+
+  it('V12: speed never exceeds 1.1 × boosted vmax, even chaining pads', () => {
+    const ship = initialShip()
+    const ev = noEvents()
+    const cap = (track.avgSpeed * 1.45 + 60) * 1.1
+    const maxSteps = Math.ceil((track.duration * 4) / PHYSICS_DT)
+    for (let i = 0; i < maxSteps && !ship.finished; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      expect(ship.v).toBeLessThanOrEqual(cap)
+    }
+  })
+
+  it('boost pads fire at most once each', () => {
+    const ship = initialShip()
+    const ev = noEvents()
+    let fired = 0
+    const maxSteps = Math.ceil((track.duration * 4) / PHYSICS_DT)
+    for (let i = 0; i < maxSteps && !ship.finished; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      if (ev.boostFired) fired++
+    }
+    expect(fired).toBe(ship.boostsHit)
+    expect(fired).toBeLessThanOrEqual(track.boosts.length)
+  })
+})
+
+describe('track sampling (T4)', () => {
+  const track = generateTrack(features())
+  const frames = sampleTrack(track, 3)
+
+  it('produces finite frames covering full length', () => {
+    expect(frames.length).toBeGreaterThan(track.length * 0.5)
+    for (let i = 0; i < frames.count * 3; i++) {
+      expect(Number.isFinite(frames.positions[i])).toBe(true)
+      expect(Number.isFinite(frames.tangents[i])).toBe(true)
+      expect(Number.isFinite(frames.normals[i])).toBe(true)
+      expect(Number.isFinite(frames.binormals[i])).toBe(true)
+    }
+  })
+
+  it('frames are orthonormal within tolerance', () => {
+    for (let i = 0; i < frames.count; i += 50) {
+      const dot =
+        frames.tangents[i * 3] * frames.normals[i * 3] +
+        frames.tangents[i * 3 + 1] * frames.normals[i * 3 + 1] +
+        frames.tangents[i * 3 + 2] * frames.normals[i * 3 + 2]
+      expect(Math.abs(dot)).toBeLessThan(0.01)
+    }
+  })
+})

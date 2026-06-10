@@ -1,0 +1,44 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #05060f;
+  --color-neon: #2ff3ff;
+  --color-neon-2: #ff2fd6;
+  --color-neon-3: #b4ff39;
+  --color-amber-hud: #ffb13d;
+  --font-hud: "Rajdhani", "Avenir Next Condensed", "Arial Narrow", sans-serif;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-void);
+  color: #e8f6ff;
+  font-family: var(--font-hud);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+canvas { display: block; touch-action: none; }
+
+/* HUD safe area: V6 — never render HUD into device cutouts */
+.hud-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: max(env(safe-area-inset-left, 0px), 16px);
+  padding-right: max(env(safe-area-inset-right, 0px), 16px);
+}
+
+@keyframes hud-flicker {
+  0%, 100% { opacity: 1; }
+  92% { opacity: 1; }
+  93% { opacity: 0.6; }
+  94% { opacity: 1; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 6px currentColor); }
+  50% { filter: drop-shadow(0 0 16px currentColor); }
+}

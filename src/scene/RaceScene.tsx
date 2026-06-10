@@ -1,0 +1,340 @@
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
+import * as THREE from 'three/webgpu'
+import { useGame } from '../game/store'
+import { telemetry } from '../game/telemetry'
+import { attachKeyboard, onGameKey, readShipInput, resetInput } from '../game/input'
+import { computeLean, initialShip, stepShip, type ShipInput, type StepEvents } from '../lib/physics/ship'
+import { accumulateSteps } from '../lib/physics/loop'
+import { sampleTrack, poseAt, curvatureAt, type FramePose, type TrackFrames } from '../lib/track/sample'
+import { initialNpc, makeNpcs, racePosition, stepNpc, type NpcSpec, type NpcState } from '../lib/physics/npc'
+import { playSong, type SongHandle } from '../lib/audio/playback'
+import { Track } from './Track'
+import { Scenery } from './Scenery'
+import { ShipMesh } from './ShipMesh'
+import { ExhaustTrails } from './Exhaust'
+import type { TrackData } from '../lib/track/generate'
+
+const tmpMatrix = new THREE.Matrix4()
+const tmpEye = new THREE.Vector3(0, 0, 0)
+const tmpDir = new THREE.Vector3()
+const tmpUp = new THREE.Vector3()
+
+const HOVER_HEIGHT = 0.9
+
+interface ShakeState {
+  trauma: number
+}
+
+export function RaceScene({
+  track,
+  paused = false,
+  quality = 'high',
+}: {
+  track: TrackData
+  paused?: boolean
+  quality?: 'low' | 'medium' | 'high'
+}) {
+  const features = useGame((s) => s.features)!
+  const songBuffer = useGame((s) => s.songBuffer)
+  const songTitle = useGame((s) => s.songTitle)
+  const cameraMode = useGame((s) => s.cameraMode)
+  const fxIntensity = useGame((s) => s.settings.fxIntensity)
+  const toggleCamera = useGame((s) => s.toggleCamera)
+  const finishRace = useGame((s) => s.finishRace)
+
+  const frames = useMemo(
+    () => sampleTrack(track, quality === 'low' ? 6 : quality === 'medium' ? 4 : 3),
+    [track, quality],
+  )
+  const scene = useThree((s) => s.scene)
+  const skyColors = useMemo(
+    () => ({
+      base: new THREE.Color(track.theme.sky),
+      flash: new THREE.Color(track.theme.sky).lerp(new THREE.Color(track.theme.glow), 0.32),
+    }),
+    [track.theme],
+  )
+  const shipGroup = useRef<THREE.Group>(null)
+  const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
+
+  const npcSpecs = useMemo(() => makeNpcs(track), [track])
+
+  const sim = useRef({
+    npcs: [] as NpcState[],
+    ship: initialShip(),
+    input: { steer: 0, thrust: 0, brakeLeft: false, brakeRight: false } as ShipInput,
+    events: { wallHit: false, wallImpact: 0, boostFired: false, finished: false } as StepEvents,
+    accumulator: { acc: 0 },
+    pose: {} as FramePose,
+    shake: { trauma: 0 } as ShakeState,
+    song: null as SongHandle | null,
+    started: false,
+    roll: 0,
+  })
+
+  // input + camera toggle + song lifecycle
+  useEffect(() => {
+    resetInput()
+    const detachKb = attachKeyboard()
+    const detachKeys = onGameKey((e) => {
+      if (e === 'camera') toggleCamera()
+    })
+    const s = sim.current
+    s.npcs = npcSpecs.map((_, i) => initialNpc(i))
+    if (songBuffer) s.song = playSong(songBuffer)
+    s.started = true
+    return () => {
+      detachKb()
+      detachKeys()
+      s.song?.stop()
+      s.song = null
+    }
+  }, [songBuffer, toggleCamera])
+
+  useFrame((_, dt) => {
+    const s = sim.current
+    if (!s.started || paused) return
+
+    readShipInput(s.input)
+    const steps = accumulateSteps(s.accumulator, dt)
+    let wallEvent = 0
+    let boostEvent = false
+    let finishedEvent = false
+    for (let i = 0; i < steps; i++) {
+      stepShip(s.ship, s.input, track, frames, s.events)
+      for (let ni = 0; ni < s.npcs.length; ni++) stepNpc(s.npcs[ni], npcSpecs[ni], track, frames)
+      if (s.events.wallHit) wallEvent = Math.max(wallEvent, s.events.wallImpact)
+      if (s.events.boostFired) boostEvent = true
+      if (s.events.finished) finishedEvent = true
+    }
+
+    // shake trauma (V10: scaled by fxIntensity at application time)
+    if (wallEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + 0.25 + wallEvent * 0.02)
+    if (boostEvent) s.shake.trauma = Math.min(1, s.shake.trauma + 0.18)
+    s.shake.trauma = Math.max(0, s.shake.trauma - dt * 1.6)
+
+    // ship world transform
+    const ship = s.ship
+    poseAt(frames, ship.s, ship.d, HOVER_HEIGHT, s.pose)
+    const g = shipGroup.current
+    if (g) {
+      const bob = Math.sin(ship.time * 7) * 0.05 + Math.sin(ship.time * 13.7) * 0.02
+      g.position.set(
+        s.pose.px + s.pose.nx * bob,
+        s.pose.py + s.pose.ny * bob,
+        s.pose.pz + s.pose.nz * bob,
+      )
+      tmpDir.set(-s.pose.tx, -s.pose.ty, -s.pose.tz)
+      tmpUp.set(s.pose.nx, s.pose.ny, s.pose.nz)
+      tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)
+      g.quaternion.setFromRotationMatrix(tmpMatrix)
+      // V14: bank INTO the corner. computeLean is +right; after the
+      // rotateY(π) model flip below, +Z roll renders as LEFT dip, so negate (B5).
+      const i = Math.round(ship.s / frames.ds)
+      const k = curvatureAt(frames, i)
+      const targetRoll = computeLean(ship.yaw, k, ship.v)
+      s.roll += (targetRoll - s.roll) * Math.min(1, dt * 8)
+      g.rotateY(ship.yaw * 0.6 + Math.PI)
+      g.rotateZ(-s.roll)
+    }
+
+    updateCamera(camera, s, cameraMode, fxIntensity, dt)
+
+    // telemetry for HUD
+    const songTime = s.song ? s.song.time() : ship.time
+    telemetry.speed = ship.v
+    telemetry.progress = ship.s / track.length
+    telemetry.timeMs = ship.time * 1000
+    telemetry.boost = ship.boost
+    telemetry.songTime = songTime
+    const fi = Math.min(features.energy.length - 1, Math.floor(songTime / features.frameInterval))
+    telemetry.energy = features.energy[fi] ?? 0
+    telemetry.wallFlash = wallEvent > 0 ? 1 : Math.max(0, telemetry.wallFlash - dt * 3)
+    telemetry.boostFlash = boostEvent ? 1 : Math.max(0, telemetry.boostFlash - dt * 3.5)
+    telemetry.position = racePosition(ship.s, s.npcs)
+    telemetry.racers = s.npcs.length + 1
+
+    // T21: sky breathes with the music
+    if (scene.background instanceof THREE.Color) {
+      scene.background.lerpColors(skyColors.base, skyColors.flash, telemetry.energy * track.theme.pulse)
+    }
+
+    if (finishedEvent) {
+      s.started = false
+      s.song?.stop(1.5)
+      finishRace({
+        timeMs: ship.time * 1000,
+        topSpeed: ship.topSpeed,
+        boostsHit: ship.boostsHit,
+        wallHits: ship.wallHits,
+        songTitle,
+        place: racePosition(ship.s - 0.001, s.npcs),
+        totalRacers: s.npcs.length + 1,
+      })
+    }
+  })
+
+  return (
+    <group>
+      <color attach="background" args={[track.theme.sky]} />
+      <fog attach="fog" args={[track.theme.fog, 60, 3 / track.theme.fogDensity]} />
+      <ambientLight intensity={0.3} color={track.theme.glow} />
+      <directionalLight position={[80, 200, -50]} intensity={1.6} color="#cfe0ff" />
+      <Track track={track} frames={frames} />
+      <Scenery track={track} frames={frames} />
+      <group ref={shipGroup}>
+        <ShipMesh
+          accent={track.theme.edge}
+          power={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
+        />
+      </group>
+      <ExhaustTrails
+        shipRef={shipGroup}
+        offsets={[
+          [-1.05, -0.02, 1.4],
+          [1.05, -0.02, 1.4],
+        ]}
+        color={track.theme.edge}
+        intensity={() =>
+          sim.current.input.thrust * 0.6 +
+          (sim.current.ship.boost > 0 ? 0.8 : 0) +
+          Math.min(0.35, sim.current.ship.v / 700)
+        }
+      />
+      <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />
+      <Starfield color={track.theme.glow} count={quality === 'low' ? 400 : 1500} />
+    </group>
+  )
+}
+
+const camTarget = new THREE.Vector3()
+const camPos = new THREE.Vector3()
+const camUp = new THREE.Vector3()
+const camFwd = new THREE.Vector3()
+
+function updateCamera(
+  camera: THREE.PerspectiveCamera,
+  s: {
+    ship: ReturnType<typeof initialShip>
+    pose: FramePose
+    shake: ShakeState
+    roll: number
+  },
+  mode: 'chase' | 'cockpit',
+  fxIntensity: number,
+  dt: number,
+) {
+  const { ship, pose } = s
+
+  if (mode === 'chase') {
+    camPos.set(
+      pose.px - pose.tx * 8 + pose.nx * 2.9,
+      pose.py - pose.ty * 8 + pose.ny * 2.9,
+      pose.pz - pose.tz * 8 + pose.nz * 2.9,
+    )
+    camera.position.lerp(camPos, 1 - Math.exp(-dt * 9))
+    // hard tether: cam may lag for feel but never lose the ship at speed (B4)
+    const lag = camera.position.distanceTo(camPos)
+    if (lag > 3.2) camera.position.lerp(camPos, 1 - 3.2 / lag)
+    camTarget.set(pose.px + pose.tx * 12, pose.py + pose.ty * 12, pose.pz + pose.tz * 12)
+  } else {
+    camPos.set(pose.px + pose.tx * 0.4 + pose.nx * 0.55, pose.py + pose.ty * 0.4 + pose.ny * 0.55, pose.pz + pose.tz * 0.4 + pose.nz * 0.55)
+    camera.position.copy(camPos)
+    camTarget.set(pose.px + pose.tx * 30, pose.py + pose.ty * 30, pose.pz + pose.tz * 30)
+  }
+
+  // screenshake: trauma² noise, fully off at fxIntensity 0 (V10)
+  const shakeAmt = s.shake.trauma * s.shake.trauma * fxIntensity
+  if (shakeAmt > 0.001) {
+    const t = ship.time * 70
+    camera.position.x += Math.sin(t * 1.1) * 0.12 * shakeAmt
+    camera.position.y += Math.sin(t * 1.7 + 2) * 0.1 * shakeAmt
+    camTarget.x += Math.sin(t * 1.3 + 4) * 0.3 * shakeAmt
+  }
+  // cameras roll with the ship — cockpit fully, chase partially (T16).
+  // roll is +right-dip; rotating up around the forward axis by -roll matches
+  // the ship's rendered bank.
+  camUp.set(pose.nx, pose.ny, pose.nz)
+  camFwd.set(pose.tx, pose.ty, pose.tz)
+  camUp.applyAxisAngle(camFwd, -s.roll * (mode === 'cockpit' ? 0.9 : 0.4))
+  camera.up.copy(camUp)
+  camera.lookAt(camTarget)
+
+  // speed FOV: subtle always, boost kick scaled by fx
+  const speedNorm = Math.min(1, ship.v / 280)
+  const targetFov = 62 + speedNorm * 16 + (ship.boost > 0 ? 6 * fxIntensity : 0)
+  camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4)
+  camera.updateProjectionMatrix()
+}
+
+function NpcShips({
+  specs,
+  simRef,
+  frames,
+}: {
+  specs: NpcSpec[]
+  simRef: React.RefObject<{ npcs: NpcState[] }>
+  frames: TrackFrames
+}) {
+  const refs = useRef<(THREE.Group | null)[]>([])
+  const pose = useRef({} as FramePose)
+
+  useFrame(() => {
+    const npcs = simRef.current.npcs
+    for (let i = 0; i < specs.length; i++) {
+      const g = refs.current[i]
+      const st = npcs[i]
+      if (!g || !st) continue
+      poseAt(frames, Math.max(0, st.s), st.d, HOVER_HEIGHT, pose.current)
+      const p = pose.current
+      g.position.set(p.px, p.py, p.pz)
+      tmpDir.set(-p.tx, -p.ty, -p.tz)
+      tmpUp.set(p.nx, p.ny, p.nz)
+      tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)
+      g.quaternion.setFromRotationMatrix(tmpMatrix)
+      const k = curvatureAt(frames, Math.max(0, Math.round(st.s / frames.ds)))
+      g.rotateY(Math.PI)
+      g.rotateZ(-computeLean(0, k, st.v))
+    }
+  })
+
+  return (
+    <>
+      {specs.map((spec, i) => (
+        <group key={spec.name} ref={(g) => void (refs.current[i] = g)}>
+          <ShipMesh
+            accent={spec.accent}
+            power={() => {
+              const st = simRef.current.npcs[i]
+              return st && !st.finished && st.v > 1 ? 0.55 : 0
+            }}
+          />
+        </group>
+      ))}
+    </>
+  )
+}
+
+function Starfield({ color, count = 1500 }: { color: string; count?: number }) {
+  const geo = useMemo(() => {
+    const n = count
+    const pos = new Float32Array(n * 3)
+    // deterministic spiral scatter — not gameplay, but keep V8 hygiene anyway
+    for (let i = 0; i < n; i++) {
+      const a = i * 2.39996
+      const r = 800 + (i % 700)
+      pos[i * 3] = Math.cos(a) * r
+      pos[i * 3 + 1] = ((i * 37) % 900) - 200
+      pos[i * 3 + 2] = Math.sin(a) * r
+    }
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    return g
+  }, [count])
+  return (
+    <points geometry={geo}>
+      <pointsMaterial color={color} size={2.2} sizeAttenuation={false} transparent opacity={0.7} />
+    </points>
+  )
+}
