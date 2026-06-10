@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef } from 'react'
 import { telemetry } from '../game/telemetry'
 import { useGame } from '../game/store'
 import { NPC_ACCENTS } from '../lib/physics/npc'
-import { fmtDuration } from '../lib/audio/waveform'
 import type { TrackData } from '../lib/track/generate'
 
 const PROG_BARS = 64
@@ -155,23 +154,8 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const boostCells = useRef<(HTMLDivElement | null)[]>([])
   const cameraMode = useGame((s) => s.cameraMode)
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
-  const songTitle = useGame((s) => s.songTitle)
   const features = useGame((s) => s.features)
-  const progressClip = useRef<HTMLDivElement>(null)
 
-  // progress bar = waveform approximation from the analyzed energy curve
-  const progPeaks = useMemo(() => {
-    if (!features) return Array(PROG_BARS).fill(0.5) as number[]
-    const e = features.energy
-    const out: number[] = []
-    const per = Math.max(1, Math.floor(e.length / PROG_BARS))
-    for (let b = 0; b < PROG_BARS; b++) {
-      let peak = 0.08
-      for (let i = b * per; i < Math.min(e.length, (b + 1) * per); i += 2) peak = Math.max(peak, e[i])
-      out.push(peak)
-    }
-    return out
-  }, [features])
   const fxRef = useRef(fxIntensity)
   fxRef.current = fxIntensity
 

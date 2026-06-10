@@ -41,12 +41,16 @@ export function ShipMesh({
   boost = 0,
   power,
   variant = 0,
+  opacity = 1,
+  transparent = false,
 }: {
   accent?: string
   boost?: number
   power?: () => number
   /** 0 standard, 1 narrow fwd-swept, 2 wide cruiser */
   variant?: 0 | 1 | 2
+  opacity?: number
+  transparent?: boolean
 }) {
   const engineMat = useRef<THREE.MeshStandardMaterial>(null)
   const flameL = useRef<THREE.Mesh>(null)
@@ -59,8 +63,8 @@ export function ShipMesh({
   }, [variant])
 
   const hull = useMemo(
-    () => ({ metalness: 0.9, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.15, flatShading: true }),
-    [],
+    () => ({ metalness: 0.9, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.15, flatShading: true, opacity: opacity ?? 1, transparent: transparent ?? false }),
+    [opacity, transparent],
   )
 
   useFrame(({ clock }) => {
@@ -92,7 +96,7 @@ export function ShipMesh({
       {/* canopy — low bubble, front third */}
       <mesh position={[0, 0.38, -1.0]} scale={[0.22, 0.12, 0.62]}>
         <sphereGeometry args={[1, 8, 6]} />
-        <meshPhysicalMaterial color="#060d20" metalness={0.2} roughness={0.05} clearcoat={1} emissive={accent} emissiveIntensity={0.35} />
+        <meshPhysicalMaterial color="#060d20" metalness={0.2} roughness={0.05} clearcoat={1} emissive={accent} emissiveIntensity={0.35} transparent={transparent} opacity={opacity ?? 1} />
       </mesh>
       {/* engine block — wide, flat, embedded in tail */}
       <mesh castShadow position={[0, 0.22, 1.32]} scale={[1.0, 0.26, 0.42]}>

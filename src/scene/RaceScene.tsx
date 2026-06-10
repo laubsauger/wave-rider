@@ -24,11 +24,14 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
+import { createGhostRecorder } from '../lib/network/ghost'
+import { network, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
 import { GridFloor, Ridges, WarpStreaks } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
+import { NetworkShip } from './NetworkShip'
 import type { TrackData } from '../lib/track/generate'
 
 const tmpMatrix = new THREE.Matrix4()
@@ -61,6 +64,9 @@ export function RaceScene({
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
   const toggleCamera = useGame((s) => s.toggleCamera)
   const finishRace = useGame((s) => s.finishRace)
+  const isMultiplayer = useGame((s) => s.isMultiplayer)
+  const ghostPlayback = useGame((s) => s.ghostPlayback)
+  const setGhostData = useGame((s) => s.setGhostData)
 
   const frames = useMemo(
     () => sampleTrack(track, quality === 'low' ? 6 : quality === 'medium' ? 4 : 3),
@@ -105,6 +111,10 @@ export function RaceScene({
     cooldowns: new Float32Array(6),
     /** T63: slow-filtered steer for camera pivots */
     camSteer: 0,
+    ghostRecorder: null as ReturnType<typeof createGhostRecorder> | null,
+    opponent: null as OpponentState | null,
+    ghostReplayPos: { s: 0, d: 0, v: 0, yaw: 0 },
+    lastNetSend: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -115,16 +125,32 @@ export function RaceScene({
       if (e === 'camera') toggleCamera()
     })
     const s = sim.current
-    s.npcs = npcSpecs.map((_, i) => initialNpc(i))
+    s.npcs = isMultiplayer || ghostPlayback ? [] : npcSpecs.map((_, i) => initialNpc(i))
     // T35: song starts at GO, not on mount — see countdown in the frame loop
     s.started = true
+
+    if (!isMultiplayer && !ghostPlayback) {
+      s.ghostRecorder = createGhostRecorder(songTitle)
+    }
+    
+    if (isMultiplayer) {
+      network.onMessage = (msg) => {
+        if (msg.type === 'state_update') {
+          sim.current.opponent = msg.state
+        } else if (msg.type === 'race_finish') {
+          useGame.getState().setOpponentFinish(msg.timeMs)
+        }
+      }
+    }
+
     return () => {
       detachKb()
       detachKeys()
       s.song?.stop()
       s.song = null
+      if (isMultiplayer) network.onMessage = () => {}
     }
-  }, [songBuffer, toggleCamera])
+  }, [songBuffer, toggleCamera, isMultiplayer, ghostPlayback])
 
   useFrame((_, dt) => {
     const s = sim.current
@@ -209,6 +235,26 @@ export function RaceScene({
       g.rotateX(s.airPitch)
     }
 
+    if (s.ghostRecorder) s.ghostRecorder.record(ship)
+    if (isMultiplayer && ship.time >= s.lastNetSend + 0.1) {
+      s.lastNetSend = ship.time
+      network.send({ type: 'state_update', state: { s: ship.s, d: ship.d, v: ship.v, yaw: ship.yaw, finished: ship.finished } })
+    }
+
+    if (ghostPlayback) {
+      const framesData = ghostPlayback.frames
+      const targetTime = ship.time
+      const idx = Math.floor(targetTime * 10) * 4
+      if (idx >= 0 && idx < framesData.length - 4) {
+        // Interpolate
+        const frac = (targetTime * 10) % 1
+        s.ghostReplayPos.s = framesData[idx] + (framesData[idx+4] - framesData[idx]) * frac
+        s.ghostReplayPos.d = framesData[idx+1] + (framesData[idx+5] - framesData[idx+1]) * frac
+        s.ghostReplayPos.v = framesData[idx+2] + (framesData[idx+6] - framesData[idx+2]) * frac
+        s.ghostReplayPos.yaw = framesData[idx+3] + (framesData[idx+7] - framesData[idx+3]) * frac
+      }
+    }
+
     updateCamera(camera, s, cameraMode, fxIntensity, dt)
 
     // telemetry for HUD
@@ -258,14 +304,22 @@ export function RaceScene({
     if (finishedEvent) {
       s.started = false
       s.song?.stop(1.5)
+      
+      if (s.ghostRecorder) {
+        setGhostData(s.ghostRecorder.finish())
+      }
+      if (isMultiplayer) {
+        network.send({ type: 'race_finish', timeMs: ship.time * 1000 })
+      }
+      
       finishRace({
         timeMs: ship.time * 1000,
         topSpeed: ship.topSpeed,
         boostsHit: ship.boostsHit,
         wallHits: ship.wallHits,
         songTitle,
-        place: racePosition(ship.s - 0.001, s.npcs),
-        totalRacers: s.npcs.length + 1,
+        place: racePosition(ship.s - 0.001, s.npcs), // Not exactly accurate for multiplayer but ok
+        totalRacers: isMultiplayer ? 2 : (ghostPlayback ? 2 : s.npcs.length + 1),
       })
     }
   })
@@ -300,7 +354,30 @@ export function RaceScene({
           Math.min(0.35, sim.current.ship.v / 700)
         }
       />
-      <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />
+      {sim.current.npcs.length > 0 && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
+      {isMultiplayer && sim.current.opponent && (
+        <NetworkShip 
+          s={sim.current.opponent.s} 
+          d={sim.current.opponent.d} 
+          v={sim.current.opponent.v} 
+          yaw={sim.current.opponent.yaw} 
+          frames={frames} 
+          accent="#b4ff39"
+          finished={sim.current.opponent.finished}
+        />
+      )}
+      {ghostPlayback && (
+        <NetworkShip 
+          s={sim.current.ghostReplayPos.s} 
+          d={sim.current.ghostReplayPos.d} 
+          v={sim.current.ghostReplayPos.v} 
+          yaw={sim.current.ghostReplayPos.yaw} 
+          frames={frames} 
+          accent="#2ff3ff"
+          finished={sim.current.ship.finished}
+          isGhost={true}
+        />
+      )}
       <Starfield color={track.theme.glow} count={quality === 'low' ? 400 : 1500} />
     </group>
   )

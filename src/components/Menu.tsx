@@ -94,6 +94,7 @@ export function Menu() {
   const settings = useGame((s) => s.settings)
   const setSettings = useGame((s) => s.setSettings)
   const userSongs = useGame((s) => s.userSongs)
+  const ghostPlayback = useGame((s) => s.ghostPlayback)
 
   const onFile = async (file: File | undefined) => {
     if (!file) return
@@ -142,6 +143,15 @@ export function Menu() {
             >
               ▲ UPLOAD YOUR OWN TRACK
             </button>
+            <button
+              className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-3.5 tracking-[0.25em] text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"
+              onClick={() => useGame.getState().setScreen('multiplayer-lobby')}
+            >
+              ◎ HOST MULTIPLAYER
+            </button>
+            {ghostPlayback && (
+              <p className="text-center text-xs tracking-widest text-[#2ff3ff]">GHOST REPLAY LOADED</p>
+            )}
             <input
               ref={fileInput}
               type="file"

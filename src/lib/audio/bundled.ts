@@ -5,6 +5,8 @@
  */
 import inTaGetABagUrl from '../../../audio/M.O.E. - In ta get a bag.mp3?url'
 import factoryUrl from '../../../audio/M.S.O. - Factory.mp3?url'
+import nitsUrl from '../../../audio/M.S.O. - Nits.mp3?url'
+import attentionUrl from '../../../audio/M.O.E. - Attention - old.mp3?url'
 
 export interface BundledSong {
   id: string
@@ -16,6 +18,13 @@ export interface BundledSong {
 }
 
 export const BUNDLED_SONGS: BundledSong[] = [
+  {
+    id: 'mso-nits',
+    title: 'NITS',
+    artist: 'M.S.O.',
+    url: nitsUrl,
+    lengthLabel: '—',
+  },
   {
     id: 'moe-in-ta-get-a-bag',
     title: 'IN TA GET A BAG',
@@ -30,6 +39,13 @@ export const BUNDLED_SONGS: BundledSong[] = [
     url: factoryUrl,
     lengthLabel: '—',
   },
+  {
+    id: 'moe-attention',
+    title: 'ATTENTION',
+    artist: 'M.O.E.',
+    url: attentionUrl,
+    lengthLabel: '—',
+  }
 ]
 
 export interface BundledMeta {

@@ -1,4 +1,7 @@
+import { useState } from 'react'
 import { useGame } from '../game/store'
+import { serializeGhost } from '../lib/network/ghost'
+import { network } from '../lib/network/p2p'
 
 function fmtTime(ms: number): string {
   const m = Math.floor(ms / 60000)
@@ -11,6 +14,13 @@ export function Results() {
   const result = useGame((s) => s.result)
   const track = useGame((s) => s.track)
   const setScreen = useGame((s) => s.setScreen)
+  const isMultiplayer = useGame((s) => s.isMultiplayer)
+  const opponentFinished = useGame((s) => s.opponentFinished)
+  const opponentTimeMs = useGame((s) => s.opponentTimeMs)
+  const ghostData = useGame((s) => s.ghostData)
+  
+  const [copied, setCopied] = useState(false)
+
   if (!result || !track) return null
 
   const accent = track.theme.edge
@@ -37,6 +47,15 @@ export function Results() {
         <span className="text-right font-bold tabular-nums">{result.boostsHit}</span>
         <span className="text-white/50">WALL HITS</span>
         <span className="text-right font-bold tabular-nums">{result.wallHits}</span>
+        
+        {isMultiplayer && (
+          <>
+            <span className="text-[#b4ff39]/80 mt-4">OPPONENT TIME</span>
+            <span className="text-right font-bold tabular-nums text-[#b4ff39] mt-4">
+              {opponentFinished && opponentTimeMs ? fmtTime(opponentTimeMs) : 'RACING...'}
+            </span>
+          </>
+        )}
       </div>
       <div className="flex gap-4">
         <button
@@ -48,11 +67,31 @@ export function Results() {
         </button>
         <button
           className="border border-white/30 px-6 py-2 tracking-widest text-white/60 transition hover:bg-white/10"
-          onClick={() => setScreen('menu')}
+          onClick={() => {
+            if (isMultiplayer) network.disconnect()
+            useGame.getState().setMultiplayer(false)
+            useGame.getState().setGhostPlayback(null)
+            setScreen('menu')
+          }}
         >
           MENU
         </button>
       </div>
+      
+      {ghostData && !isMultiplayer && (
+        <button
+          className="mt-4 border border-[#2ff3ff]/40 px-6 py-2 tracking-widest text-[#2ff3ff]/80 transition hover:bg-[#2ff3ff]/10"
+          onClick={async () => {
+            const str = await serializeGhost(ghostData)
+            const url = `${window.location.origin}${window.location.pathname}?ghost=${str}`
+            await navigator.clipboard.writeText(url)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          }}
+        >
+          {copied ? 'LINK COPIED!' : 'COPY GHOST LINK'}
+        </button>
+      )}
     </div>
   )
 }

@@ -7,6 +7,8 @@ import { Analyzing } from './components/Analyzing'
 import { Race } from './components/Race'
 import { Results } from './components/Results'
 import { RotateOverlay } from './components/RotateOverlay'
+import { MultiplayerLobby } from './components/MultiplayerLobby'
+import { deserializeGhost } from './lib/network/ghost'
 
 export default function App() {
   const screen = useGame((s) => s.screen)
@@ -14,7 +16,32 @@ export default function App() {
 
   useEffect(() => {
     if (screen !== 'boot') return
-    detectWebGPU().then((ok) => setScreen(ok ? 'menu' : 'unsupported'))
+    detectWebGPU().then((ok) => {
+      if (!ok) {
+        setScreen('unsupported')
+        return
+      }
+      
+      const params = new URLSearchParams(window.location.search)
+      const joinId = params.get('join')
+      const ghostData = params.get('ghost')
+
+      if (joinId) {
+        setScreen('multiplayer-lobby')
+      } else if (ghostData) {
+        deserializeGhost(ghostData)
+          .then(data => {
+            useGame.getState().setGhostPlayback(data)
+            setScreen('menu')
+          })
+          .catch(e => {
+            console.error('Invalid ghost data', e)
+            setScreen('menu')
+          })
+      } else {
+        setScreen('menu')
+      }
+    })
   }, [screen, setScreen])
 
   return (
@@ -26,6 +53,7 @@ export default function App() {
       )}
       {screen === 'unsupported' && <Unsupported />}
       {screen === 'menu' && <Menu />}
+      {screen === 'multiplayer-lobby' && <MultiplayerLobby initialJoinId={new URLSearchParams(window.location.search).get('join') || undefined} />}
       {screen === 'analyzing' && <Analyzing />}
       {screen === 'race' && <Race />}
       {screen === 'results' && <Results />}

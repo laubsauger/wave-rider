@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { TrackData } from '../lib/track/generate'
 import type { AudioFeatures } from '../lib/audio/analyze'
 
-export type Screen = 'boot' | 'unsupported' | 'menu' | 'analyzing' | 'race' | 'results'
+export type Screen = 'boot' | 'unsupported' | 'menu' | 'multiplayer-lobby' | 'analyzing' | 'race' | 'results'
 export type CameraMode = 'chase' | 'cockpit'
 
 export interface Settings {
@@ -43,6 +43,14 @@ interface GameState {
   result: RaceResult | null
   analysisProgress: number
   userSongs: UserSong[]
+  
+  // Multiplayer & Ghost
+  isMultiplayer: boolean
+  opponentFinished: boolean
+  opponentTimeMs: number | null
+  
+  ghostData: import('../lib/network/ghost').GhostData | null
+  ghostPlayback: import('../lib/network/ghost').GhostData | null
 
   addUserSong: (song: UserSong) => void
   setScreen: (s: Screen) => void
@@ -56,6 +64,10 @@ interface GameState {
     songTitle: string
   }) => void
   finishRace: (r: RaceResult) => void
+  setMultiplayer: (isMultiplayer: boolean) => void
+  setOpponentFinish: (timeMs: number) => void
+  setGhostData: (ghost: import('../lib/network/ghost').GhostData | null) => void
+  setGhostPlayback: (ghost: import('../lib/network/ghost').GhostData | null) => void
 }
 
 export const useGame = create<GameState>((set) => ({
@@ -69,6 +81,11 @@ export const useGame = create<GameState>((set) => ({
   result: null,
   analysisProgress: 0,
   userSongs: [],
+  isMultiplayer: false,
+  opponentFinished: false,
+  opponentTimeMs: null,
+  ghostData: null,
+  ghostPlayback: null,
 
   addUserSong: (song) =>
     set((st) =>
@@ -80,6 +97,10 @@ export const useGame = create<GameState>((set) => ({
     set((st) => ({ cameraMode: st.cameraMode === 'chase' ? 'cockpit' : 'chase' })),
   setAnalysis: (analysisProgress) => set({ analysisProgress }),
   loadRace: ({ features, track, songBuffer, songTitle }) =>
-    set({ features, track, songBuffer, songTitle, screen: 'race', result: null }),
+    set({ features, track, songBuffer, songTitle, screen: 'race', result: null, opponentFinished: false, opponentTimeMs: null, ghostData: null }),
   finishRace: (result) => set({ result, screen: 'results' }),
+  setMultiplayer: (isMultiplayer) => set({ isMultiplayer }),
+  setOpponentFinish: (timeMs) => set({ opponentFinished: true, opponentTimeMs: timeMs }),
+  setGhostData: (ghostData) => set({ ghostData }),
+  setGhostPlayback: (ghostPlayback) => set({ ghostPlayback }),
 }))
