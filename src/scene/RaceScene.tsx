@@ -756,25 +756,78 @@ function NpcShips({
   )
 }
 
+/** T99: sky v2 — de-banded stars (two depths, twinkle) + nebula glow discs */
 function Starfield({ color, count = 1500 }: { color: string; count?: number }) {
-  const geo = useMemo(() => {
-    const n = count
-    const pos = new Float32Array(n * 3)
-    // deterministic spiral scatter — not gameplay, but keep V8 hygiene anyway
-    for (let i = 0; i < n; i++) {
-      const a = i * 2.39996
-      const r = 800 + (i % 700)
-      pos[i * 3] = Math.cos(a) * r
-      pos[i * 3 + 1] = ((i * 37) % 900) - 200
-      pos[i * 3 + 2] = Math.sin(a) * r
+  const nearMat = useRef<THREE.PointsMaterial>(null)
+  const geos = useMemo(() => {
+    const make = (n: number, seedMul: number, rMin: number, rSpan: number) => {
+      const pos = new Float32Array(n * 3)
+      for (let i = 0; i < n; i++) {
+        // integer hash scatter — golden angle alone left visible dot-rows
+        const h1 = ((i * 2654435761) >>> 0) / 4294967296
+        const h2 = (((i + seedMul) * 40503) >>> 0 % 65536) / 65536
+        const a = h1 * Math.PI * 2
+        const r = rMin + h2 * rSpan
+        pos[i * 3] = Math.cos(a) * r
+        pos[i * 3 + 1] = (((i * 7919 + seedMul * 31) % 2000) / 2000 - 0.35) * 1100
+        pos[i * 3 + 2] = Math.sin(a) * r
+      }
+      const g = new THREE.BufferGeometry()
+      g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+      return g
     }
-    const g = new THREE.BufferGeometry()
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
-    return g
+    return { far: make(Math.floor(count * 0.7), 7, 1200, 900), near: make(Math.floor(count * 0.3), 131, 700, 400) }
   }, [count])
+
+  useFrame(() => {
+    // highs make the near layer shimmer
+    if (nearMat.current) nearMat.current.opacity = 0.45 + telemetry.centroid * 0.5
+  })
+
   return (
-    <points geometry={geo}>
-      <pointsMaterial color={color} size={2.2} sizeAttenuation={false} transparent opacity={0.7} />
-    </points>
+    <group>
+      <points geometry={geos.far}>
+        <pointsMaterial color="#9fb4d8" size={1.4} sizeAttenuation={false} transparent opacity={0.5} />
+      </points>
+      <points geometry={geos.near}>
+        <pointsMaterial ref={nearMat} color={color} size={2.6} sizeAttenuation={false} transparent opacity={0.6} />
+      </points>
+      <Nebulae color={color} />
+    </group>
+  )
+}
+
+/** T99: three huge soft glow discs — depth + color wash behind everything */
+function Nebulae({ color }: { color: string }) {
+  const mats = useRef<(THREE.MeshBasicMaterial | null)[]>([])
+  const SPOTS: { pos: [number, number, number]; r: number; o: number }[] = [
+    { pos: [1400, 250, -900], r: 700, o: 0.07 },
+    { pos: [-1100, 80, 1200], r: 550, o: 0.05 },
+    { pos: [300, 500, 1600], r: 800, o: 0.06 },
+  ]
+  useFrame(() => {
+    const e = telemetry.energy
+    mats.current.forEach((m, i) => {
+      if (m) m.opacity = SPOTS[i].o * (0.6 + e * 0.8)
+    })
+  })
+  return (
+    <>
+      {SPOTS.map((sp, i) => (
+        <mesh key={i} position={sp.pos} onUpdate={(m) => m.lookAt(0, 0, 0)}>
+          <circleGeometry args={[sp.r, 24]} />
+          <meshBasicMaterial
+            ref={(m) => void (mats.current[i] = m)}
+            color={i === 1 ? '#7b5cff' : color}
+            transparent
+            opacity={sp.o}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            side={THREE.DoubleSide}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+    </>
   )
 }

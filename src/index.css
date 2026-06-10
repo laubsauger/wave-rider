@@ -42,3 +42,31 @@ canvas { display: block; touch-action: none; }
   0%, 100% { filter: drop-shadow(0 0 6px currentColor); }
   50% { filter: drop-shadow(0 0 16px currentColor); }
 }
+
+/* T103: menu starfield — three drifting parallax tiles, DOM-guaranteed */
+.menu-stars {
+  background-image:
+    radial-gradient(1.6px 1.6px at 23% 31%, rgba(190, 212, 245, 0.95) 50%, transparent 51%),
+    radial-gradient(1.3px 1.3px at 67% 74%, rgba(150, 180, 230, 0.8) 50%, transparent 51%),
+    radial-gradient(2.2px 2.2px at 44% 12%, rgba(47, 243, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 81% 49%, rgba(190, 212, 245, 0.7) 50%, transparent 51%),
+    radial-gradient(1.7px 1.7px at 9% 83%, rgba(255, 47, 214, 0.45) 50%, transparent 51%);
+  background-size:
+    310px 270px,
+    240px 210px,
+    430px 390px,
+    280px 330px,
+    520px 460px;
+  animation: stars-drift 90s linear infinite;
+  opacity: 0.85;
+}
+@keyframes stars-drift {
+  to {
+    background-position:
+      310px 135px,
+      -240px 105px,
+      430px -195px,
+      -280px 165px,
+      520px 230px;
+  }
+}

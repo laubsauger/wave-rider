@@ -70,7 +70,7 @@ function BundledCard({ song }: { song: BundledSong }) {
       className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
       onPointerEnter={loadMeta}
       onFocus={loadMeta}
-      onClick={() => void startBundledRace(song.url, song.title)}
+      onClick={() => void startBundledRace(song.url, song.artist ? `${song.artist} — ${song.title}` : song.title)}
     >
       {meta && <Waveform peaks={meta.waveform} color="#2ff3ff" />}
       <span className="relative block text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon)">
@@ -132,12 +132,40 @@ function ShowcaseShips() {
   )
 }
 
+const FLASH_ACK_KEY = 'wave-rider-flash-ack'
+
+/** T102: photosensitivity notice — must be acknowledged once before play */
+function FlashWarning({ onAck }: { onAck: () => void }) {
+  return (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 p-6">
+      <div className="max-w-md border border-(--color-amber-hud)/60 bg-black p-6 text-center">
+        <p className="text-lg font-bold tracking-[0.3em] text-(--color-amber-hud)">⚠ PHOTOSENSITIVITY WARNING</p>
+        <p className="mt-4 text-sm leading-relaxed text-white/70">
+          This game contains rapidly flashing lights, high-contrast strobing effects and intense
+          color pulses synchronized to music. A small percentage of people may experience seizures
+          when exposed to such patterns. If you or anyone in your family has an epileptic
+          condition, consult a physician before playing. Stop immediately if you feel dizziness,
+          disorientation or any discomfort.
+        </p>
+        <p className="mt-3 text-xs text-white/40">The FX slider below can reduce or disable these effects.</p>
+        <button
+          className="mt-5 border border-(--color-neon) px-8 py-2 tracking-[0.3em] text-(--color-neon) hover:bg-(--color-neon)/15"
+          onClick={onAck}
+        >
+          I UNDERSTAND
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function Menu() {
   const fileInput = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const settings = useGame((s) => s.settings)
   const setSettings = useGame((s) => s.setSettings)
   const userSongs = useGame((s) => s.userSongs)
+  const [flashAcked, setFlashAcked] = useState(() => localStorage.getItem(FLASH_ACK_KEY) === '1')
   const ghostPlayback = useGame((s) => s.ghostPlayback)
 
   const onFile = async (file: File | undefined) => {
@@ -153,6 +181,15 @@ export function Menu() {
 
   return (
     <div className="relative h-full">
+      {!flashAcked && (
+        <FlashWarning
+          onAck={() => {
+            localStorage.setItem(FLASH_ACK_KEY, '1')
+            setFlashAcked(true)
+          }}
+        />
+      )}
+      <div className="menu-stars pointer-events-none absolute inset-0" aria-hidden />
       <GpuCanvas camera={{ position: [0, 1.2, 5], fov: 50 }}>
         <color attach="background" args={['#05060f']} />
         {/* T54: key + rim + fill hangar lighting */}

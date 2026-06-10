@@ -115,8 +115,11 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     // T57: rails+stripes track ENERGY (loudness), pads flash on BEAT only
     const e = telemetry.energy * track.theme.pulse
     const b = telemetry.beat * track.theme.pulse
-    uEnergy.value = e
-    uRail.value = 1.5 + e * 3
+    // T98: base brightness follows the SECTION's energy — breakdowns dim the
+    // whole world so drops have somewhere to go
+    const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
+    uEnergy.value = e * (0.4 + secE * 0.8)
+    uRail.value = 0.5 + secE * 1.1 + e * 2.4
     if (padMat.current) {
       const s = 1.8 + b * 3.2
       padMat.current.color.setRGB(s, s, s)

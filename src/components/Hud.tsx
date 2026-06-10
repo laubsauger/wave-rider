@@ -145,7 +145,6 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const racersRef = useRef<HTMLSpanElement>(null)
   const boostLabelRef = useRef<HTMLDivElement>(null)
   const vignetteRef = useRef<HTMLDivElement>(null)
-  const pulseRef = useRef<HTMLDivElement>(null)
   const specBars = useRef<(HTMLDivElement | null)[]>([])
   const nowTimeRef = useRef<HTMLSpanElement>(null)
   const linesRef = useRef<HTMLDivElement>(null)
@@ -237,7 +236,6 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         vignetteRef.current.style.boxShadow =
           w > 0.02 ? `inset 0 0 ${80 + w * 60}px rgba(255,40,60,${0.45 * w})` : 'none'
       }
-      if (pulseRef.current) pulseRef.current.style.opacity = String(0.3 + telemetry.energy * 0.7)
       // T82: live pseudo-spectrum — energy sets the body, centroid moves the
       // bright lobe, beats kick the high bins
       specBars.current.forEach((el, i) => {
@@ -390,7 +388,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
           <div className="flex flex-col gap-1.5">
             {track && <Minimap track={track} accent={accent} />}
             {/* T82: now-playing strip — live spectrum | title | time, music-video style */}
-            <div ref={pulseRef} className="ml-1 flex items-center gap-3">
+            <div className="ml-1 flex items-center gap-3">
               <div className="flex h-7 items-end gap-[3px]" aria-hidden>
                 {Array.from({ length: 14 }, (_, i) => (
                   <div
@@ -402,7 +400,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
                 ))}
               </div>
               <span
-                className="max-w-[220px] truncate text-sm font-bold tracking-[0.2em] text-white"
+                className="max-w-[220px] truncate text-[11px] font-bold tracking-[0.2em] text-white"
                 style={{ textShadow: `0 0 10px ${accent}` }}
               >
                 {songTitle || 'UNKNOWN FREQUENCY'}

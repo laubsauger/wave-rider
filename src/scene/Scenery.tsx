@@ -215,10 +215,11 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     const e = telemetry.energy * track.theme.pulse
     const b = telemetry.beat * track.theme.pulse
     const c = telemetry.centroid * track.theme.pulse
-    if (glowMat.current) glowMat.current.color.setScalar(0.9 + e * 2.8)
-    if (archMat.current) archMat.current.color.setScalar(1.1 + e * 2.4)
-    if (ringMat.current) ringMat.current.opacity = 0.2 + e * 0.55
-    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.35 + e * 1.6
+    const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
+    if (glowMat.current) glowMat.current.color.setScalar(0.4 + secE * 0.8 + e * 2.2)
+    if (archMat.current) archMat.current.color.setScalar(0.5 + secE * 0.9 + e * 2)
+    if (ringMat.current) ringMat.current.opacity = 0.12 + secE * 0.15 + e * 0.45
+    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.22 + secE * 0.3 + e * 0.9
     if (chevronMat.current) chevronMat.current.color.setScalar(0.8 + c * 2.6)
 
     // T58: threading a gate → big flash + HUD kick
@@ -267,7 +268,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       </Instanced>
       <Instanced matrices={data.tunnelMatrices} colors={data.tunnelColors}>
         <torusGeometry args={[14, 0.6, 6, 24]} />
-        <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive="#ffffff" emissiveIntensity={0.5} metalness={0.7} roughness={0.4} />
+        <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive={track.theme.glow} emissiveIntensity={0.35} metalness={0.7} roughness={0.4} />
       </Instanced>
       <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh}>
         <boxGeometry args={[1, 1, 1]} />

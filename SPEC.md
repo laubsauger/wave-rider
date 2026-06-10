@@ -149,6 +149,14 @@ T93|x|pregen meta sidecars: scripts/gen-meta.ts → audio/*.meta.json (waveform/
 T94|x|track info chips (bpm/mood/intensity) wherever tracks listed|I.ui
 T95|x|menu hangar responsive: aspect>1.1 right column, narrow → arc above|C8
 T96|x|engine tone: triangle body, detune 14→5, gains ~-45%, ⊥ whine/drone|C11
+T97|x|speed panel: gradient fade ⊥ black block, w-fit, height-gated compact; boost chevrons flipped down-track; minimap compact @ short viewports; engine -55%|C11,V6
+T98|x|contrast pass: base brightness ∝ SECTION energy (rails/stripes/caps/arches/rings/tunnels) — breakdowns dim, drops slam|V3,C11
+T99|x|sky v2: hash-scattered 2-depth stars (⊥ dot-rows), centroid twinkle, 3 nebula glow discs; tunnels palette-tinted ⊥ white|C11
+T100|x|now-playing: row flicker OFF (energy-opacity removed), full ARTIST — TITLE|V6
+T101|x|trails keep owner color: narrow age-faded white core (0.78–0.99), accent-dominant, brightness cap ↓ ⊥ bloom whiteout|C11
+T102|x|photosensitivity warning: one-time ack gate before menu (localStorage), points at FX slider|V10
+T103|x|menu backdrop: drifting star shell + breathing nebula disc ⊥ pure black; now-playing font ↓|C11
+T104|.|AAA fidelity arc → ROADMAP R9a–R9g (GLTF hulls, loops, post polish, env reflections, sparks, biomes, surface detail)|—
 
 ## §B bugs
 

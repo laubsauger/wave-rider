@@ -35,9 +35,11 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     const u = attribute('uv').x // 0..1 across the ribbon
     const v = attribute('uv').y // 0..1 along the trail (age)
     const cross = sub(1, sub(u, 0.5).abs().mul(2)) // 1 center → 0 edges
-    const core = smoothstep(0.45, 0.95, cross) // white-hot center band
-    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core).mul(
-      float(1.6).add(uPower),
+    // T101: hot core is NARROW and fades with age — accent owns the trail,
+    // white only kisses the first meters (was blooming everything to white)
+    const core = smoothstep(0.78, 0.99, cross).mul(sub(1, v).pow(2))
+    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.6)).mul(
+      float(1.05).add(uPower.mul(0.45)),
     )
     const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.12).add(0.88)
     m.opacityNode = cross
