@@ -16,7 +16,7 @@ export interface RaceTelemetry {
   /** live race rank, 1-based (V13) */
   position: number
   racers: number
-  /** T35: >0 counting down, (-1,0] = GO flash window */
+  /** T35: >3.5 READY, 3..1 digits, (-1,0] = GO flash window. Init 9 = READY — 0 would flash GO on mount (B24) */
   countdown: number
   /** T39: onset beat spike 1→0, decays fast */
   beat: number
@@ -43,7 +43,7 @@ export const telemetry: RaceTelemetry = {
   boostFlash: 0,
   position: 1,
   racers: 1,
-  countdown: 0,
+  countdown: 9,
   beat: 0,
   centroid: 0,
   sectionIndex: 0,

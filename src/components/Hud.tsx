@@ -191,10 +191,16 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         } else {
           el.className = 'absolute inset-0 flex items-center justify-center text-8xl font-bold italic tracking-widest text-white/80 drop-shadow-[0_0_20px_currentColor] sm:text-[12rem]'
           const c = Math.ceil(telemetry.countdown)
-          if (c > 0 && c <= 3) el.textContent = String(c)
+          if (telemetry.countdown > 3) el.textContent = 'READY'
+          else if (c > 0 && c <= 3) el.textContent = String(c)
           else if (telemetry.countdown > -1 && telemetry.countdown <= 0) el.textContent = 'GO'
           else el.textContent = ''
-          if (telemetry.countdown > -1 && telemetry.countdown <= 0) {
+          if (telemetry.countdown > 3) {
+            // B24: hold READY steady before the digits roll
+            el.style.transform = 'scale(0.42)'
+            el.style.opacity = '0.85'
+            el.style.color = accent
+          } else if (telemetry.countdown > -1 && telemetry.countdown <= 0) {
             el.style.transform = `scale(${1 + Math.max(0, telemetry.countdown + 1) * 0.5})`
             el.style.opacity = String(Math.max(0, telemetry.countdown + 1))
             el.style.color = '#ff2fd6'

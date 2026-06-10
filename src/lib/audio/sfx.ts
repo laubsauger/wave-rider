@@ -2,7 +2,7 @@
  * T89: synthesized SFX — no assets. Countdown beeps, GO chord, and a
  * continuous engine loop whose pitch/grit ride speed + throttle.
  */
-import { audioContext } from './playback'
+import { audioContext, masterBus } from './playback'
 
 export function beep(freq: number, dur = 0.12, gain = 0.25, type: OscillatorType = 'square'): void {
   const ctx = audioContext()
@@ -12,7 +12,7 @@ export function beep(freq: number, dur = 0.12, gain = 0.25, type: OscillatorType
   osc.frequency.value = freq
   g.gain.setValueAtTime(gain, ctx.currentTime)
   g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur)
-  osc.connect(g).connect(ctx.destination)
+  osc.connect(g).connect(masterBus())
   osc.start()
   osc.stop(ctx.currentTime + dur + 0.02)
 }
@@ -43,7 +43,7 @@ export function startEngine(): EngineSound {
   g.gain.value = 0
   oscA.connect(lp)
   oscB.connect(lp)
-  lp.connect(g).connect(ctx.destination)
+  lp.connect(g).connect(masterBus())
   oscA.start()
   oscB.start()
 

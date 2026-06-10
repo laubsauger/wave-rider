@@ -3,10 +3,35 @@
  * from ctx.currentTime so it never drifts from the hardware clock.
  */
 let ctx: AudioContext | null = null
+let master: GainNode | null = null
+let muted = false
 
 export function audioContext(): AudioContext {
   if (!ctx) ctx = new AudioContext()
   return ctx
+}
+
+/**
+ * Master bus — everything audible (song, sfx, engine) routes through here so
+ * mute is one gain. Muting must NOT touch the context clock: song time is the
+ * race sync source (V9).
+ */
+export function masterBus(): GainNode {
+  if (!master) {
+    master = audioContext().createGain()
+    master.gain.value = muted ? 0 : 1
+    master.connect(audioContext().destination)
+  }
+  return master
+}
+
+export function setMuted(m: boolean): void {
+  muted = m
+  if (master) master.gain.value = m ? 0 : 1
+}
+
+export function isMuted(): boolean {
+  return muted
 }
 
 export interface SongHandle {
@@ -23,7 +48,7 @@ export function playSong(buffer: AudioBuffer): SongHandle {
   src.buffer = buffer
   const gain = ac.createGain()
   gain.gain.value = 0.9
-  src.connect(gain).connect(ac.destination)
+  src.connect(gain).connect(masterBus())
   const startedAt = ac.currentTime
   src.start()
 

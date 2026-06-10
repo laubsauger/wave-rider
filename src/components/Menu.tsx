@@ -8,6 +8,7 @@ import { BUILTIN_SONGS } from '../lib/audio/builtin'
 import { BUNDLED_SONGS, getBundledMeta, type BundledMeta, type BundledSong } from '../lib/audio/bundled'
 import { startBuiltinRace, startBundledRace, startFileRace, startLibraryRace } from '../game/flow'
 import { useGame } from '../game/store'
+import { setMuted } from '../lib/audio/playback'
 
 /** T34: peak bars rendered as one SVG, used as card background */
 function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
@@ -398,6 +399,16 @@ export function Menu() {
                 <option value="high">HIGH</option>
               </select>
             </label>
+            <button
+              className="border border-white/20 px-2 py-1 tracking-widest hover:bg-white/10"
+              onClick={() => {
+                const m = !settings.muted
+                setSettings({ muted: m })
+                setMuted(m)
+              }}
+            >
+              {settings.muted ? '🔇 MUTED' : '🔊 SOUND'}
+            </button>
             <span className="hidden text-white/30 sm:inline">WASD · SHIFT/SPACE AIRBRAKE · C CAM</span>
           </div>
           <div className="mt-8 flex justify-center gap-6 text-white/40">

@@ -49,6 +49,7 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V18: lean ∝ user steer input only. Track curvature ⊥ auto-lean ship. (amends V14)
 - V19: ∀ adjacent sections w/ Δbrightness ≥ 0.1 → distinct rail/pad/scenery palette (visual development).
 - V20: curvature speed-scaled: implied lateral accel k·avgSpeed² ≤ ~90 m/s² for p95 of samples → curves rideable @ design speed.
+- V21: post chain color stages operate on rgb (vec3) only; outputNode reassembles `vec4(rgb, 1)`. ⊥ vec4 color math through `PostProcessing.outputNode` — alpha warp kills WebGPU pipeline SILENT (no console error). Post edits → verify visually @ FX>0.
 
 ## §T tasks
 
@@ -114,7 +115,7 @@ T58|x|gate pass feedback: flash + HUD kick when player threads a gate|C11
 T59|x|ship v4: lathed faceted fuselage, armor plates, antenna, underglow, decal stripes|C11
 T60|x|corkscrews: track roll frame transport, barrel-roll sections @ onset-dense high energy|V1,C11
 T61|x|fov surge ↑ @ top speed|C11
-T62|.|full loops + GLTF-grade hulls → next session (quaternion course walk; ROADMAP)|—
+T62|x|full loops + GLTF-grade hulls → next session (quaternion course walk; ROADMAP)|—
 T63|x|camera steering damping: cubic response, slow-filtered, speed-scaled — pivots on strong/slow only|C11
 T64|x|gate wave: per-gate colors restored, beat flash radiates from player (proximity falloff), ⊥ uniform white blink|V19,C11
 T65|x|traction sim: lateral velocity state w/ grip convergence, airbrakes bite; banked corners (roll ∝ k); bank → grip ↑|V18,V20
@@ -156,7 +157,7 @@ T100|x|now-playing: row flicker OFF (energy-opacity removed), full ARTIST — TI
 T101|x|trails keep owner color: narrow age-faded white core (0.78–0.99), accent-dominant, brightness cap ↓ ⊥ bloom whiteout|C11
 T102|x|photosensitivity warning: one-time ack gate before menu (localStorage), points at FX slider|V10
 T103|x|menu backdrop: drifting star shell + breathing nebula disc ⊥ pure black; now-playing font ↓|C11
-T104|~|AAA fidelity arc → ROADMAP R9a–R9g (GLTF hulls, loops, post polish, env reflections, sparks, biomes, surface detail)|—
+T104|x|AAA fidelity arc → ROADMAP R9a–R9g (GLTF hulls, loops, post polish, env reflections, sparks, biomes, surface detail)|—
 
 ## §B bugs
 
@@ -182,3 +183,5 @@ B19|2026-06-10|NetworkShip mount gated on `sim.current.opponent` read @ render (
 B20|2026-06-10|MP handshake heartbeat in useFrame → backgrounded tab (joiner downloading song) sends nothing → both stuck WAITING|setInterval heartbeat 300ms (T84)
 B21|2026-06-10|conn close/error → full disconnect() destroys HOST peer too → join id dead, rejoin insta-fails|dropConn(): host keeps peer, re-enters 'hosting' (T86)
 B22|2026-06-10|host startRace() immediately after sending bytes → counts down alone while joiner still transfers+analyzes; flip-on-first-packet ≠ sync|ready handshake + host-arbitrated start (T88)
+B23|2026-06-10|post outputNode vec4 s-curve warped alpha → WebGPU pipeline died SILENT: black world, 0 console errors, DOM HUD fine (T104/R9c)|V21
+B24|2026-06-10|telemetry.countdown init 0 sits INSIDE GO window (-1,0] → HUD flashed GO on mount before sim wrote 3.8; stale post-race value re-flashed on next mount|init 9 + RaceScene mount reset + READY state >3

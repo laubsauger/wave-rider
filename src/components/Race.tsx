@@ -7,20 +7,27 @@ import { Hud } from './Hud'
 import { TouchControls } from './TouchControls'
 import { RotateOverlay } from './RotateOverlay'
 import { onGameKey } from '../game/input'
-import { audioContext } from '../lib/audio/playback'
+import { audioContext, setMuted } from '../lib/audio/playback'
 
 export function Race() {
   const track = useGame((s) => s.track)
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
   const quality = useGame((s) => s.settings.quality)
+  const muted = useGame((s) => s.settings.muted)
+  const setSettings = useGame((s) => s.setSettings)
   const setScreen = useGame((s) => s.setScreen)
   const [paused, setPaused] = useState(false)
 
   useEffect(() => {
     return onGameKey((e) => {
       if (e === 'pause') setPaused((p) => !p)
+      if (e === 'mute') {
+        const m = !useGame.getState().settings.muted
+        setSettings({ muted: m })
+        setMuted(m)
+      }
     })
-  }, [])
+  }, [setSettings])
 
   // C3: on touch devices, go fullscreen + lock landscape for the race.
   // Best-effort — browsers that refuse still get the V4 rotate overlay.
@@ -56,6 +63,17 @@ export function Race() {
         <Effects fxIntensity={quality === 'low' ? 0 : fxIntensity} theme={track.theme} />
       </GpuCanvas>
       <Hud accent={track.theme.edge} track={track} />
+      {/* master mute — M key or click */}
+      <button
+        className="absolute right-3 bottom-3 z-30 border border-white/25 px-2.5 py-1 text-[10px] tracking-widest text-white/60 hover:bg-white/10"
+        onClick={() => {
+          const m = !muted
+          setSettings({ muted: m })
+          setMuted(m)
+        }}
+      >
+        {muted ? '🔇 MUTED' : '🔊 MUTE'}
+      </button>
       <TouchControls />
       {paused && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black/70">

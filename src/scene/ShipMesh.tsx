@@ -16,12 +16,12 @@ function planformGeometry(widthScale: number, tipSweep: number): THREE.ExtrudeGe
   shape.moveTo(0, -2.7) // nose tip
   shape.lineTo(0.34 * w, -1.1)
   shape.lineTo(1.28 * w, 0.55 + tipSweep) // right wing tip
-  shape.lineTo(0.88 * w, 0.92 + tipSweep)
-  shape.lineTo(0.42 * w, 0.85)
-  shape.lineTo(0.36 * w, 1.42) // engine pod trailing edge — slimmer tail
-  shape.lineTo(-0.36 * w, 1.42)
-  shape.lineTo(-0.42 * w, 0.85)
-  shape.lineTo(-0.88 * w, 0.92 + tipSweep)
+  shape.lineTo(0.84 * w, 0.92 + tipSweep)
+  shape.lineTo(0.36 * w, 0.85)
+  shape.lineTo(0.22 * w, 1.46) // engine pod trailing edge — pinched tail
+  shape.lineTo(-0.22 * w, 1.46)
+  shape.lineTo(-0.36 * w, 0.85)
+  shape.lineTo(-0.84 * w, 0.92 + tipSweep)
   shape.lineTo(-1.28 * w, 0.55 + tipSweep) // left wing tip
   shape.lineTo(-0.34 * w, -1.1)
   shape.closePath()
@@ -95,18 +95,18 @@ export function ShipMesh({
 
   return (
     <group>
-      {/* wedge body */}
+      {/* wedge body — dark gunmetal, accents carry the color (C11) */}
       <mesh castShadow geometry={bodyGeo}>
-        <meshPhysicalMaterial color="#aeb9d6" {...hull} />
+        <meshPhysicalMaterial color="#323b52" {...hull} />
       </mesh>
       {/* raised spine plate */}
-      <mesh castShadow position={[0, 0.34, -0.15]} scale={[0.4, 0.1, 2.0]}>
+      <mesh castShadow position={[0, 0.34, -0.15]} scale={[0.34, 0.09, 2.0]}>
         <boxGeometry />
-        <meshPhysicalMaterial color="#69758f" {...hull} />
+        <meshPhysicalMaterial color="#262e44" {...hull} />
       </mesh>
-      {/* R9a: merged detail pass — panel lines, armor plates, greebles, antenna */}
+      {/* R9a: merged detail pass — panel seams, plates, fins, scoops */}
       <mesh castShadow geometry={hullDetail.detail}>
-        <meshPhysicalMaterial color="#525d78" {...hull} roughness={0.42} />
+        <meshPhysicalMaterial color="#3d4860" {...hull} roughness={0.42} />
       </mesh>
       {/* R9a: merged livery pass — vents + wing slashes in team accent */}
       <mesh geometry={hullDetail.accent}>
@@ -124,21 +124,21 @@ export function ShipMesh({
         <sphereGeometry args={[1, 8, 6]} />
         <meshPhysicalMaterial color="#060d20" metalness={0.2} roughness={0.05} clearcoat={1} emissive={accent} emissiveIntensity={0.35} transparent={transparent} opacity={opacity ?? 1} />
       </mesh>
-      {/* engine block — wide, flat, embedded in tail */}
-      <mesh castShadow position={[0, 0.22, 1.32]} scale={[1.0, 0.26, 0.42]}>
+      {/* engine block — narrow pod sunk into the pinched tail */}
+      <mesh castShadow position={[0, 0.22, 1.3]} scale={[0.58, 0.24, 0.46]}>
         <boxGeometry />
-        <meshPhysicalMaterial color="#39435c" {...hull} />
+        <meshPhysicalMaterial color="#1b2233" {...hull} />
       </mesh>
       {/* twin horizontal glow slots */}
-      {[-0.45, 0.45].map((x) => (
-        <mesh key={x} position={[x, 0.22, 1.55]} scale={[0.36, 0.1, 0.04]}>
+      {[-0.32, 0.32].map((x) => (
+        <mesh key={x} position={[x, 0.22, 1.56]} scale={[0.26, 0.1, 0.04]}>
           <boxGeometry />
           <meshStandardMaterial ref={x < 0 ? engineMat : undefined} color="#000" emissive={accent} emissiveIntensity={2} toneMapped={false} />
         </mesh>
       ))}
-      {/* flames — wide flat plumes */}
-      {[-0.45, 0.45].map((x, i) => (
-        <mesh key={x} ref={i === 0 ? flameL : flameR} position={[x, 0.22, 1.5]} rotation={[Math.PI / 2, 0, 0]} scale={[1.8, 1, 0.45]}>
+      {/* flames — tighter plumes off the narrow pod */}
+      {[-0.32, 0.32].map((x, i) => (
+        <mesh key={x} ref={i === 0 ? flameL : flameR} position={[x, 0.22, 1.5]} rotation={[Math.PI / 2, 0, 0]} scale={[1.4, 1, 0.45]}>
           <coneGeometry args={[0.12, 1, 8, 1, true]} />
           <meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
         </mesh>

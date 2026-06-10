@@ -3,11 +3,12 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { mulberry32, rngRange } from '../../lib/prng'
 
 /**
- * R9a/T104: procedural hull detail — panel-line grooves, armor plates,
- * greebles, intake vents, livery stripes. Everything merged into two
+ * R9a/T104 (v2 after feedback): STRUCTURED hull detail — flush panel seams,
+ * spine plates, twin tail fins, wing-root intake scoops, livery stripes.
+ * No random greeble scatter (read as warts). Everything merged into two
  * geometries (dark detail + emissive accent) so a fully dressed ship costs
- * 2 extra draw calls, not 30. Seeded per variant (no Math.random) so every
- * dart looks like every other dart.
+ * 2 extra draw calls. Seeded per variant (no Math.random) so every dart
+ * looks like every other dart.
  */
 
 /** conservative solid half-span of the v5 planform at length z (nose -2.7 → tail 1.42) */
@@ -59,23 +60,23 @@ export function buildHullDetail(variant: 0 | 1 | 2): HullDetail {
     detail.push(box(0.018, 0.014, 2.5, side * 0.24 * w, topY - 0.03, -0.35))
   }
 
-  // armor plates marching down the spine
+  // armor plates marching down the spine — flush, centered, structured
   let z = -1.35
-  while (z < 0.7) {
-    const len = rngRange(rng, 0.3, 0.55)
-    const pw = rngRange(rng, 0.24, 0.4) * w
-    detail.push(box(pw, 0.05, len, rngRange(rng, -0.05, 0.05), topY, z + len / 2))
-    z += len + rngRange(rng, 0.06, 0.2)
+  while (z < 0.6) {
+    const len = rngRange(rng, 0.32, 0.5)
+    const pw = rngRange(rng, 0.22, 0.32) * w
+    detail.push(box(pw, 0.035, len, 0, topY - 0.01, z + len / 2))
+    z += len + rngRange(rng, 0.08, 0.16)
   }
 
-  // greebles clustered at wing roots and around the engine block
-  for (let i = 0; i < 13; i++) {
-    const gz = rngRange(rng, 0.1, 1.28)
-    const lim = Math.max(0.16, spanAt(gz, w) * 0.55)
-    const gx = rngRange(rng, 0.14, lim) * (rng() < 0.5 ? -1 : 1)
-    detail.push(
-      box(rngRange(rng, 0.05, 0.16), rngRange(rng, 0.03, 0.09), rngRange(rng, 0.08, 0.28), gx, topY, gz),
-    )
+  // twin tail fins — angled blades flanking the engine pod (silhouette!)
+  for (const side of [-1, 1]) {
+    detail.push(box(0.045, 0.52, 0.72, side * 0.3 * w, topY + 0.16, 1.0, 0, side * -0.22))
+  }
+
+  // wing-root intake scoops — chunky, swept with the leading edge
+  for (const side of [-1, 1]) {
+    detail.push(box(0.24 * w, 0.09, 0.46, side * 0.46 * w, topY - 0.01, 0.12, side * -0.3))
   }
 
   // sensor antenna behind the canopy

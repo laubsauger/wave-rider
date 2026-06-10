@@ -96,6 +96,11 @@ const BOOST_HALF_WIDTH = 2.2
 /** arcade gravity, m/s² — heavier than earth so jumps stay snappy */
 const GRAVITY = 34
 
+/** top speed for a track's design pace — single source for sim, fx, tests (V12) */
+export function shipVmax(avgSpeed: number, boosted: boolean): number {
+  return avgSpeed * 1.62 + (boosted ? 75 : 0)
+}
+
 /** road slope dy/ds at sample i */
 function slopeAt(frames: TrackFrames, i: number): number {
   const j = Math.min(frames.count - 2, Math.max(0, i))
@@ -121,7 +126,7 @@ export function stepShip(
   if (state.finished) return
   const dt = PHYSICS_DT
 
-  const vmax = track.avgSpeed * 1.45 + (state.boost > 0 ? 60 : 0)
+  const vmax = shipVmax(track.avgSpeed, state.boost > 0)
   // B8: slower spool — accel tapers hard as v climbs, top speed is earned
   const accel = track.avgSpeed * 0.34
   const braking = (input.brakeLeft ? 1 : 0) + (input.brakeRight ? 1 : 0)

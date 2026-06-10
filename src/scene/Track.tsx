@@ -24,6 +24,7 @@ function chevronPadGeometry(): THREE.ExtrudeGeometry {
   const g = new THREE.ExtrudeGeometry(shapes, { depth: 0.1, bevelEnabled: false })
   g.rotateX(-Math.PI / 2)
   g.rotateY(Math.PI) // tips face down-track (pad local -Z = travel)
+  g.scale(1.55, 1, 1.85) // pads read at speed — physics catch zone is wider anyway
   return g
 }
 import { telemetry } from '../game/telemetry'
@@ -119,17 +120,17 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     m.colorNode = color(new THREE.Color(track.theme.road)).mul(wear.mul(0.18).add(0.9))
     m.roughnessNode = wear.mul(0.14).add(0.3)
 
-    // R9g/T104: animated energy veins — twin sinuous conduits snaking along
-    // the deck, lit by the section palette, brightness rides the energy
+    // R9g/T104: energy conduits — straight twin lines flanking the deck,
+    // subtle pulse crawling down-track. (Snaking version read as wonky
+    // against the lateral stripes — user feedback.)
     const vy = uv().y.mul(0.32).add(uVeinFlow)
-    const lane = sin(vy.mul(2.6)).mul(0.2)
-    const dv1 = uv().x.sub(0.5).sub(lane).sub(0.17).abs()
-    const dv2 = uv().x.sub(0.5).add(lane).add(0.17).abs()
-    const veinPulse = sin(vy.mul(9)).mul(0.5).add(0.5)
-    const vein = smoothstep(0.014, 0.003, dv1)
-      .add(smoothstep(0.014, 0.003, dv2))
-      .mul(veinPulse.mul(0.7).add(0.3))
-      .mul(uEnergy.mul(1.3).add(0.12))
+    const dv1 = uv().x.sub(0.18).abs()
+    const dv2 = uv().x.sub(0.82).abs()
+    const veinPulse = sin(vy.mul(6)).mul(0.5).add(0.5)
+    const vein = smoothstep(0.009, 0.0025, dv1)
+      .add(smoothstep(0.009, 0.0025, dv2))
+      .mul(veinPulse.mul(0.5).add(0.2))
+      .mul(uEnergy.mul(0.8).add(0.06))
 
     m.emissiveNode = glow
       .mul(stripe.mul(uEnergy.mul(1.6).add(0.4)))

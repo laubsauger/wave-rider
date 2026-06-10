@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { generateTrack } from '../track/generate'
 import { sampleTrack } from '../track/sample'
-import { initialShip, stepShip, PHYSICS_DT, type ShipInput, type StepEvents } from '../physics/ship'
+import { initialShip, shipVmax, stepShip, PHYSICS_DT, type ShipInput, type StepEvents } from '../physics/ship'
 import { accumulateSteps } from '../physics/loop'
 import type { AudioFeatures } from '../audio/analyze'
 
@@ -116,7 +116,7 @@ describe('ship physics (T5, V5)', () => {
   it('V12: speed never exceeds 1.1 × boosted vmax, even chaining pads', () => {
     const ship = initialShip()
     const ev = noEvents()
-    const cap = (track.avgSpeed * 1.45 + 60) * 1.1
+    const cap = shipVmax(track.avgSpeed, true) * 1.1
     const maxSteps = Math.ceil((track.duration * 4) / PHYSICS_DT)
     for (let i = 0; i < maxSteps && !ship.finished; i++) {
       stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
@@ -194,7 +194,7 @@ describe('vertical loops (R9b/T104)', () => {
     // drop in just before the loop at design pace
     ship.s = Math.max(0, loop!.start - 200)
     ship.v = track.avgSpeed
-    const cap = (track.avgSpeed * 1.45 + 60) * 1.1
+    const cap = shipVmax(track.avgSpeed, true) * 1.1
     const maxSteps = Math.ceil(120 / PHYSICS_DT)
     let prevS = ship.s
     for (let i = 0; i < maxSteps && !ship.finished; i++) {

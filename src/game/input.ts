@@ -26,7 +26,7 @@ const raw: RawInput = {
   touchThrust: false,
 }
 
-type GameKeyEvent = 'camera' | 'pause'
+type GameKeyEvent = 'camera' | 'pause' | 'mute'
 const listeners = new Set<(e: GameKeyEvent) => void>()
 
 export function onGameKey(fn: (e: GameKeyEvent) => void): () => void {
@@ -68,6 +68,7 @@ export function attachKeyboard(): () => void {
     if (setKey(e.code, true)) e.preventDefault()
     if (e.code === 'KeyC') listeners.forEach((l) => l('camera'))
     if (e.code === 'Escape') listeners.forEach((l) => l('pause'))
+    if (e.code === 'KeyM') listeners.forEach((l) => l('mute'))
   }
   const up = (e: KeyboardEvent) => {
     if (setKey(e.code, false)) e.preventDefault()

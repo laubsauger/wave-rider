@@ -9,6 +9,8 @@ export interface Settings {
   /** V10: scales screenshake + post fx. 0 disables entirely. */
   fxIntensity: number
   quality: 'low' | 'medium' | 'high'
+  /** master mute — audio graph keeps running (V9 sync), gain → 0 */
+  muted: boolean
 }
 
 /** session library entry for an uploaded song (T34) */
@@ -76,7 +78,7 @@ interface GameState {
 
 export const useGame = create<GameState>((set) => ({
   screen: 'boot',
-  settings: { fxIntensity: 1, quality: 'high' },
+  settings: { fxIntensity: 1, quality: 'high', muted: false },
   cameraMode: 'chase',
   features: null,
   track: null,
