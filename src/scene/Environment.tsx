@@ -165,10 +165,10 @@ const WF_BARS = 96
 const wfObj = new THREE.Object3D()
 
 /**
- * T124: waveform horizon — a ring of tall bars circling the camera at the
- * fog line, heights sampled from the song's energy curve around the current
- * play position. The skyline IS the music, smoothed so it breathes instead
- * of strobing.
+ * T124 → T132: waveform horizon v2 — TWO offset rings of slim bars (far
+ * ring tall + dim, near ring shorter + half-bar phase shifted) with glow
+ * tip caps. Layered silhouette, not an EQ wall in your face. Heights sample
+ * the song's energy around the current play position, heavily smoothed.
  */
 export function WaveformHorizon({
   track,
@@ -179,50 +179,67 @@ export function WaveformHorizon({
   energyCurve: Float32Array
   frameInterval: number
 }) {
-  const meshRef = useRef<THREE.InstancedMesh>(null)
+  const farRef = useRef<THREE.InstancedMesh>(null)
+  const nearRef = useRef<THREE.InstancedMesh>(null)
+  const capRef = useRef<THREE.InstancedMesh>(null)
   const groupRef = useRef<THREE.Group>(null)
-  const heights = useMemo(() => new Float32Array(WF_BARS).fill(20), [])
+  const heights = useMemo(() => new Float32Array(WF_BARS * 2).fill(20), [])
   // sit just inside the fog falloff so the silhouette reads
   const radius = Math.min(900, 2.1 / track.theme.fogDensity)
 
   useFrame(({ camera }, dt) => {
-    const mesh = meshRef.current
     const group = groupRef.current
-    if (!mesh || !group) return
+    if (!group || !farRef.current || !nearRef.current || !capRef.current) return
     group.position.set(camera.position.x, 0, camera.position.z)
 
     const fi = Math.floor(telemetry.songTime / frameInterval)
-    const k = Math.min(1, dt * 2.2) // smooth — no strobe
-    for (let i = 0; i < WF_BARS; i++) {
-      // window of the energy curve centered on "now", spread across the ring
-      const off = Math.round((i - WF_BARS / 2) * 14)
-      const idx = Math.min(energyCurve.length - 1, Math.max(0, fi + off))
-      const e = energyCurve[idx] ?? 0
-      const target = 24 + e * 300
-      heights[i] += (target - heights[i]) * k
-      const a = (i / WF_BARS) * Math.PI * 2
-      const h = heights[i]
-      wfObj.position.set(Math.cos(a) * radius, -85 + h / 2, Math.sin(a) * radius)
-      wfObj.rotation.set(0, -a, 0)
-      wfObj.scale.set(radius * 0.066, h, 10)
-      wfObj.updateMatrix()
-      mesh.setMatrixAt(i, wfObj.matrix)
+    const k = Math.min(1, dt * 1.6) // heavy smooth — breathes, never strobes
+    const layers = [
+      { mesh: farRef.current, r: radius, hMax: 210, base: 30, phase: 0, slot: 0 },
+      { mesh: nearRef.current, r: radius * 0.8, hMax: 120, base: 16, phase: Math.PI / WF_BARS, slot: 1 },
+    ]
+    for (const L of layers) {
+      for (let i = 0; i < WF_BARS; i++) {
+        const off = Math.round((i - WF_BARS / 2) * 14) + L.slot * 7
+        const idx = Math.min(energyCurve.length - 1, Math.max(0, fi + off))
+        const e = energyCurve[idx] ?? 0
+        const hi = L.slot * WF_BARS + i
+        heights[hi] += (L.base + e * L.hMax - heights[hi]) * k
+        const a = (i / WF_BARS) * Math.PI * 2 + L.phase
+        const h = heights[hi]
+        wfObj.position.set(Math.cos(a) * L.r, -85 + h / 2, Math.sin(a) * L.r)
+        wfObj.rotation.set(0, -a, 0)
+        // slim bars with gaps — silhouette, not a wall
+        wfObj.scale.set(L.r * 0.028, h, 7)
+        wfObj.updateMatrix()
+        L.mesh.setMatrixAt(i, wfObj.matrix)
+        // glow caps ride the NEAR ring tips only
+        if (L.slot === 1) {
+          wfObj.position.y = -85 + h
+          wfObj.scale.set(L.r * 0.028, 1.2, 7)
+          wfObj.updateMatrix()
+          capRef.current.setMatrixAt(i, wfObj.matrix)
+        }
+      }
+      L.mesh.instanceMatrix.needsUpdate = true
     }
-    mesh.instanceMatrix.needsUpdate = true
+    capRef.current.instanceMatrix.needsUpdate = true
   })
 
   return (
     <group ref={groupRef}>
-      <instancedMesh ref={meshRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+      <instancedMesh ref={farRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
         <boxGeometry />
-        <meshStandardMaterial
-          color="#060913"
-          metalness={0.3}
-          roughness={0.8}
-          emissive={track.theme.glow}
-          emissiveIntensity={0.07}
-          flatShading
-        />
+        <meshStandardMaterial color="#04060e" metalness={0.2} roughness={0.9} emissive={track.theme.glow} emissiveIntensity={0.03} flatShading />
+      </instancedMesh>
+      <instancedMesh ref={nearRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+        <boxGeometry />
+        <meshStandardMaterial color="#070a16" metalness={0.3} roughness={0.8} emissive={track.theme.glow} emissiveIntensity={0.06} flatShading />
+      </instancedMesh>
+      {/* tip caps — the skyline's faint neon crest */}
+      <instancedMesh ref={capRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+        <boxGeometry />
+        <meshBasicMaterial color={track.theme.glow} transparent opacity={0.28} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </instancedMesh>
     </group>
   )
@@ -238,10 +255,15 @@ export function Ridges({ track, frames }: { track: TrackData; frames: TrackFrame
     for (let s = 0; s < track.length; s += rngRange(rng, 380, 700)) {
       for (const side of [-1, 1]) {
         if (rng() < 0.3) continue
-        poseAt(frames, Math.min(s, track.length - 1), side * rngRange(rng, 170, 430), 0, pose)
+        const lateral = rngRange(rng, 170, 430)
+        poseAt(frames, Math.min(s, track.length - 1), side * lateral, 0, pose)
         const h = rngRange(rng, 110, 300)
+        // B28: radius must respect lateral clearance — 230m-wide cones placed
+        // 170m out reached INTO the track corridor; their lit flat faces were
+        // the mystery theme-colored "slab" at deck level
+        const r = Math.min(rngRange(rng, 90, 230), lateral - 80)
         obj.position.set(pose.px, pose.py - 90, pose.pz)
-        obj.scale.set(rngRange(rng, 90, 230), h, rngRange(rng, 90, 230))
+        obj.scale.set(r, h, r)
         obj.rotation.set(0, rng() * Math.PI * 2, 0)
         obj.updateMatrix()
         out.push(obj.matrix.clone())

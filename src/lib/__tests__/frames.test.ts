@@ -103,7 +103,8 @@ describe('track frames (R9b/T104)', () => {
     expect(calm.segments.some((s) => s.type === 'loop')).toBe(false)
     const f = sampleTrack(calm, 3)
     for (let i = 0; i < f.count; i++) {
-      expect(f.normals[i * 3 + 1]).toBeGreaterThan(0.9)
+      // T130: banked corners tilt up to the 0.58 rad cap → cos ≈ 0.83
+      expect(f.normals[i * 3 + 1]).toBeGreaterThan(0.8)
     }
   })
 })

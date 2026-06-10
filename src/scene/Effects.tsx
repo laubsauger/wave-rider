@@ -1,8 +1,9 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { clamp, hash, mix, pass, smoothstep, time, uniform, uv, vec3, vec4 } from 'three/tsl'
+import { clamp, convertToTexture, hash, mix, pass, smoothstep, time, uniform, uv, vec3, vec4 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
+import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
 import { telemetry } from '../game/telemetry'
 
 /**
@@ -19,11 +20,16 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
 
   const uBlur = useMemo(() => uniform(0), [])
   const uCa = useMemo(() => uniform(0), [])
+  const uBokeh = useMemo(() => uniform(0.5), [])
 
   const post = useMemo(() => {
     if (fxIntensity <= 0) return null
     const scenePass = pass(scene, camera)
-    const color = scenePass.getTextureNode('output')
+    const raw = scenePass.getTextureNode('output')
+    // T137: depth of field — focus held mid-distance ahead of the ship,
+    // bokeh swells with speed. Subtle by design; FX slider scales it away.
+    const focused = dof(raw, scenePass.getViewZNode(), 38, 36, uBokeh)
+    const color = convertToTexture(focused)
     const bloomNode = bloom(color, 1.25 * fxIntensity, 0.6, 0.78)
 
     const dir = uv().sub(0.5)
@@ -65,7 +71,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const post = new THREE.PostProcessing(renderer)
     post.outputNode = vec4(vignetted.add(grain), 1)
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur, uCa])
+  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh])
 
   useEffect(() => {
     return () => {
@@ -81,6 +87,9 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     // CA: faint floor, ramps with speed + boost kick
     const caTarget = (0.0006 + Math.max(0, kph - 300) / 900 * 0.004 + telemetry.boostFlash * 0.002) * fxIntensity
     uCa.value += (Math.min(0.006, caTarget) - uCa.value) * 0.12
+    // T137: bokeh swells with speed — standing still stays crisp
+    const bokehTarget = (0.4 + Math.min(1, kph / 900) * 2.4) * fxIntensity
+    uBokeh.value += (bokehTarget - uBokeh.value) * 0.08
     if (post) post.render()
     else renderer.render(scene, camera)
   }, 1)

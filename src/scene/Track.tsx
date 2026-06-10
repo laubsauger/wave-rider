@@ -5,6 +5,8 @@ import { attribute, float, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
+import { makeNpcs } from '../lib/physics/npc'
+import { pickShipAccent } from '../lib/accent'
 
 /** T90: boost pad = three stacked chevrons pointing down-track, lying flat */
 function chevronPadGeometry(): THREE.ExtrudeGeometry {
@@ -252,12 +254,18 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   const gantryMat = useRef<THREE.MeshStandardMaterial>(null)
   const stripMat = useRef<THREE.MeshStandardMaterial>(null)
 
+  // T128: marker bar colors — player first, then the NPC field (V13 colors)
+  const slotAccents = useMemo(
+    () => [pickShipAccent(track.theme.edge, track.theme.glow), ...makeNpcs(track).map((n) => n.accent)],
+    [track],
+  )
+
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
       {/* T73/T108/T126: start apron — matte near-black, slimmed flush with
           the road so it reads as deck continuation, not a foreign slab */}
-      <mesh position={deck.pos} quaternion={deck.q}>
+      <mesh name="apron" position={deck.pos} quaternion={deck.q}>
         <boxGeometry args={[track.width + 1.6, 2.7, 240]} />
         <meshStandardMaterial color="#030409" metalness={0.1} roughness={0.95} envMapIntensity={0.05} />
       </mesh>
@@ -297,10 +305,20 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
           />
         </mesh>
       ))}
+      {/* T128: grid markers v2 — slot pads gone; each racer gets a thin
+          glowing bar in their accent color at the front of their slot */}
       {deck.slots.map((sl, i) => (
-        <mesh key={i} position={sl.pos} quaternion={sl.q}>
-          <boxGeometry args={[6, 0.05, 9]} />
-          <meshStandardMaterial color="#0a0e1a" emissive={track.theme.glow} emissiveIntensity={0.35} transparent opacity={0.85} />
+        <mesh
+          key={i}
+          position={[
+            sl.pos.x + deck.fwd.x * 4.4,
+            sl.pos.y + deck.fwd.y * 4.4 + 0.05,
+            sl.pos.z + deck.fwd.z * 4.4,
+          ]}
+          quaternion={sl.q}
+        >
+          <boxGeometry args={[4, 0.08, 0.3]} />
+          <meshBasicMaterial color={slotAccents[i] ?? track.theme.glow} toneMapped={false} />
         </mesh>
       ))}
       {[geo.railL, geo.railR].map((g, i) => (

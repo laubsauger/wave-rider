@@ -69,7 +69,7 @@ function BundledCard({ song }: { song: BundledSong }) {
 
   return (
     <button
-      className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
+      className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left short:px-4 short:py-2 transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
       onPointerEnter={loadMeta}
       onFocus={loadMeta}
       onClick={() => void startBundledRace(song.url, song.artist ? `${song.artist} — ${song.title}` : song.title)}
@@ -138,20 +138,17 @@ const FLASH_ACK_KEY = 'wave-rider-flash-ack'
 
 /** T102: photosensitivity notice — must be acknowledged once before play */
 function FlashWarning({ onAck }: { onAck: () => void }) {
+  // T129: short copy — the old paragraph clipped on landscape phones
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 p-6">
-      <div className="max-w-md border border-(--color-amber-hud)/60 bg-black p-6 text-center">
-        <p className="text-lg font-bold tracking-[0.3em] text-(--color-amber-hud)">⚠ PHOTOSENSITIVITY WARNING</p>
-        <p className="mt-4 text-sm leading-relaxed text-white/70">
-          This game contains rapidly flashing lights, high-contrast strobing effects and intense
-          color pulses synchronized to music. A small percentage of people may experience seizures
-          when exposed to such patterns. If you or anyone in your family has an epileptic
-          condition, consult a physician before playing. Stop immediately if you feel dizziness,
-          disorientation or any discomfort.
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+      <div className="glass-panel max-h-full max-w-md overflow-y-auto border border-(--color-amber-hud)/40 p-6 text-center short:p-4">
+        <p className="text-lg font-bold tracking-[0.3em] text-(--color-amber-hud) short:text-base">⚠ FLASHING LIGHTS</p>
+        <p className="mt-3 text-sm leading-relaxed text-white/70 short:mt-2 short:text-xs">
+          Contains flashing lights and color pulses synced to music — may affect photosensitive
+          players. Stop if you feel dizzy. The FX slider can reduce or disable these effects.
         </p>
-        <p className="mt-3 text-xs text-white/40">The FX slider below can reduce or disable these effects.</p>
         <button
-          className="mt-5 border border-(--color-neon) px-8 py-2 tracking-[0.3em] text-(--color-neon) hover:bg-(--color-neon)/15"
+          className="mt-4 border border-(--color-neon) px-8 py-2 tracking-[0.3em] text-(--color-neon) hover:bg-(--color-neon)/15 short:mt-3 short:py-1.5"
           onClick={onAck}
         >
           I UNDERSTAND
@@ -203,25 +200,25 @@ export function Menu() {
         <ShowcaseShips />
       </GpuCanvas>
 
-      <div className="hud-safe absolute inset-0 flex items-center justify-center overflow-y-auto">
-        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8">
+      <div className="hud-safe absolute inset-0 flex items-start justify-center overflow-y-auto sm:items-center">
+        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8 short:my-2 short:gap-2.5 short:px-4 short:py-4">
           <div className="text-center">
             <h1
-              className="text-6xl font-bold tracking-[0.35em] text-(--color-neon)"
+              className="text-6xl font-bold tracking-[0.35em] text-(--color-neon) short:text-3xl"
               style={{ textShadow: '0 0 30px rgba(47,243,255,0.7), 0 0 80px rgba(47,243,255,0.3)' }}
             >
               WAVE RIDER
             </h1>
-            <p className="mt-2 text-xs tracking-[0.6em] text-(--color-neon-2)/80">YOUR MUSIC IS THE TRACK</p>
+            <p className="mt-2 text-xs tracking-[0.6em] text-(--color-neon-2)/80 short:mt-1 short:text-[10px]">YOUR MUSIC IS THE TRACK</p>
           </div>
 
-          <div className="mt-2 flex flex-col gap-2.5">
+          <div className="mt-2 flex flex-col gap-2.5 short:mt-0 short:gap-1.5">
             <p className="text-[11px] tracking-[0.4em] text-white/35">SELECT FREQUENCY</p>
             {BUNDLED_SONGS.map((song) => (
               <BundledCard key={song.id} song={song} />
             ))}
             <button
-              className="-skew-x-6 border border-dashed border-(--color-neon-2)/60 px-6 py-8 text-lg tracking-[0.25em] text-(--color-neon-2) transition hover:bg-(--color-neon-2)/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)]"
+              className="-skew-x-6 border border-dashed border-(--color-neon-2)/60 px-6 py-8 text-lg short:py-3 short:text-sm tracking-[0.25em] text-(--color-neon-2) transition hover:bg-(--color-neon-2)/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)]"
               onClick={() => fileInput.current?.click()}
               onDragOver={(e) => {
                 e.preventDefault()

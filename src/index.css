@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* T129: short-viewport variant — phones forced to landscape have ~360px height */
+@custom-variant short (@media (max-height: 560px));
+
 @theme {
   --color-void: #05060f;
   --color-neon: #2ff3ff;

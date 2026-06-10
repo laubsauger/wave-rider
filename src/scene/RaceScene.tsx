@@ -269,7 +269,10 @@ export function RaceScene({
     }
   }, [songBuffer, toggleCamera, isMultiplayer, ghostPlayback])
 
-  useFrame((_, dt) => {
+  useFrame((_, rawDt) => {
+    // B29: occluded tab suspends rAF — the next frame arrives with a giant
+    // dt that would skip the countdown and fast-forward the sim in one burst
+    const dt = Math.min(rawDt, 0.1)
     const s = sim.current
     if (!s.started || paused) return
 

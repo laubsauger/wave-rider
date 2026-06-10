@@ -153,9 +153,11 @@ export function stepShip(
   const rate = attacking ? 3.2 : 8
   state.steerSmooth += clamp(steerTarget - state.steerSmooth, -rate * dt, rate * dt)
 
-  const grip = 1 / (1 + state.v / 220)
+  // T131: steering authority falls off with speed — no hairpin snaps at
+  // 900 kph; low speed keeps the full nose-in carve
+  const grip = 1 / (1 + state.v / 150)
   const airGrip = state.airborne ? 0.4 : 1
-  const targetYaw = state.steerSmooth * 0.45 * (0.6 + grip) * airGrip
+  const targetYaw = state.steerSmooth * 0.42 * (0.5 + grip) * airGrip
   state.yaw += (targetYaw - state.yaw) * Math.min(1, dt * 10)
 
   // lateral motion in track space: own steering ± curvature drift
@@ -184,7 +186,10 @@ export function stepShip(
   if (state.falling) {
     state.vy -= GRAVITY * dt
     state.air += state.vy * dt
-    // T115: no progress while plunging — s frozen at the fall point
+    // T131: momentum carries you off the edge — the plunge arcs forward,
+    // the RESPAWN is what sets you back
+    state.s += state.v * dt * 0.7
+    state.v = Math.max(0, state.v - state.v * 0.4 * dt)
     state.time += dt
     if (state.air < -14) {
       state.falling = false

@@ -313,7 +313,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   const special = rng()
   // R9b: full vertical loop when the music slams hardest — radius scales
   // with design speed so the circle reads at pace (T114: loosened)
-  if (e > 0.62 && onsetDensity > 1.0 && special >= 0.31 && special < 0.365) {
+  if (e > 0.6 && onsetDensity > 0.9 && special >= 0.31 && special < 0.385) {
     const radius = 42 + avgSpeed * 0.1
     return {
       type: 'loop',
@@ -334,12 +334,12 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       walls: true,
     }
   }
-  if (e > 0.55 && onsetDensity > 1.2 && special >= 0.17 && special < 0.31) {
-    // T92: ride the wall — sustained ~60° bank with matching curve (T114: loosened)
+  if (e > 0.48 && onsetDensity > 0.9 && special >= 0.17 && special < 0.31) {
+    // T92: ride the wall — sustained ~60° bank with matching curve (T130: common now)
     const dir = rng() < 0.5 ? -1 : 1
     return {
       type: 'wallride',
-      length: rngRange(rng, 260, 400),
+      length: rngRange(rng, 300, 480),
       curvature: rngRange(rng, 0.0018, 0.003) * dir,
       slope: 0,
       widthScale: 1.15,
@@ -358,11 +358,12 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   }
 
   if (e > 0.6) {
-    // T60: barrel-roll the road itself when the music hammers (T114: loosened)
-    if (onsetDensity > 0.9 && roll < 0.3) {
+    // T60: barrel-roll the road itself when the music hammers (T130: more,
+    // but chicanes keep their V3 slot — windows rebalanced)
+    if (onsetDensity > 0.8 && roll < 0.3) {
       return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
     }
-    if (onsetDensity > 2.5 && roll < 0.45) {
+    if (onsetDensity > 2.5 && roll < 0.52) {
       return {
         type: 'chicane',
         length: rngRange(rng, 120, 220),
@@ -455,7 +456,7 @@ function walkSegment(
     seg.type === 'wallride'
       ? Math.sign(seg.curvature) * 1.05 // T92: ~60° — riding the wall
       : seg.type === 'curve' || seg.type === 'chicane'
-        ? Math.max(-0.42, Math.min(0.42, seg.curvature * 170)) // B17: +k banks INTO the corner
+        ? Math.max(-0.58, Math.min(0.58, seg.curvature * 230)) // B17/T130: banks you can SEE
         : 0
 
   for (let i = 0; i < steps; i++) {

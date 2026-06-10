@@ -176,11 +176,21 @@ T119|x|music-engine ceiling: full volume @ full throttle + ~250 kph (⊥ vmax-re
 T120|x|ship polish: outer tail lights re-grown, exhaust ribbon head tapered + aligned w/ flame cones (⊥ disconnected rectangle)|C11
 T121|x|furniture elegance: beat-gates + holo rings get dark casings w/ inset emissive — ⊥ 100% raw emissive slabs|C11,V19
 T122|x|sponsor boards @ start: 3 floating holo displays (L/R/center) w/ logo + SPONSORED BY, bob + fade-out once passed — ad monetization sketch|C11
-T123|.|walls v2: ⊥ flat slab — gradient glass (dense base → clear top), lit top edge in section palette, faint scanlines|C11,V19
-T124|.|waveform horizon: far skyline ring = smoothed audio energy bars around the world, drifts w/ song|C11,V3
-T125|.|ship finish v2: shinier hull (roughness ↓, env reflections visible, diffuse env cast ↓); quad tail lights — big outers|C11
-T126|.|sponsor boards v2: larger, outers pushed wider + tilted inward, fly-in @ READY → lift-off @ GO, soft holo wobble ⊥ strobe; start apron slimmed to road width|C11
-T127|.|exhaust unified: cone flames OUT — trail head IS the flame (anchored @ nozzle, hot white head, full width) → one effect that turns with the ship ⊥ detached ribbon|C11
+T123|x|walls v2: ⊥ flat slab — gradient glass (dense base → clear top), lit top edge in section palette, faint scanlines|C11,V19
+T124|x|waveform horizon: far skyline ring = smoothed audio energy bars around the world, drifts w/ song|C11,V3
+T125|x|ship finish v2: shinier hull (roughness ↓, env reflections visible, diffuse env cast ↓); quad tail lights — big outers|C11
+T126|x|sponsor boards v2: larger, outers pushed wider + tilted inward, fly-in @ READY → lift-off @ GO, soft holo wobble ⊥ strobe; start apron slimmed to road width|C11
+T127|x|exhaust unified: cone flames OUT — trail head IS the flame (anchored @ nozzle, hot white head, full width) → one effect that turns with the ship ⊥ detached ribbon|C11
+T128|x|start grid v2: slot pads DELETED — thin glowing accent bar per racer slot (player + npc colors)|C11,V13
+T129|x|mobile pass: compact menu/setup density (short-viewport), rotate overlay gets title + tap-to-fullscreen, photosensitivity copy short ⊥ cutoff|C3,C8,V4
+T130|x|track gen dig 2: banked turns stronger + common (cap 0.42→0.58, gain ↑), wallride/corkscrew/loop spawn ↑↑ — sideways riding actually happens|V3,V20
+T131|x|fall keeps momentum (plunge carries forward) + setback respawn; steer authority scales ↓ w/ speed (⊥ hairpin @ 900kph)|V5,V18
+T132|x|horizon v2: dual offset rings, slim bars w/ gaps, glow tip caps — layered + subtle ⊥ in-your-face EQ wall|C11,V3
+T133|x|boards v3: inward tilt FIXED (sign), descent lands before digits, baseline glow ↑ + shimmer swell|C11
+T134|x|tail light pulse: ONE shared material both outers (right one read dead — only left had the pulsing ref)|C11
+T135|x|NPC launch ramp: staggered accel first seconds ⊥ GO pileup into player|V15,V17
+T136|x|countdown READY/digits/GO get glass chip backdrop ⊥ lost in space|V6,C11
+T137|x|DoF: TSL DepthOfFieldNode — focus tracks mid-distance, bokeh ∝ speed, fx-scaled|V10,C7
 
 ## §B bugs
 
@@ -211,3 +221,6 @@ B24|2026-06-10|telemetry.countdown init 0 sits INSIDE GO window (-1,0] → HUD f
 B25|2026-06-10|grain hash(seed).toUint() quantizes — seed multipliers below pixel pitch → neighbor px collapse to same hash → horizontal static streaks crawling frame|seed mults ≫ resolution (≈39k/21k) + amplitude ↓ (T106)
 B26|2026-06-10|T110 backdrop div is POSITIONED → paints over static-flow Results screen → all post-race buttons unclickable|pointer-events-none on backdrop wrapper (T117)
 B27|2026-06-10|node materials w/o own envMap IGNORE material.envMapIntensity (scene.environmentIntensity wins) → road env mirror "slab" survived two fix attempts|kill mirror via roughness on node materials; per-material env intensity needs material.envMap set
+B28|2026-06-11|ridge cones radius ≤230m placed 170m off-track → faces reached INTO the corridor|radius clamped to lateral−80 (Environment)
+B29|2026-06-11|occluded tab suspends rAF → next frame's giant dt skipped countdown + fast-forwarded sim in one burst (B11 lesson, race-loop edition)|dt clamped to 0.1s in RaceScene frame loop
+B30|2026-06-11|start-grid slot pads (6×9m, emissive glow 0.35, ×6) fused into one theme-colored carpet = the "green/red slab @ start" — blamed on apron, road env, ridges before raycast probe found it|slots dimmed to faint outlines (emissive 0.05, opacity 0.45)

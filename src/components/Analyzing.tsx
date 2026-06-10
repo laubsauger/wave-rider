@@ -12,7 +12,8 @@ export function Analyzing() {
   const stage = STAGES.find(([p]) => progress < p)?.[1] ?? 'IGNITION'
 
   return (
-    <div className="hud-safe flex h-full flex-col items-center justify-center gap-8">
+    <div className="hud-safe relative flex h-full flex-col items-center justify-center">
+      <div className="glass-panel flex flex-col items-center gap-8 px-12 py-10">
       <div className="flex items-end gap-1.5">
         {Array.from({ length: 24 }, (_, i) => (
           <div
@@ -27,6 +28,7 @@ export function Analyzing() {
         ))}
       </div>
       <p className="animate-pulse text-sm tracking-[0.5em] text-white/60">{stage}</p>
+      </div>
     </div>
   )
 }

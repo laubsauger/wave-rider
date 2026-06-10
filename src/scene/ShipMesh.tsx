@@ -55,9 +55,21 @@ export function ShipMesh({
   opacity?: number
   transparent?: boolean
 }) {
-  const engineMat = useRef<THREE.MeshStandardMaterial>(null)
   const wispL = useRef<THREE.Mesh>(null)
   const wispR = useRef<THREE.Mesh>(null)
+
+  // T134: ONE shared material for both outer slots — with a per-mesh ref
+  // only the left one pulsed, the right read as a dead light
+  const outerLightMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#000',
+        emissive: new THREE.Color(accent),
+        emissiveIntensity: 2,
+        toneMapped: false,
+      }),
+    [accent],
+  )
 
   const bodyGeo = useMemo(() => {
     if (variant === 1) return planformGeometry(0.85, -0.55)
@@ -78,9 +90,7 @@ export function ShipMesh({
 
   useFrame(({ clock }) => {
     const p = power ? power() : boost
-    if (engineMat.current) {
-      engineMat.current.emissiveIntensity = 1.8 + Math.sin(clock.elapsedTime * 31) * 0.3 + p * 4
-    }
+    outerLightMat.emissiveIntensity = 1.8 + Math.sin(clock.elapsedTime * 31) * 0.3 + p * 4
     // T69: condensation wisps stream off the nose past ~70% power
     const wispO = Math.max(0, (p - 0.7) * 1.6) * (0.55 + Math.sin(clock.elapsedTime * 23) * 0.45)
     for (const wm of [wispL.current, wispR.current]) {
@@ -126,9 +136,8 @@ export function ShipMesh({
       </mesh>
       {/* T125: QUAD tail lights — big outers, small inners */}
       {[-0.3, 0.3].map((x) => (
-        <mesh key={`o${x}`} position={[x, 0.22, 1.56]} scale={[0.38, 0.16, 0.05]}>
+        <mesh key={`o${x}`} position={[x, 0.22, 1.56]} scale={[0.38, 0.16, 0.05]} material={outerLightMat}>
           <boxGeometry />
-          <meshStandardMaterial ref={x < 0 ? engineMat : undefined} color="#000" emissive={accent} emissiveIntensity={2} toneMapped={false} />
         </mesh>
       ))}
       {[-0.09, 0.09].map((x) => (

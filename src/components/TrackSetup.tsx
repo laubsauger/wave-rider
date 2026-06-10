@@ -62,10 +62,11 @@ export function TrackSetup() {
   }
 
   return (
-    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center bg-black/35 p-8 text-white">
-      <h1 className="mb-8 text-4xl font-bold tracking-[0.2em] text-(--color-neon)">TRACK SETUP</h1>
+    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center p-8 text-white short:p-3">
+      <div className="glass-panel flex w-full max-w-xl flex-col items-center px-8 py-8 short:px-4 short:py-3">
+      <h1 className="mb-8 text-4xl font-bold tracking-[0.2em] text-(--color-neon) short:mb-3 short:text-2xl">TRACK SETUP</h1>
 
-      <div className="relative -skew-x-6 w-full max-w-lg overflow-hidden border border-(--color-neon-2)/40 bg-black/60 px-6 py-6 shadow-[0_0_30px_rgba(255,47,214,0.15)]">
+      <div className="relative -skew-x-6 w-full max-w-lg overflow-hidden border border-(--color-neon-2)/40 bg-black/60 px-6 py-6 shadow-[0_0_30px_rgba(255,47,214,0.15)] short:px-4 short:py-3">
         <Waveform peaks={peaks} color="#ff2fd6" />
         <div className="relative">
           <p className="text-[11px] tracking-[0.4em] text-white/35">SELECTED TRACK</p>
@@ -77,10 +78,10 @@ export function TrackSetup() {
         </div>
       </div>
 
-      <div className="mt-8 flex w-full max-w-lg flex-col gap-4">
+      <div className="mt-8 flex w-full max-w-lg flex-col gap-4 short:mt-3 short:gap-2">
         {useGame.getState().isMultiplayer ? (
           <button
-            className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-4 tracking-[0.25em] text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"
+            className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-4 tracking-[0.25em] short:py-2 text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"
             onClick={async () => {
               await requestFullscreen()
               startRace()
@@ -91,14 +92,14 @@ export function TrackSetup() {
         ) : (
           <>
             <button
-              className="-skew-x-6 border border-solid border-[#2ff3ff]/60 px-6 py-4 tracking-[0.25em] text-[#2ff3ff] transition hover:bg-[#2ff3ff]/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.2)]"
+              className="-skew-x-6 border border-solid border-[#2ff3ff]/60 px-6 py-4 tracking-[0.25em] short:py-2 text-[#2ff3ff] transition hover:bg-[#2ff3ff]/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.2)]"
               onClick={() => void handlePlaySolo()}
             >
               {useGame.getState().ghostPlayback ? '▶ RACE GHOST' : '▶ PLAY SOLO'}
             </button>
             {!useGame.getState().ghostPlayback && (
               <button
-                className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-4 tracking-[0.25em] text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"
+                className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-4 tracking-[0.25em] short:py-2 text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"
                 onClick={() => void handleHostMultiplayer()}
               >
                 ◎ HOST MULTIPLAYER
@@ -107,11 +108,12 @@ export function TrackSetup() {
           </>
         )}
         <button
-          className="-skew-x-6 mt-2 border border-dashed border-white/20 px-6 py-3 text-sm tracking-[0.25em] text-white/40 transition hover:border-white/50 hover:bg-white/5 hover:text-white"
+          className="-skew-x-6 mt-2 border border-dashed border-white/20 px-6 py-3 text-sm tracking-[0.25em] text-white/40 transition hover:border-white/50 hover:bg-white/5 hover:text-white short:mt-1 short:py-1.5"
           onClick={handleCancel}
         >
           CANCEL
         </button>
+      </div>
       </div>
     </div>
   )

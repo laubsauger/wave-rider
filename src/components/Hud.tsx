@@ -184,17 +184,21 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
       if (speedRef.current) speedRef.current.textContent = String(Math.round(kph))
       if (timeRef.current) timeRef.current.textContent = fmtTime(telemetry.timeMs)
       const el = countdownRef.current
-      if (el) {
+      // T136: text lives in the inner glass-chip span; chip hides when empty
+      const chip = el?.firstElementChild as HTMLElement | null
+      if (el && chip) {
         if (telemetry.syncState === 'waiting') {
-          el.textContent = telemetry.oppStatus || 'WAITING FOR OPPONENT...'
+          chip.textContent = telemetry.oppStatus || 'WAITING FOR OPPONENT...'
+          chip.style.display = 'inline-block'
           el.className = 'absolute inset-0 flex items-center justify-center text-4xl font-bold tracking-[0.2em] text-white/80 animate-pulse'
         } else {
           el.className = 'absolute inset-0 flex items-center justify-center text-8xl font-bold italic tracking-widest text-white/80 drop-shadow-[0_0_20px_currentColor] sm:text-[12rem]'
           const c = Math.ceil(telemetry.countdown)
-          if (telemetry.countdown > 3) el.textContent = 'READY'
-          else if (c > 0 && c <= 3) el.textContent = String(c)
-          else if (telemetry.countdown > -1 && telemetry.countdown <= 0) el.textContent = 'GO'
-          else el.textContent = ''
+          if (telemetry.countdown > 3) chip.textContent = 'READY'
+          else if (c > 0 && c <= 3) chip.textContent = String(c)
+          else if (telemetry.countdown > -1 && telemetry.countdown <= 0) chip.textContent = 'GO'
+          else chip.textContent = ''
+          chip.style.display = chip.textContent ? 'inline-block' : 'none'
           if (telemetry.countdown > 3) {
             // B24: hold READY steady before the digits roll
             el.style.transform = 'scale(0.42)'
@@ -286,7 +290,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         className="absolute inset-0 opacity-0"
         style={{ background: `radial-gradient(ellipse at center, transparent 35%, ${accent} 130%)` }}
       />
-      {/* T35 countdown */}
+      {/* T35 countdown — T136: glass chip so it isn't lost in space */}
       <div
         ref={countdownRef}
         className="absolute top-1/2 left-1/2 text-9xl font-bold tracking-widest"
@@ -296,7 +300,9 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
           transform: 'translate(-50%, -50%)',
           opacity: 0,
         }}
-      />
+      >
+        <span className="glass-panel inline-block px-12 py-5" style={{ display: 'none' }} />
+      </div>
 
       <div className="hud-safe absolute inset-0 flex flex-col justify-between p-5">
         {/* top: time | waveform progress | pos + speed column (T67) */}

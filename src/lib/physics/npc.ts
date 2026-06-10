@@ -77,7 +77,10 @@ export function stepNpc(
   const k = Math.abs(curvatureAt(frames, i))
   // corners scare the unskilled
   const cornerFactor = Math.max(0.45, 1 - k * state.v * 0.35 * (1 - spec.cornerSkill))
-  const targetV = track.avgSpeed * spec.pace * cornerFactor
+  // T135: staggered launch — the field spools up over the first seconds
+  // instead of slamming through the player off the line
+  const launch = Math.min(1, 0.2 + state.time / 5)
+  const targetV = track.avgSpeed * spec.pace * cornerFactor * launch
   state.v += (targetV - state.v) * Math.min(1, dt * 0.9)
 
   const halfW = (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, i))]) / 2 - 1.6

@@ -66,9 +66,11 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
 
   const boards = useMemo(() => {
     const halfW = track.width / 2
+    // T133: tilt sign verified against the start frame (b = +x, board normal
+    // -t): LEFT board (d<0) rotates POSITIVE around up to face the line
     const specs: BoardSpec[] = [
-      { s: 55, d: -(halfW + 16), h: 6, tilt: -0.34, phase: 0 },
-      { s: 55, d: halfW + 16, h: 6, tilt: 0.34, phase: 2.1 },
+      { s: 55, d: -(halfW + 16), h: 6, tilt: 0.38, phase: 0 },
+      { s: 55, d: halfW + 16, h: 6, tilt: -0.38, phase: 2.1 },
       { s: 100, d: 0, h: 14, tilt: 0, phase: 4.2 },
     ]
     const pose = {} as FramePose
@@ -101,11 +103,11 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
     const cd = telemetry.countdown
     const t = clock.elapsedTime
 
-    // T126 timeline: high above before READY, fly down through countdown,
-    // lift off once the race is running
+    // T126/T133 timeline: drop happens DURING READY — boards are parked in
+    // place before the digits start, lift off once the race is running
     let drop = 0
-    if (cd > 3.4) drop = 60 // parked high during READY
-    else if (cd > 0.6) drop = ((cd - 0.6) / 2.8) ** 2 * 60 // easing down
+    if (cd > 4.5) drop = 60 // high while the scene settles
+    else if (cd > 3.2) drop = ((cd - 3.2) / 1.3) ** 2 * 60 // landing through READY
     if (cd <= 0) anim.current.lift = Math.min(6, anim.current.lift + dt)
     const lift = anim.current.lift
     const rise = lift * lift * 4
@@ -118,8 +120,8 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
       const bob = Math.sin(t * 0.9 + b.phase) * 0.5
       const y = bob + drop + rise
       g.position.set(b.position.x + b.up.x * y, b.position.y + b.up.y * y, b.position.z + b.up.z * y)
-      // soft holo wobble — slow beat-free shimmer, never a strobe
-      const wobble = 0.93 + Math.sin(t * 1.1 + b.phase) * 0.04 + Math.sin(t * 2.3 + b.phase * 2) * 0.03
+      // T133: brighter baseline + occasional slow swell — present, not strobing
+      const wobble = 1.0 + Math.sin(t * 1.1 + b.phase) * 0.05 + Math.max(0, Math.sin(t * 0.4 + b.phase)) ** 3 * 0.25
       const past = Math.max(0, playerS - b.s + 15)
       const fade = Math.max(0, 1 - past / 45) * liftFade
       const mat = matRefs.current[i]
@@ -163,10 +165,10 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
               toneMapped={false}
             />
           </mesh>
-          {/* emitter strip */}
+          {/* emitter strip — T133: actually glows now */}
           <mesh position={[0, -BOARD_H / 2 - 0.5, 0]}>
-            <boxGeometry args={[BOARD_W * 0.6, 0.12, 0.12]} />
-            <meshBasicMaterial color={track.theme.glow} toneMapped={false} />
+            <boxGeometry args={[BOARD_W * 0.7, 0.22, 0.18]} />
+            <meshBasicMaterial color={new THREE.Color(track.theme.glow).multiplyScalar(2.2)} toneMapped={false} />
           </mesh>
         </group>
       ))}
