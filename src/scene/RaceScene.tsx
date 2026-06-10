@@ -81,6 +81,8 @@ export function RaceScene({
     started: false,
     roll: 0,
     airPitch: 0,
+    /** T35: 3-2-1-GO; sim + music locked until ≤ 0 */
+    countdown: 3.8,
   })
 
   // input + camera toggle + song lifecycle
@@ -92,7 +94,7 @@ export function RaceScene({
     })
     const s = sim.current
     s.npcs = npcSpecs.map((_, i) => initialNpc(i))
-    if (songBuffer) s.song = playSong(songBuffer)
+    // T35: song starts at GO, not on mount — see countdown in the frame loop
     s.started = true
     return () => {
       detachKb()
@@ -106,8 +108,18 @@ export function RaceScene({
     const s = sim.current
     if (!s.started || paused) return
 
+    // T35 countdown: hold the grid, fire the song at GO
+    if (s.countdown > -1) {
+      const prev = s.countdown
+      s.countdown -= dt
+      telemetry.countdown = s.countdown
+      if (prev > 0 && s.countdown <= 0 && songBuffer && !s.song) {
+        s.song = playSong(songBuffer)
+      }
+    }
+
     readShipInput(s.input)
-    const steps = accumulateSteps(s.accumulator, dt)
+    const steps = s.countdown > 0 ? 0 : accumulateSteps(s.accumulator, dt)
     let wallEvent = 0
     let boostEvent = false
     let finishedEvent = false
@@ -152,7 +164,7 @@ export function RaceScene({
       // airborne: nose follows vertical velocity
       const targetPitch = ship.airborne ? Math.max(-0.32, Math.min(0.4, -ship.vy * 0.012)) : 0
       s.airPitch += (targetPitch - s.airPitch) * Math.min(1, dt * 6)
-      g.rotateY(ship.yaw * 0.6 + Math.PI)
+      g.rotateY(ship.yaw * 1.0 + Math.PI)
       g.rotateZ(-s.roll)
       g.rotateX(s.airPitch)
     }
@@ -213,8 +225,8 @@ export function RaceScene({
       <ExhaustTrails
         shipRef={shipGroup}
         offsets={[
-          [-1.05, -0.02, 1.4],
-          [1.05, -0.02, 1.4],
+          [-0.58, -0.04, 1.5],
+          [0.58, -0.04, 1.5],
         ]}
         color={track.theme.edge}
         intensity={() =>
@@ -249,10 +261,12 @@ function updateCamera(
   const { ship, pose } = s
 
   if (mode === 'chase') {
+    // trail into the corner: camera swings opposite the steer (T36)
+    const swing = -ship.steerSmooth * 2.2
     camPos.set(
-      pose.px - pose.tx * 8 + pose.nx * 2.9,
-      pose.py - pose.ty * 8 + pose.ny * 2.9,
-      pose.pz - pose.tz * 8 + pose.nz * 2.9,
+      pose.px - pose.tx * 8 + pose.nx * 2.9 + pose.bx * swing,
+      pose.py - pose.ty * 8 + pose.ny * 2.9 + pose.by * swing,
+      pose.pz - pose.tz * 8 + pose.nz * 2.9 + pose.bz * swing,
     )
     camera.position.lerp(camPos, 1 - Math.exp(-dt * 9))
     // hard tether: cam may lag for feel but never lose the ship at speed (B4)

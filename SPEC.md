@@ -86,6 +86,8 @@ T31|.|environment: grid floor, ridge silhouettes, per-section palettes on rails/
 T32|.|NPC collisions: player↔npc energy transfer, lateral shove, shake|V17,V15
 T33|.|speed fx: warp streaks @ high v, boost tunnel feel|C11,V10
 T34|.|menu v3: waveform card backgrounds, user song library (bpm/duration), spacing polish|I.ui
+T35|.|race countdown 3-2-1-GO: sim+music locked until GO|I.ui
+T36|.|feel pass 2: slim pod-racer ship, track width ↑↑, curvature drift ↑ (! counter-steer), visible yaw/lean ↑, jumps dialed gentler|C11,V18
 
 ## §B bugs
 

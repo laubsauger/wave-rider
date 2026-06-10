@@ -35,7 +35,8 @@ export function ShipMesh({
   const flameL = useRef<THREE.Mesh>(null)
   const flameR = useRef<THREE.Mesh>(null)
 
-  const wingGeo = useMemo(() => deltaWingGeometry(1.9, 1.15, 0.95), [])
+  // T36: pod-racer proportions — narrow span, long body
+  const wingGeo = useMemo(() => deltaWingGeometry(1.05, 0.85, 0.62), [])
   const hull = useMemo(
     () => ({ color: '#aeb9d6', metalness: 0.92, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.12, flatShading: true }),
     [],
@@ -60,18 +61,18 @@ export function ShipMesh({
 
   return (
     <group castShadow>
-      {/* fuselage — flattened diamond cross-section, tapering tail */}
-      <mesh castShadow scale={[0.62, 0.3, 1.9]} rotation={[0, 0, Math.PI / 4]}>
-        <cylinderGeometry args={[0.5, 0.62, 1, 4, 1]} />
+      {/* fuselage — long narrow diamond cross-section */}
+      <mesh castShadow scale={[0.36, 0.24, 2.5]} rotation={[0, 0, Math.PI / 4]}>
+        <cylinderGeometry args={[0.42, 0.56, 1, 4, 1]} />
         <meshPhysicalMaterial {...hull} />
       </mesh>
-      {/* needle nose */}
-      <mesh castShadow position={[0, -0.01, -2.25]} rotation={[-Math.PI / 2, Math.PI / 4, 0]} scale={[0.44, 2.7, 0.21]}>
+      {/* needle nose — most of the ship's length */}
+      <mesh castShadow position={[0, -0.01, -2.6]} rotation={[-Math.PI / 2, Math.PI / 4, 0]} scale={[0.27, 3.2, 0.15]}>
         <coneGeometry args={[0.5, 1, 4]} />
         <meshPhysicalMaterial {...hull} />
       </mesh>
       {/* canopy */}
-      <mesh position={[0, 0.21, -0.55]} scale={[0.26, 0.13, 0.85]}>
+      <mesh position={[0, 0.17, -0.55]} scale={[0.2, 0.11, 0.8]}>
         <sphereGeometry args={[1, 8, 6]} />
         <meshPhysicalMaterial
           color="#060d20"
@@ -82,13 +83,13 @@ export function ShipMesh({
           emissiveIntensity={0.3}
         />
       </mesh>
-      {/* swept delta wings */}
+      {/* swept delta wings — short span, racing trim */}
       {[-1, 1].map((side) => (
         <mesh
           key={side}
           castShadow
           geometry={wingGeo}
-          position={[side * 0.45, -0.06, -0.5]}
+          position={[side * 0.28, -0.05, -0.35]}
           scale={[side, 1, 1]}
         >
           <meshPhysicalMaterial {...hull} color="#8e9cc0" />
@@ -96,19 +97,19 @@ export function ShipMesh({
       ))}
       {/* wingtip accent edges */}
       {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * 2.18, -0.06, 0.62]} scale={[0.06, 0.16, 1.05]}>
+        <mesh key={side} position={[side * 1.3, -0.05, 0.42]} scale={[0.05, 0.14, 0.85]}>
           <boxGeometry />
           <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={2.4} toneMapped={false} />
         </mesh>
       ))}
       {/* tail fin */}
-      <mesh castShadow position={[0, 0.3, 1.25]} rotation={[0.5, 0, 0]} scale={[0.06, 0.75, 0.55]}>
+      <mesh castShadow position={[0, 0.26, 1.45]} rotation={[0.5, 0, 0]} scale={[0.05, 0.65, 0.5]}>
         <boxGeometry />
         <meshPhysicalMaterial {...hull} color="#8e9cc0" />
       </mesh>
       {/* nacelles + engine glow + flames */}
       {[-1, 1].map((side) => (
-        <group key={side} position={[side * 0.95, -0.04, 0.55]}>
+        <group key={side} position={[side * 0.58, -0.04, 0.85]}>
           <mesh castShadow scale={[0.2, 0.2, 1.15]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.9, 1.05, 1, 6]} />
             <meshPhysicalMaterial {...hull} color="#39435c" />
@@ -138,7 +139,7 @@ export function ShipMesh({
         </group>
       ))}
       {/* belly trim strip */}
-      <mesh position={[0, -0.16, -0.3]} scale={[0.5, 0.03, 2.6]}>
+      <mesh position={[0, -0.13, -0.6]} scale={[0.3, 0.03, 3.2]}>
         <boxGeometry />
         <meshStandardMaterial color="#000000" emissive={accent} emissiveIntensity={1.6} toneMapped={false} />
       </mesh>

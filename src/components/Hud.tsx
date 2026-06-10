@@ -28,6 +28,7 @@ export function Hud({ accent }: { accent: string }) {
   const pulseRef = useRef<HTMLDivElement>(null)
   const linesRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
+  const countdownRef = useRef<HTMLDivElement>(null)
   const speedCells = useRef<(HTMLDivElement | null)[]>([])
   const boostCells = useRef<(HTMLDivElement | null)[]>([])
   const cameraMode = useGame((s) => s.cameraMode)
@@ -42,6 +43,22 @@ export function Hud({ accent }: { accent: string }) {
       const kph = telemetry.speed * 3.6
       if (speedRef.current) speedRef.current.textContent = String(Math.round(kph))
       if (timeRef.current) timeRef.current.textContent = fmtTime(telemetry.timeMs)
+      if (countdownRef.current) {
+        const c = telemetry.countdown
+        const el = countdownRef.current
+        if (c > 0) {
+          el.textContent = String(Math.ceil(c))
+          el.style.opacity = String(0.4 + (c % 1) * 0.6)
+          el.style.transform = `translate(-50%, -50%) scale(${1 + (1 - (c % 1)) * 0.35})`
+        } else if (c > -0.9) {
+          el.textContent = 'GO'
+          el.style.opacity = String(Math.max(0, (c + 0.9) / 0.9))
+          el.style.transform = `translate(-50%, -50%) scale(${1.2 - (c + 0.9) * 0.2})`
+        } else {
+          el.textContent = ''
+          el.style.opacity = '0'
+        }
+      }
       if (posRef.current) posRef.current.textContent = `${telemetry.position}`
       if (racersRef.current) racersRef.current.textContent = `/${telemetry.racers}`
       if (progressRef.current) progressRef.current.style.width = `${(telemetry.progress * 100).toFixed(2)}%`
@@ -96,6 +113,17 @@ export function Hud({ accent }: { accent: string }) {
         ref={flashRef}
         className="absolute inset-0 opacity-0"
         style={{ background: `radial-gradient(ellipse at center, transparent 35%, ${accent} 130%)` }}
+      />
+      {/* T35 countdown */}
+      <div
+        ref={countdownRef}
+        className="absolute top-1/2 left-1/2 text-9xl font-bold tracking-widest"
+        style={{
+          color: accent,
+          textShadow: `0 0 40px ${accent}, 0 0 120px ${accent}`,
+          transform: 'translate(-50%, -50%)',
+          opacity: 0,
+        }}
       />
 
       <div className="hud-safe absolute inset-0 flex flex-col justify-between py-3">

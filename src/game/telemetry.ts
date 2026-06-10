@@ -16,6 +16,8 @@ export interface RaceTelemetry {
   /** live race rank, 1-based (V13) */
   position: number
   racers: number
+  /** T35: >0 counting down, (-1,0] = GO flash window */
+  countdown: number
 }
 
 export const telemetry: RaceTelemetry = {
@@ -29,4 +31,5 @@ export const telemetry: RaceTelemetry = {
   boostFlash: 0,
   position: 1,
   racers: 1,
+  countdown: 0,
 }

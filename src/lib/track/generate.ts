@@ -78,7 +78,7 @@ export function generateTrack(features: AudioFeatures): TrackData {
   // V3: speed scales with bpm + intensity. 70..210 m/s feels WipEout-ish.
   const avgSpeed = 70 + features.intensity * 100 + clamp01((features.bpm - 70) / 110) * 40
   const length = avgSpeed * features.duration
-  const width = 18 - features.intensity * 4 // intense music → narrower, scarier
+  const width = 26 - features.intensity * 6 // intense music → narrower, scarier
 
   const { points, segments } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
@@ -299,10 +299,11 @@ function walkSegment(cur: Cursor, points: TrackPoint[], seg: SegmentPlan, length
     let slopeTarget = seg.slope
     let ease = 0.3
     if (isJump) {
-      // seg.slope carries drop strength: ramp to a crest @ 28%, then cliff
+      // seg.slope carries drop strength: ramp to a crest @ 28%, then a
+      // catchable dive (T36: dialed back from cliff)
       const t = i / steps
-      slopeTarget = t < 0.28 ? 0.1 + seg.slope * 0.08 : -0.3 * seg.slope - 0.12
-      ease = 0.55
+      slopeTarget = t < 0.28 ? 0.08 + seg.slope * 0.05 : -0.18 * seg.slope - 0.08
+      ease = 0.45
     }
     cur.heading += k * ds
     cur.pitch += (slopeTarget - cur.pitch) * ease

@@ -82,7 +82,7 @@ export function initialShip(): ShipState {
   }
 }
 
-const SHIP_HALF_WIDTH = 1.3
+const SHIP_HALF_WIDTH = 1.0
 const BOOST_LEN = 14
 const BOOST_HALF_WIDTH = 2.2
 /** arcade gravity, m/s² — heavier than earth so jumps stay snappy */
@@ -143,7 +143,8 @@ export function stepShip(
   // lateral motion in track space: own steering ± curvature drift
   const i = Math.round(state.s / frames.ds)
   const k = curvatureAt(frames, i)
-  const lateralV = (Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.0035) * airGrip
+  // T36: stronger curvature drift — corners shove you outward, you steer back
+  const lateralV = (Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.006) * airGrip
   state.d += lateralV * dt
 
   // V16 airtime: when the road falls away faster than gravity pulls, fly
@@ -238,5 +239,5 @@ function clamp(x: number, lo: number, hi: number): number {
  * needs (B5).
  */
 export function computeLean(steer: number, v: number): number {
-  return clamp(steer * (0.55 + Math.min(0.3, v / 700)), -0.85, 0.85)
+  return clamp(steer * (0.72 + Math.min(0.38, v / 600)), -0.95, 0.95)
 }
