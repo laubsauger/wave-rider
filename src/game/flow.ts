@@ -8,6 +8,7 @@ import { decodeForAnalysis, decodeForPlayback, ANALYSIS_SR } from '../lib/audio/
 import { pcmToAudioBuffer, renderSong, type SongSpec } from '../lib/audio/builtin'
 import { generateTrack } from '../lib/track/generate'
 import { audioContext } from '../lib/audio/playback'
+import { computeWaveform, fmtDuration } from '../lib/audio/waveform'
 
 const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
 
@@ -50,10 +51,21 @@ export async function startFileRace(file: File): Promise<void> {
   await nextFrame()
 
   const bytes = await file.arrayBuffer()
-  await raceFromBytes(bytes, file.name.replace(/\.[^.]+$/, '').toUpperCase())
+  await raceFromBytes(bytes, file.name.replace(/\.[^.]+$/, '').toUpperCase(), true)
 }
 
-async function raceFromBytes(bytes: ArrayBuffer, title: string): Promise<void> {
+/** replay an uploaded song from the session library (T34) */
+export async function startLibraryRace(songId: string): Promise<void> {
+  const song = useGame.getState().userSongs.find((s) => s.id === songId)
+  if (!song) throw new Error(`unknown library song: ${songId}`)
+  const game = useGame.getState()
+  game.setScreen('analyzing')
+  game.setAnalysis(0.05)
+  await nextFrame()
+  await raceFromBytes(song.bytes.slice(0), song.title, false)
+}
+
+async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = false): Promise<void> {
   const game = useGame.getState()
   const pcm = await decodeForAnalysis(bytes)
   game.setAnalysis(0.35)
@@ -66,5 +78,16 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string): Promise<void> {
   const track = generateTrack(features)
   const songBuffer = await decodeForPlayback(bytes, audioContext())
   game.setAnalysis(1)
+
+  if (addToLibrary) {
+    useGame.getState().addUserSong({
+      id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      title,
+      bpm: Math.round(features.bpm),
+      durationLabel: fmtDuration(features.duration),
+      waveform: computeWaveform(pcm),
+      bytes: bytes.slice(0),
+    })
+  }
   useGame.getState().loadRace({ features, track, songBuffer, songTitle: title })
 }

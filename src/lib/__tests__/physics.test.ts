@@ -26,7 +26,15 @@ function features(duration = 60): AudioFeatures {
   }
 }
 
-const noEvents = (): StepEvents => ({ wallHit: false, wallImpact: 0, boostFired: false, finished: false })
+const noEvents = (): StepEvents => ({
+  wallHit: false,
+  wallImpact: 0,
+  boostFired: false,
+  finished: false,
+  takeoff: false,
+  landed: false,
+  landImpact: 0,
+})
 
 function scriptedInput(step: number): ShipInput {
   return {
@@ -126,6 +134,60 @@ describe('ship physics (T5, V5)', () => {
     }
     expect(fired).toBe(ship.boostsHit)
     expect(fired).toBeLessThanOrEqual(track.boosts.length)
+  })
+})
+
+describe('airtime (T26, V16)', () => {
+  const dropFeatures = (): AudioFeatures => ({
+    ...features(60),
+    events: [{ type: 'drop', start: 20, end: 21, strength: 1 }],
+  })
+
+  it('drop event → crest → ship gains airtime ≥ 0.25s and lands clean', () => {
+    const track = generateTrack(dropFeatures())
+    expect(track.segments.some((sg) => sg.type === 'jump')).toBe(true)
+
+    const frames = sampleTrack(track, 3)
+    const ship = initialShip()
+    const ev = noEvents()
+    let airSteps = 0
+    let tookOff = false
+    let landed = false
+    const maxSteps = Math.ceil((track.duration * 4) / PHYSICS_DT)
+    for (let i = 0; i < maxSteps && !ship.finished; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      if (ev.takeoff) tookOff = true
+      if (ship.airborne) airSteps++
+      if (ev.landed) landed = true
+      expect(ship.air).toBeGreaterThanOrEqual(0)
+    }
+    expect(tookOff).toBe(true)
+    expect(landed).toBe(true)
+    expect(airSteps * PHYSICS_DT).toBeGreaterThanOrEqual(0.25)
+    expect(ship.finished).toBe(true)
+  })
+})
+
+describe('steer ramp (T27, B7)', () => {
+  const track = generateTrack(features())
+  const frames = sampleTrack(track, 3)
+
+  it('full steer input takes time to reach full authority', () => {
+    const ship = initialShip()
+    const ev = noEvents()
+    // get moving first
+    for (let i = 0; i < 600; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    }
+    // one 60Hz-frame worth of full steer (2 physics steps) — barely moves
+    stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    expect(Math.abs(ship.steerSmooth)).toBeLessThan(0.1)
+    // half a second of holding → meaningful authority
+    for (let i = 0; i < 58; i++) {
+      stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    }
+    expect(ship.steerSmooth).toBeGreaterThan(0.8)
   })
 })
 

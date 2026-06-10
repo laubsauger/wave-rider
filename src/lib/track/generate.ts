@@ -8,7 +8,7 @@
 import { hashFeatures, mulberry32, rngRange, type Rng } from '../prng'
 import type { AudioFeatures, AudioSection, Mood } from '../audio/analyze'
 
-export type SegmentType = 'straight' | 'curve' | 'chicane' | 'hill'
+export type SegmentType = 'straight' | 'curve' | 'chicane' | 'hill' | 'jump' | 'glide'
 
 export interface TrackSegment {
   type: SegmentType
@@ -59,6 +59,8 @@ export interface TrackData {
   duration: number
   /** per-section mean energy 0..1, indexed by TrackSegment.sectionIndex */
   sectionEnergies: number[]
+  /** V19: per-section accent colors (hue-shifted theme.edge) for visual development */
+  sectionPalettes: string[]
 }
 
 const CTRL_SPACING = 30 // meters between spline control points
@@ -76,9 +78,9 @@ export function generateTrack(features: AudioFeatures): TrackData {
   // V3: speed scales with bpm + intensity. 70..210 m/s feels WipEout-ish.
   const avgSpeed = 70 + features.intensity * 100 + clamp01((features.bpm - 70) / 110) * 40
   const length = avgSpeed * features.duration
-  const width = 14 - features.intensity * 4 // intense music → narrower, scarier
+  const width = 18 - features.intensity * 4 // intense music → narrower, scarier
 
-  const { points, segments } = layoutCourse(features, length, rng)
+  const { points, segments } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
   const theme = pickTheme(features.mood, features.intensity)
 
@@ -94,7 +96,54 @@ export function generateTrack(features: AudioFeatures): TrackData {
     mood: features.mood,
     duration: features.duration,
     sectionEnergies: features.sections.map((s) => s.energy),
+    sectionPalettes: sectionPalettes(theme.edge, features.sections),
   }
+}
+
+/**
+ * V19: each section gets a distinct accent — hue rotated by its brightness
+ * delta from the song mean, brightness scaled by section energy. Pure math
+ * on hex strings, no three.js dependency.
+ */
+function sectionPalettes(edgeHex: string, sections: AudioSection[]): string[] {
+  const meanB = sections.reduce((a, s) => a + s.brightness, 0) / Math.max(1, sections.length)
+  return sections.map((sec, i) => {
+    const hueShift = (sec.brightness - meanB) * 0.55 + (i % 2 === 0 ? 0.04 : -0.04)
+    const lightShift = (sec.energy - 0.5) * 0.18
+    return shiftHsl(edgeHex, hueShift, lightShift)
+  })
+}
+
+function shiftHsl(hex: string, dHue: number, dLight: number): string {
+  const n = parseInt(hex.slice(1), 16)
+  let r = ((n >> 16) & 255) / 255
+  let g = ((n >> 8) & 255) / 255
+  let b = (n & 255) / 255
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  let h = 0
+  const l = (max + min) / 2
+  const d = max - min
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1))
+  if (d > 0) {
+    if (max === r) h = ((g - b) / d) % 6
+    else if (max === g) h = (b - r) / d + 2
+    else h = (r - g) / d + 4
+    h /= 6
+    if (h < 0) h += 1
+  }
+  h = (h + dHue + 1) % 1
+  const l2 = Math.min(0.75, Math.max(0.3, l + dLight))
+  const c = (1 - Math.abs(2 * l2 - 1)) * s
+  const x = c * (1 - Math.abs(((h * 6) % 2) - 1))
+  const m = l2 - c / 2
+  const [r2, g2, b2] =
+    h < 1 / 6 ? [c, x, 0] : h < 2 / 6 ? [x, c, 0] : h < 3 / 6 ? [0, c, x] : h < 4 / 6 ? [0, x, c] : h < 5 / 6 ? [x, 0, c] : [c, 0, x]
+  const toHex = (v: number) =>
+    Math.round((v + m) * 255)
+      .toString(16)
+      .padStart(2, '0')
+  return `#${toHex(r2)}${toHex(g2)}${toHex(b2)}`
 }
 
 /** Map song time → expected track position at design pace (V9 sync anchor). */
@@ -118,11 +167,20 @@ function layoutCourse(
   features: AudioFeatures,
   totalLength: number,
   rng: Rng,
+  avgSpeed: number,
 ): { points: TrackPoint[]; segments: TrackSegment[] } {
   const points: TrackPoint[] = []
   const segments: TrackSegment[] = []
   const cur: Cursor = { x: 0, y: 0, z: 0, heading: 0, pitch: 0 }
   points.push({ x: 0, y: 0, z: 0 })
+
+  // T25: map song events into track space at design pace
+  const drops = features.events
+    .filter((e) => e.type === 'drop')
+    .map((e) => ({ s: e.start * avgSpeed, strength: Math.max(0.5, e.strength), used: false }))
+  const breakdowns = features.events
+    .filter((e) => e.type === 'breakdown')
+    .map((e) => ({ s0: e.start * avgSpeed, s1: e.end * avgSpeed }))
 
   let s = 0
   const sectionLengths = features.sections.map(
@@ -136,7 +194,23 @@ function layoutCourse(
     let remaining = secLen
 
     while (remaining > 1) {
-      const seg = chooseSegment(sec, onsetDensity, rng)
+      let seg: SegmentPlan
+      const drop = drops.find((d) => !d.used && s >= d.s - 260 && s <= d.s + 60)
+      if (drop && remaining > 120) {
+        drop.used = true
+        // crest then cliff — the song slams, the floor disappears (V16)
+        seg = { type: 'jump', length: 300 + drop.strength * 140, curvature: 0, slope: drop.strength }
+      } else if (breakdowns.some((b) => s >= b.s0 && s < b.s1)) {
+        // breakdown → long held glide, wide flowing line, gentle descent
+        seg = {
+          type: 'glide',
+          length: rngRange(rng, 320, 520),
+          curvature: rngRange(rng, 0.0015, 0.004) * (rng() < 0.5 ? -1 : 1),
+          slope: rngRange(rng, -0.03, -0.01),
+        }
+      } else {
+        seg = chooseSegment(sec, onsetDensity, rng)
+      }
       const segLen = Math.min(remaining, seg.length)
       walkSegment(cur, points, seg, segLen)
       segments.push({ type: seg.type, start: s, end: s + segLen, sectionIndex: si })
@@ -197,7 +271,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): Segme
       }
     }
     if (roll < 0.75) {
-      return { type: 'hill', length: rngRange(rng, 150, 260), curvature: 0, slope: rngRange(rng, 0.03, 0.06) * (rng() < 0.5 ? -1 : 1) }
+      return { type: 'hill', length: rngRange(rng, 150, 260), curvature: 0, slope: rngRange(rng, 0.05, 0.12) * (rng() < 0.5 ? -1 : 1) }
     }
     return { type: 'straight', length: rngRange(rng, 180, 320), curvature: 0, slope: 0 }
   }
@@ -214,6 +288,7 @@ function walkSegment(cur: Cursor, points: TrackPoint[], seg: SegmentPlan, length
   const steps = Math.max(1, Math.round(length / CTRL_SPACING))
   const ds = length / steps
   const isChicane = seg.type === 'chicane'
+  const isJump = seg.type === 'jump'
 
   for (let i = 0; i < steps; i++) {
     let k = seg.curvature
@@ -221,16 +296,28 @@ function walkSegment(cur: Cursor, points: TrackPoint[], seg: SegmentPlan, length
       // S-shape: flip curvature halfway
       k = i < steps / 2 ? seg.curvature : -seg.curvature
     }
+    let slopeTarget = seg.slope
+    let ease = 0.3
+    if (isJump) {
+      // seg.slope carries drop strength: ramp to a crest @ 28%, then cliff
+      const t = i / steps
+      slopeTarget = t < 0.28 ? 0.1 + seg.slope * 0.08 : -0.3 * seg.slope - 0.12
+      ease = 0.55
+    }
     cur.heading += k * ds
-    // ease slope toward target, decay back to level
-    cur.pitch += (seg.slope - cur.pitch) * 0.3
+    cur.pitch += (slopeTarget - cur.pitch) * ease
     cur.x += Math.sin(cur.heading) * ds
     cur.z -= Math.cos(cur.heading) * ds
     cur.y += cur.pitch * ds
-    // keep track above floor
-    if (cur.y < -40) cur.y = -40
+    // keep track above the void floor
+    if (cur.y < -130) {
+      cur.y = -130
+      cur.pitch = Math.max(0, cur.pitch)
+    }
     points.push({ x: cur.x, y: cur.y, z: cur.z })
   }
+  // after a jump, level out so the landing is catchable
+  if (isJump) cur.pitch *= 0.3
 }
 
 function onsetsPerSecond(features: AudioFeatures, sec: AudioSection): number {

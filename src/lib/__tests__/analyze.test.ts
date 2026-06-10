@@ -70,6 +70,17 @@ describe('analyzeAudio (T2: C5 determinism, feature quality)', () => {
     expect(last.energy).toBeGreaterThan(first.energy)
   })
 
+  it('T24: finds the breakdown (quiet half) and the drop (loud slam)', () => {
+    const f = analyzeAudio(synthSong(120), SR)
+    const breakdowns = f.events.filter((e) => e.type === 'breakdown')
+    const drops = f.events.filter((e) => e.type === 'drop')
+    expect(breakdowns.length).toBeGreaterThanOrEqual(1)
+    expect(breakdowns[0].start).toBeLessThan(8)
+    expect(drops.length).toBeGreaterThanOrEqual(1)
+    // halves switch at 15s — the drop should land near it
+    expect(drops.some((d) => d.start > 13 && d.start < 20)).toBe(true)
+  })
+
   it('throws on too-short input instead of guessing', () => {
     expect(() => analyzeAudio(new Float32Array(1000), SR)).toThrow()
   })

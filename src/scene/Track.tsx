@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { color, fract, smoothstep, uniform, uv } from 'three/tsl'
+import { attribute, color, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
@@ -16,29 +16,47 @@ function toGeometry(r: RibbonGeometry): THREE.BufferGeometry {
   return g
 }
 
+/** per-frame-sample section accent, V19 — drives rail vertex colors */
+function railSectionColors(track: TrackData, frames: TrackFrames): Float32Array {
+  const arr = new Float32Array(frames.count * 2 * 3)
+  const c = new THREE.Color()
+  let segIdx = 0
+  for (let i = 0; i < frames.count; i++) {
+    const s = i * frames.ds
+    while (segIdx < track.segments.length - 1 && s >= track.segments[segIdx].end) segIdx++
+    c.set(track.sectionPalettes[track.segments[segIdx].sectionIndex] ?? track.theme.edge)
+    arr.set([c.r, c.g, c.b, c.r, c.g, c.b], i * 6)
+  }
+  return arr
+}
+
 export function Track({ track, frames }: { track: TrackData; frames: TrackFrames }) {
-  const railMats = useRef<(THREE.MeshStandardMaterial | null)[]>([])
-  const padMaterial = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#031',
-        emissive: track.theme.glow,
-        emissiveIntensity: 2.4,
-        toneMapped: false,
-      }),
-    [track.theme.glow],
-  )
+  const padMesh = useRef<THREE.InstancedMesh>(null)
+  const padMat = useRef<THREE.MeshBasicMaterial>(null)
 
   const geo = useMemo(() => {
+    const railColors = railSectionColors(track, frames)
+    const railL = toGeometry(buildRail(track, frames, -1))
+    const railR = toGeometry(buildRail(track, frames, 1))
+    railL.setAttribute('color', new THREE.BufferAttribute(railColors, 3))
+    railR.setAttribute('color', new THREE.BufferAttribute(railColors, 3))
     return {
       road: toGeometry(buildRoad(track, frames)),
-      railL: toGeometry(buildRail(track, frames, -1)),
-      railR: toGeometry(buildRail(track, frames, 1)),
+      railL,
+      railR,
       wallL: toGeometry(buildWall(track, frames, -1)),
       wallR: toGeometry(buildWall(track, frames, 1)),
       pads: buildBoostPads(track, frames),
     }
   }, [track, frames])
+
+  // V19 rails: section-colored vertex attribute × music-pulsed intensity
+  const uRail = useMemo(() => uniform(1.8), [])
+  const railMaterial = useMemo(() => {
+    const m = new THREE.MeshBasicNodeMaterial({ toneMapped: false })
+    m.colorNode = attribute('color').mul(uRail)
+    return m
+  }, [uRail])
 
   // T22: road surface = deep black + lateral glow stripes every 20m (speed
   // cue) + dashed center line. Stripe brightness rides the music (T21).
@@ -68,38 +86,43 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   useFrame(() => {
     const e = telemetry.energy * track.theme.pulse
     uEnergy.value = e
-    for (const mat of railMats.current) {
-      if (mat) mat.emissiveIntensity = 1.6 + e * 2.8
+    uRail.value = 1.6 + e * 2.8
+    if (padMat.current) {
+      const s = 2.0 + e * 2.2
+      padMat.current.color.setRGB(s, s, s)
     }
-    padMaterial.emissiveIntensity = 2.2 + e * 2.5
   })
 
-  const padQuats = useMemo(
-    () =>
-      geo.pads.map((p) => {
-        const m = new THREE.Matrix4().lookAt(
-          new THREE.Vector3(0, 0, 0),
-          new THREE.Vector3(p.tx, p.ty, p.tz),
-          new THREE.Vector3(p.nx, p.ny, p.nz),
-        )
-        return new THREE.Quaternion().setFromRotationMatrix(m)
-      }),
-    [geo.pads],
-  )
+  // pads: instanced, V19 section-colored via instanceColor
+  const padData = useMemo(() => {
+    const obj = new THREE.Object3D()
+    const c = new THREE.Color()
+    const matrices: THREE.Matrix4[] = []
+    const colors: THREE.Color[] = []
+    geo.pads.forEach((p, i) => {
+      obj.position.set(p.x, p.y, p.z)
+      const m = new THREE.Matrix4().lookAt(
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(p.tx, p.ty, p.tz),
+        new THREE.Vector3(p.nx, p.ny, p.nz),
+      )
+      obj.quaternion.setFromRotationMatrix(m)
+      obj.scale.set(1, 1, 1)
+      obj.updateMatrix()
+      matrices.push(obj.matrix.clone())
+      const padS = track.boosts[i]?.s ?? 0
+      const seg = track.segments.find((sg) => padS >= sg.start && padS < sg.end)
+      c.set(track.sectionPalettes[seg?.sectionIndex ?? 0] ?? track.theme.glow)
+      colors.push(c.clone())
+    })
+    return { matrices, colors }
+  }, [geo.pads, track])
 
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
       {[geo.railL, geo.railR].map((g, i) => (
-        <mesh key={i} geometry={g}>
-          <meshStandardMaterial
-            ref={(m) => void (railMats.current[i] = m)}
-            color="#000000"
-            emissive={track.theme.edge}
-            emissiveIntensity={1.8}
-            toneMapped={false}
-          />
-        </mesh>
+        <mesh key={i} geometry={g} material={railMaterial} />
       ))}
       {[geo.wallL, geo.wallR].map((g, i) => (
         <mesh key={i} geometry={g}>
@@ -113,13 +136,22 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
           />
         </mesh>
       ))}
-      <group>
-        {geo.pads.map((p, i) => (
-          <mesh key={i} position={[p.x, p.y, p.z]} quaternion={padQuats[i]} material={padMaterial}>
-            <boxGeometry args={[4.4, 0.12, 14]} />
-          </mesh>
-        ))}
-      </group>
+      <instancedMesh
+        ref={(mesh) => {
+          padMesh.current = mesh
+          if (mesh) {
+            padData.matrices.forEach((m, i) => mesh.setMatrixAt(i, m))
+            padData.colors.forEach((c, i) => mesh.setColorAt(i, c))
+            mesh.instanceMatrix.needsUpdate = true
+            if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+            mesh.frustumCulled = false
+          }
+        }}
+        args={[undefined, undefined, Math.max(1, padData.matrices.length)]}
+      >
+        <boxGeometry args={[4.4, 0.12, 14]} />
+        <meshBasicMaterial ref={padMat} color="#ffffff" toneMapped={false} />
+      </instancedMesh>
     </group>
   )
 }

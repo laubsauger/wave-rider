@@ -7,10 +7,19 @@ import { attachKeyboard, onGameKey, readShipInput, resetInput } from '../game/in
 import { computeLean, initialShip, stepShip, type ShipInput, type StepEvents } from '../lib/physics/ship'
 import { accumulateSteps } from '../lib/physics/loop'
 import { sampleTrack, poseAt, curvatureAt, type FramePose, type TrackFrames } from '../lib/track/sample'
-import { initialNpc, makeNpcs, racePosition, stepNpc, type NpcSpec, type NpcState } from '../lib/physics/npc'
+import {
+  initialNpc,
+  makeNpcs,
+  racePosition,
+  resolveCollisions,
+  stepNpc,
+  type NpcSpec,
+  type NpcState,
+} from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
+import { GridFloor, Ridges, WarpStreaks } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import type { TrackData } from '../lib/track/generate'
@@ -71,6 +80,7 @@ export function RaceScene({
     song: null as SongHandle | null,
     started: false,
     roll: 0,
+    airPitch: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -101,22 +111,28 @@ export function RaceScene({
     let wallEvent = 0
     let boostEvent = false
     let finishedEvent = false
+    let landEvent = 0
     for (let i = 0; i < steps; i++) {
       stepShip(s.ship, s.input, track, frames, s.events)
       for (let ni = 0; ni < s.npcs.length; ni++) stepNpc(s.npcs[ni], npcSpecs[ni], track, frames)
+      // T32: bump resolution — player + all NPCs in one deterministic pass
+      const bump = resolveCollisions([s.ship, ...s.npcs], track)
+      if (bump > 0) wallEvent = Math.max(wallEvent, bump * 0.6)
       if (s.events.wallHit) wallEvent = Math.max(wallEvent, s.events.wallImpact)
       if (s.events.boostFired) boostEvent = true
+      if (s.events.landed) landEvent = Math.max(landEvent, s.events.landImpact)
       if (s.events.finished) finishedEvent = true
     }
 
     // shake trauma (V10: scaled by fxIntensity at application time)
     if (wallEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + 0.25 + wallEvent * 0.02)
     if (boostEvent) s.shake.trauma = Math.min(1, s.shake.trauma + 0.18)
+    if (landEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + Math.min(0.45, landEvent * 0.012))
     s.shake.trauma = Math.max(0, s.shake.trauma - dt * 1.6)
 
-    // ship world transform
+    // ship world transform — air height rides on top of hover (V16)
     const ship = s.ship
-    poseAt(frames, ship.s, ship.d, HOVER_HEIGHT, s.pose)
+    poseAt(frames, ship.s, ship.d, HOVER_HEIGHT + ship.air, s.pose)
     const g = shipGroup.current
     if (g) {
       const bob = Math.sin(ship.time * 7) * 0.05 + Math.sin(ship.time * 13.7) * 0.02
@@ -129,14 +145,16 @@ export function RaceScene({
       tmpUp.set(s.pose.nx, s.pose.ny, s.pose.nz)
       tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)
       g.quaternion.setFromRotationMatrix(tmpMatrix)
-      // V14: bank INTO the corner. computeLean is +right; after the
+      // V18: bank from USER STEER only (B6). +right lean; after the
       // rotateY(π) model flip below, +Z roll renders as LEFT dip, so negate (B5).
-      const i = Math.round(ship.s / frames.ds)
-      const k = curvatureAt(frames, i)
-      const targetRoll = computeLean(ship.yaw, k, ship.v)
+      const targetRoll = computeLean(ship.steerSmooth, ship.v)
       s.roll += (targetRoll - s.roll) * Math.min(1, dt * 8)
+      // airborne: nose follows vertical velocity
+      const targetPitch = ship.airborne ? Math.max(-0.32, Math.min(0.4, -ship.vy * 0.012)) : 0
+      s.airPitch += (targetPitch - s.airPitch) * Math.min(1, dt * 6)
       g.rotateY(ship.yaw * 0.6 + Math.PI)
       g.rotateZ(-s.roll)
+      g.rotateX(s.airPitch)
     }
 
     updateCamera(camera, s, cameraMode, fxIntensity, dt)
@@ -180,9 +198,12 @@ export function RaceScene({
       <color attach="background" args={[track.theme.sky]} />
       <fog attach="fog" args={[track.theme.fog, 60, 3 / track.theme.fogDensity]} />
       <ambientLight intensity={0.3} color={track.theme.glow} />
-      <directionalLight position={[80, 200, -50]} intensity={1.6} color="#cfe0ff" />
+      <ShadowRig shipRef={shipGroup} enabled={quality === 'high'} />
       <Track track={track} frames={frames} />
       <Scenery track={track} frames={frames} />
+      <GridFloor track={track} />
+      <Ridges track={track} frames={frames} />
+      <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
         <ShipMesh
           accent={track.theme.edge}
@@ -268,6 +289,50 @@ function updateCamera(
   camera.updateProjectionMatrix()
 }
 
+/** shadow-casting key light that follows the ship (T31, high tier only) */
+function ShadowRig({
+  shipRef,
+  enabled,
+}: {
+  shipRef: React.RefObject<THREE.Group | null>
+  enabled: boolean
+}) {
+  const lightRef = useRef<THREE.DirectionalLight>(null)
+  const targetRef = useRef<THREE.Object3D>(null)
+
+  useFrame(() => {
+    const ship = shipRef.current
+    const l = lightRef.current
+    const t = targetRef.current
+    if (!ship || !l || !t) return
+    t.position.copy(ship.position)
+    t.updateMatrixWorld()
+    l.position.set(ship.position.x + 70, ship.position.y + 150, ship.position.z - 50)
+    l.target = t
+  })
+
+  return (
+    <>
+      <directionalLight
+        ref={lightRef}
+        castShadow={enabled}
+        intensity={1.7}
+        color="#cfe0ff"
+        shadow-mapSize-width={2048}
+        shadow-mapSize-height={2048}
+        shadow-camera-left={-90}
+        shadow-camera-right={90}
+        shadow-camera-top={90}
+        shadow-camera-bottom={-90}
+        shadow-camera-near={10}
+        shadow-camera-far={500}
+        shadow-bias={-0.0004}
+      />
+      <object3D ref={targetRef} />
+    </>
+  )
+}
+
 function NpcShips({
   specs,
   simRef,
@@ -293,9 +358,12 @@ function NpcShips({
       tmpUp.set(p.nx, p.ny, p.nz)
       tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)
       g.quaternion.setFromRotationMatrix(tmpMatrix)
+      // NPCs steer to follow the track — lean derived from their cornering,
+      // not computeLean (that's player-input-only per V18)
       const k = curvatureAt(frames, Math.max(0, Math.round(st.s / frames.ds)))
+      const npcLean = Math.max(-0.6, Math.min(0.6, k * st.v * 0.35))
       g.rotateY(Math.PI)
-      g.rotateZ(-computeLean(0, k, st.v))
+      g.rotateZ(-npcLean)
     }
   })
 

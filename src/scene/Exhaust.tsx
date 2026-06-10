@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
+import { attribute, color, float, mix, sin, smoothstep, sub, uniform } from 'three/tsl'
 
 const POINTS = 26
 
@@ -14,29 +15,60 @@ interface TrailProps {
 }
 
 /**
- * Engine exhaust ribbons (T17): camera-facing strips rebuilt per frame from
- * a ring buffer of past engine positions. Additive, fades with age.
+ * Exhaust v2 (T30): camera-facing ribbon with a TSL gradient — white-hot
+ * core fading to accent at the edges, alpha falls off along the trail,
+ * subtle flicker bands. Geometry rebuilt per frame from a position ring
+ * buffer; the look lives in the shader, not vertex colors.
  */
-export function ExhaustTrails({ shipRef, offsets, color, intensity }: TrailProps) {
+export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: TrailProps) {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([])
-  const c = useMemo(() => new THREE.Color(color), [color])
+  const uPower = useMemo(() => uniform(0), [])
+  const uTime = useMemo(() => uniform(0), [])
+
+  const material = useMemo(() => {
+    const m = new THREE.MeshBasicNodeMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    })
+    const u = attribute('uv').x // 0..1 across the ribbon
+    const v = attribute('uv').y // 0..1 along the trail (age)
+    const cross = sub(1, sub(u, 0.5).abs().mul(2)) // 1 center → 0 edges
+    const core = smoothstep(0.45, 0.95, cross) // white-hot center band
+    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core).mul(
+      float(1.6).add(uPower),
+    )
+    const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.12).add(0.88)
+    m.opacityNode = cross
+      .pow(1.6)
+      .mul(sub(1, v).pow(2.6))
+      .mul(uPower.min(1.2))
+      .mul(flicker)
+    return m
+  }, [accent, uPower, uTime])
 
   const trails = useMemo(
     () =>
-      offsets.map(() => ({
-        history: new Float32Array(POINTS * 3),
-        filled: 0,
-        positions: new Float32Array(POINTS * 2 * 3),
-        colors: new Float32Array(POINTS * 2 * 4),
-        indices: (() => {
-          const idx = new Uint16Array((POINTS - 1) * 6)
-          for (let i = 0; i < POINTS - 1; i++) {
-            const a = i * 2
-            idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6)
-          }
-          return idx
-        })(),
-      })),
+      offsets.map(() => {
+        const uvs = new Float32Array(POINTS * 2 * 2)
+        for (let i = 0; i < POINTS; i++) {
+          const v = i / (POINTS - 1)
+          uvs.set([0, v, 1, v], i * 4)
+        }
+        const idx = new Uint16Array((POINTS - 1) * 6)
+        for (let i = 0; i < POINTS - 1; i++) {
+          const a = i * 2
+          idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6)
+        }
+        return {
+          history: new Float32Array(POINTS * 3),
+          filled: 0,
+          positions: new Float32Array(POINTS * 2 * 3),
+          uvs,
+          indices: idx,
+        }
+      }),
     [offsets],
   )
 
@@ -50,16 +82,17 @@ export function ExhaustTrails({ shipRef, offsets, color, intensity }: TrailProps
     [],
   )
 
-  useFrame(({ camera }) => {
+  useFrame(({ camera, clock }) => {
     const ship = shipRef.current
     if (!ship) return
     const power = intensity()
+    uPower.value += (power - uPower.value) * 0.25
+    uTime.value = clock.elapsedTime
 
     trails.forEach((trail, ti) => {
       const mesh = meshRefs.current[ti]
       if (!mesh) return
 
-      // shift history, append current engine world pos
       trail.history.copyWithin(3, 0, (POINTS - 1) * 3)
       tmp.p.set(...offsets[ti])
       ship.localToWorld(tmp.p)
@@ -83,20 +116,16 @@ export function ExhaustTrails({ shipRef, offsets, color, intensity }: TrailProps
         else tmp.side.set(0, 1, 0)
 
         const age = i / POINTS
-        const w = 0.16 * (1 - age) * (0.25 + power * 0.7)
+        const w = 0.15 * (1 - age * 0.75) * (0.3 + Math.min(1.4, power) * 0.6)
         trail.positions.set(
           [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
           i * 6,
         )
-        const alpha = (1 - age) ** 3 * Math.min(1, power * 1.2)
-        trail.colors.set([c.r, c.g, c.b, alpha, c.r, c.g, c.b, alpha], i * 8)
       }
 
       const geo = mesh.geometry
       geo.attributes.position.array.set(trail.positions)
       geo.attributes.position.needsUpdate = true
-      geo.attributes.color.array.set(trail.colors)
-      geo.attributes.color.needsUpdate = true
       geo.computeBoundingSphere()
     })
   })
@@ -104,20 +133,12 @@ export function ExhaustTrails({ shipRef, offsets, color, intensity }: TrailProps
   return (
     <>
       {trails.map((trail, i) => (
-        <mesh key={i} ref={(m) => void (meshRefs.current[i] = m)} frustumCulled={false}>
+        <mesh key={i} ref={(m) => void (meshRefs.current[i] = m)} frustumCulled={false} material={material}>
           <bufferGeometry>
             <bufferAttribute attach="attributes-position" args={[trail.positions, 3]} />
-            <bufferAttribute attach="attributes-color" args={[trail.colors, 4]} />
+            <bufferAttribute attach="attributes-uv" args={[trail.uvs, 2]} />
             <bufferAttribute attach="index" args={[trail.indices, 1]} />
           </bufferGeometry>
-          <meshBasicMaterial
-            vertexColors
-            transparent
-            blending={THREE.AdditiveBlending}
-            depthWrite={false}
-            side={THREE.DoubleSide}
-            toneMapped={false}
-          />
         </mesh>
       ))}
     </>

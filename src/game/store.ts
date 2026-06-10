@@ -11,6 +11,16 @@ export interface Settings {
   quality: 'low' | 'medium' | 'high'
 }
 
+/** session library entry for an uploaded song (T34) */
+export interface UserSong {
+  id: string
+  title: string
+  bpm: number
+  durationLabel: string
+  waveform: number[]
+  bytes: ArrayBuffer
+}
+
 export interface RaceResult {
   timeMs: number
   topSpeed: number
@@ -32,7 +42,9 @@ interface GameState {
   songBuffer: AudioBuffer | null
   result: RaceResult | null
   analysisProgress: number
+  userSongs: UserSong[]
 
+  addUserSong: (song: UserSong) => void
   setScreen: (s: Screen) => void
   setSettings: (s: Partial<Settings>) => void
   toggleCamera: () => void
@@ -56,7 +68,12 @@ export const useGame = create<GameState>((set) => ({
   songBuffer: null,
   result: null,
   analysisProgress: 0,
+  userSongs: [],
 
+  addUserSong: (song) =>
+    set((st) =>
+      st.userSongs.some((s) => s.id === song.id) ? st : { userSongs: [...st.userSongs, song] },
+    ),
   setScreen: (screen) => set({ screen }),
   setSettings: (s) => set((st) => ({ settings: { ...st.settings, ...s } })),
   toggleCamera: () =>

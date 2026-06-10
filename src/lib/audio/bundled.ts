@@ -36,3 +36,30 @@ export const BUNDLED_SONGS: BundledSong[] = Object.entries(modules).map(([path, 
   url,
   lengthLabel: '—',
 }))
+
+export interface BundledMeta {
+  waveform: number[]
+  durationLabel: string
+}
+
+const metaCache = new Map<string, Promise<BundledMeta>>()
+
+/** lazy decode for menu waveform + duration (T34); cached per url */
+export function getBundledMeta(url: string): Promise<BundledMeta> {
+  let p = metaCache.get(url)
+  if (!p) {
+    p = fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.arrayBuffer()
+      })
+      .then(async (bytes) => {
+        const { decodeForAnalysis, ANALYSIS_SR } = await import('./decode')
+        const { computeWaveform, fmtDuration } = await import('./waveform')
+        const pcm = await decodeForAnalysis(bytes)
+        return { waveform: computeWaveform(pcm), durationLabel: fmtDuration(pcm.length / ANALYSIS_SR) }
+      })
+    metaCache.set(url, p)
+  }
+  return p
+}

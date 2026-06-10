@@ -1,11 +1,25 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 
 /**
- * Procedural AG ship built from primitives — sleek dart hull, twin engine
- * nacelles, neon trim. Nose points -Z (three.js forward).
+ * Ship v2 (T29): arrow dart — long flattened-diamond fuselage, needle nose,
+ * swept delta wings, twin nacelles, fin. Low-poly silhouette, modern
+ * materials: clearcoat hull + emissive trim. Nose points -Z.
  */
+
+function deltaWingGeometry(span: number, chord: number, sweep: number): THREE.ExtrudeGeometry {
+  const shape = new THREE.Shape()
+  shape.moveTo(0, 0)
+  shape.lineTo(span, sweep)
+  shape.lineTo(span * 0.92, sweep + chord * 0.45)
+  shape.lineTo(0.12, chord)
+  shape.closePath()
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.07, bevelEnabled: false })
+  geo.rotateX(Math.PI / 2)
+  return geo
+}
+
 export function ShipMesh({
   accent = '#2ff3ff',
   boost = 0,
@@ -21,48 +35,85 @@ export function ShipMesh({
   const flameL = useRef<THREE.Mesh>(null)
   const flameR = useRef<THREE.Mesh>(null)
 
+  const wingGeo = useMemo(() => deltaWingGeometry(1.9, 1.15, 0.95), [])
+  const hull = useMemo(
+    () => ({ color: '#aeb9d6', metalness: 0.92, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.12, flatShading: true }),
+    [],
+  )
+
   useFrame(({ clock }) => {
     const p = power ? power() : boost
     const flicker = 2.2 + Math.sin(clock.elapsedTime * 31) * 0.35 + p * 4
     if (engineL.current) engineL.current.emissiveIntensity = flicker
     if (engineR.current) engineR.current.emissiveIntensity = flicker
-    // cone local axis is Y (rotated into +Z): scale.y sets length, recenter so
-    // the base stays glued to the nacelle
-    const len = Math.max(0.001, 0.3 + p * 2.2 + Math.sin(clock.elapsedTime * 47) * 0.12 * p)
+    // cone local axis is Y (rotated into +Z): scale.y sets length, recenter
+    // so the base stays glued to the nacelle
+    const len = Math.max(0.001, 0.3 + p * 2.4 + Math.sin(clock.elapsedTime * 47) * 0.14 * p)
     for (const f of [flameL.current, flameR.current]) {
       if (f) {
         f.scale.y = len
-        f.position.z = 0.62 + len * 0.5
+        f.position.z = 0.55 + len * 0.5
         f.visible = p > 0.02
       }
     }
   })
 
   return (
-    <group>
-      {/* hull — stretched octahedron-ish dart */}
-      <mesh scale={[0.9, 0.28, 2.4]}>
-        <sphereGeometry args={[1, 6, 4]} />
-        <meshStandardMaterial color="#c8d4e8" metalness={0.85} roughness={0.25} flatShading />
+    <group castShadow>
+      {/* fuselage — flattened diamond cross-section, tapering tail */}
+      <mesh castShadow scale={[0.62, 0.3, 1.9]} rotation={[0, 0, Math.PI / 4]}>
+        <cylinderGeometry args={[0.5, 0.62, 1, 4, 1]} />
+        <meshPhysicalMaterial {...hull} />
+      </mesh>
+      {/* needle nose */}
+      <mesh castShadow position={[0, -0.01, -2.25]} rotation={[-Math.PI / 2, Math.PI / 4, 0]} scale={[0.44, 2.7, 0.21]}>
+        <coneGeometry args={[0.5, 1, 4]} />
+        <meshPhysicalMaterial {...hull} />
       </mesh>
       {/* canopy */}
-      <mesh position={[0, 0.22, -0.35]} scale={[0.34, 0.16, 0.8]}>
+      <mesh position={[0, 0.21, -0.55]} scale={[0.26, 0.13, 0.85]}>
         <sphereGeometry args={[1, 8, 6]} />
-        <meshStandardMaterial color="#0a1428" metalness={0.4} roughness={0.05} emissive={accent} emissiveIntensity={0.25} />
+        <meshPhysicalMaterial
+          color="#060d20"
+          metalness={0.2}
+          roughness={0.05}
+          clearcoat={1}
+          emissive={accent}
+          emissiveIntensity={0.3}
+        />
       </mesh>
-      {/* wings */}
-      <mesh position={[0, -0.05, 0.55]} scale={[2.5, 0.07, 0.9]}>
-        <boxGeometry />
-        <meshStandardMaterial color="#9aa8c0" metalness={0.85} roughness={0.3} flatShading />
-      </mesh>
-      {/* nacelles + engine glow */}
+      {/* swept delta wings */}
       {[-1, 1].map((side) => (
-        <group key={side} position={[side * 1.05, -0.02, 0.85]}>
-          <mesh scale={[0.22, 0.22, 0.9]}>
-            <cylinderGeometry args={[1, 0.8, 1, 8]} />
-            <meshStandardMaterial color="#3a4458" metalness={0.9} roughness={0.35} flatShading />
+        <mesh
+          key={side}
+          castShadow
+          geometry={wingGeo}
+          position={[side * 0.45, -0.06, -0.5]}
+          scale={[side, 1, 1]}
+        >
+          <meshPhysicalMaterial {...hull} color="#8e9cc0" />
+        </mesh>
+      ))}
+      {/* wingtip accent edges */}
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[side * 2.18, -0.06, 0.62]} scale={[0.06, 0.16, 1.05]}>
+          <boxGeometry />
+          <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={2.4} toneMapped={false} />
+        </mesh>
+      ))}
+      {/* tail fin */}
+      <mesh castShadow position={[0, 0.3, 1.25]} rotation={[0.5, 0, 0]} scale={[0.06, 0.75, 0.55]}>
+        <boxGeometry />
+        <meshPhysicalMaterial {...hull} color="#8e9cc0" />
+      </mesh>
+      {/* nacelles + engine glow + flames */}
+      {[-1, 1].map((side) => (
+        <group key={side} position={[side * 0.95, -0.04, 0.55]}>
+          <mesh castShadow scale={[0.2, 0.2, 1.15]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.9, 1.05, 1, 6]} />
+            <meshPhysicalMaterial {...hull} color="#39435c" />
           </mesh>
-          <mesh position={[0, 0, 0.5]} scale={[0.16, 0.16, 0.1]} rotation={[Math.PI / 2, 0, 0]}>
+          <mesh position={[0, 0, 0.6]} scale={[0.15, 0.15, 0.08]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[1, 1, 1, 10]} />
             <meshStandardMaterial
               ref={side < 0 ? engineL : engineR}
@@ -72,9 +123,9 @@ export function ShipMesh({
               toneMapped={false}
             />
           </mesh>
-          {/* flame cone, points backwards (+z), z-scale driven by power */}
-          <mesh ref={side < 0 ? flameL : flameR} position={[0, 0, 0.62]} rotation={[Math.PI / 2, 0, 0]}>
-            <coneGeometry args={[0.13, 1, 8, 1, true]} />
+          {/* flame cone, points backwards (+z), y-scale = length */}
+          <mesh ref={side < 0 ? flameL : flameR} position={[0, 0, 0.55]} rotation={[Math.PI / 2, 0, 0]}>
+            <coneGeometry args={[0.12, 1, 8, 1, true]} />
             <meshBasicMaterial
               color={accent}
               transparent
@@ -86,8 +137,8 @@ export function ShipMesh({
           </mesh>
         </group>
       ))}
-      {/* neon trim strip */}
-      <mesh position={[0, -0.12, 0]} scale={[0.95, 0.03, 2.3]}>
+      {/* belly trim strip */}
+      <mesh position={[0, -0.16, -0.3]} scale={[0.5, 0.03, 2.6]}>
         <boxGeometry />
         <meshStandardMaterial color="#000000" emissive={accent} emissiveIntensity={1.6} toneMapped={false} />
       </mesh>

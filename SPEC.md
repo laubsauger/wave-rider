@@ -98,3 +98,4 @@ B5|2026-06-10|ship roll sign inverted after `rotateY(π)` flip → leans OUT of 
 B6|2026-06-10|lean coupled to track curvature → ship leans w/o steer input, feels on-rails|V18
 B7|2026-06-10|keyboard steer 0→1 instant @ 120Hz → single tap = wall slam|steer attack/release ramp in ShipState
 B8|2026-06-10|accel = avgSpeed*0.55 → near-instant top speed, no spool feel|accel curve (1-(v/vmax)^1.5), accel0 ↓
+B9|2026-06-10|event detect: pure percentile thr fails when quiet ≈ half of song (thr inside quiet cluster)|range-based thr (p15..p85 band)

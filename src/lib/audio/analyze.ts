@@ -128,19 +128,24 @@ function detectEvents(energy: Float32Array, frameInterval: number): AudioEvent[]
     sm[i] = acc / Math.min(i + 1, win)
   }
 
+  // range-based thresholds: percentiles alone fail when the quiet part is
+  // ~half the song (threshold lands inside the quiet cluster)
   const sorted = Array.from(sm).sort((a, b) => a - b)
   const pct = (p: number) => sorted[Math.floor(p * (sorted.length - 1))]
-  const p30 = pct(0.3)
-  const p50 = pct(0.5)
-  const p80 = pct(0.8)
+  const lo = pct(0.15)
+  const hi = pct(0.85)
+  const band = Math.max(1e-6, hi - lo)
+  const mid = lo + band * 0.5
+  const breakThr = lo + band * 0.25
+  const dropThr = hi - band * 0.15
 
   const events: AudioEvent[] = []
 
-  // breakdowns
+  // breakdowns: sustained low-energy runs
   const minBreak = Math.round(5 / frameInterval)
   let runStart = -1
   for (let i = 0; i <= sm.length; i++) {
-    const low = i < sm.length && sm[i] < p30
+    const low = i < sm.length && sm[i] < breakThr && band > 0.04
     if (low && runStart < 0) runStart = i
     if (!low && runStart >= 0) {
       if (i - runStart >= minBreak) {
@@ -148,26 +153,26 @@ function detectEvents(energy: Float32Array, frameInterval: number): AudioEvent[]
           type: 'breakdown',
           start: runStart * frameInterval,
           end: i * frameInterval,
-          strength: Math.min(1, (p50 - avgRange(sm, runStart, i)) / Math.max(1e-6, p50)),
+          strength: Math.min(1, (mid - avgRange(sm, runStart, i)) / Math.max(1e-6, mid)),
         })
       }
       runStart = -1
     }
   }
 
-  // drops
+  // drops: fast climb from below mid to near the top of the range
   const climbWin = Math.round(2.5 / frameInterval)
   const cooldown = Math.round(8 / frameInterval)
   let lastDrop = -cooldown
   for (let i = climbWin; i < sm.length; i++) {
     if (i - lastDrop < cooldown) continue
-    if (sm[i] > p80 && sm[i - climbWin] < p50) {
+    if (band > 0.04 && sm[i] > dropThr && sm[i - climbWin] < mid) {
       const t = i * frameInterval
       events.push({
         type: 'drop',
         start: t,
         end: t + 1,
-        strength: Math.min(1, (sm[i] - sm[i - climbWin]) / Math.max(1e-6, p80 - p30)),
+        strength: Math.min(1, (sm[i] - sm[i - climbWin]) / band),
       })
       lastDrop = i
     }

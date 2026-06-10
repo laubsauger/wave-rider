@@ -1,12 +1,55 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { GpuCanvas } from '../scene/GpuCanvas'
 import { ShipMesh } from '../scene/ShipMesh'
 import { BUILTIN_SONGS } from '../lib/audio/builtin'
-import { BUNDLED_SONGS } from '../lib/audio/bundled'
-import { startBuiltinRace, startBundledRace, startFileRace } from '../game/flow'
+import { BUNDLED_SONGS, getBundledMeta, type BundledMeta, type BundledSong } from '../lib/audio/bundled'
+import { startBuiltinRace, startBundledRace, startFileRace, startLibraryRace } from '../game/flow'
 import { useGame } from '../game/store'
+
+/** T34: peak bars rendered as one SVG, used as card background */
+function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
+  return (
+    <svg
+      viewBox={`0 0 ${peaks.length} 32`}
+      preserveAspectRatio="none"
+      className="pointer-events-none absolute inset-0 h-full w-full opacity-30"
+      aria-hidden
+    >
+      {peaks.map((p, i) => (
+        <rect key={i} x={i + 0.15} y={16 - p * 14} width={0.7} height={Math.max(1, p * 28)} fill={color} />
+      ))}
+    </svg>
+  )
+}
+
+function BundledCard({ song }: { song: BundledSong }) {
+  const [meta, setMeta] = useState<BundledMeta | null>(null)
+  useEffect(() => {
+    let alive = true
+    getBundledMeta(song.url).then((m) => alive && setMeta(m)).catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [song.url])
+
+  return (
+    <button
+      className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
+      onClick={() => void startBundledRace(song.url, song.title)}
+    >
+      {meta && <Waveform peaks={meta.waveform} color="#2ff3ff" />}
+      <span className="relative text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon)">
+        {song.title}
+      </span>
+      <span className="relative float-right mt-1 text-sm tabular-nums text-white/40">
+        {meta?.durationLabel ?? '…'}
+      </span>
+      <div className="absolute bottom-0 left-0 h-0.5 w-0 bg-(--color-neon) transition-all duration-300 group-hover:w-full" />
+    </button>
+  )
+}
 
 function SpinningShip() {
   const ref = useRef<THREE.Group>(null)
@@ -27,6 +70,7 @@ export function Menu() {
   const [error, setError] = useState<string | null>(null)
   const settings = useGame((s) => s.settings)
   const setSettings = useGame((s) => s.setSettings)
+  const userSongs = useGame((s) => s.userSongs)
 
   const onFile = async (file: File | undefined) => {
     if (!file) return
@@ -64,17 +108,7 @@ export function Menu() {
           <div className="mt-2 flex flex-col gap-2.5">
             <p className="text-[11px] tracking-[0.4em] text-white/35">SELECT FREQUENCY</p>
             {BUNDLED_SONGS.map((song) => (
-              <button
-                key={song.id}
-                className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
-                onClick={() => void startBundledRace(song.url, song.title)}
-              >
-                <span className="text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon)">
-                  {song.title}
-                </span>
-                <span className="float-right mt-1 text-sm tabular-nums text-white/40">{song.lengthLabel}</span>
-                <div className="absolute bottom-0 left-0 h-0.5 w-0 bg-(--color-neon) transition-all duration-300 group-hover:w-full" />
-              </button>
+              <BundledCard key={song.id} song={song} />
             ))}
             <button
               className="-skew-x-6 border border-dashed border-(--color-neon-2)/60 px-6 py-3.5 tracking-[0.25em] text-(--color-neon-2) transition hover:bg-(--color-neon-2)/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)]"
@@ -91,6 +125,27 @@ export function Menu() {
             />
             {error && <p className="text-center text-sm text-red-400">{error}</p>}
           </div>
+
+          {userSongs.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] tracking-[0.4em] text-white/35">YOUR FREQUENCIES</p>
+              {userSongs.map((song) => (
+                <button
+                  key={song.id}
+                  className="group relative -skew-x-6 overflow-hidden border border-(--color-neon-2)/40 bg-black/60 px-6 py-3 text-left transition hover:border-(--color-neon-2) hover:bg-(--color-neon-2)/10"
+                  onClick={() => void startLibraryRace(song.id)}
+                >
+                  <Waveform peaks={song.waveform} color="#ff2fd6" />
+                  <span className="relative text-base font-bold tracking-[0.2em] text-white group-hover:text-(--color-neon-2)">
+                    {song.title}
+                  </span>
+                  <span className="relative float-right mt-0.5 text-xs tabular-nums text-white/40">
+                    {song.bpm} BPM · {song.durationLabel}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <details className="group">
             <summary className="cursor-pointer list-none text-[11px] tracking-[0.4em] text-white/25 transition hover:text-white/50">

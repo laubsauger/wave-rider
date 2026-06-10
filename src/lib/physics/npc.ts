@@ -93,3 +93,52 @@ export function racePosition(playerS: number, npcs: readonly NpcState[]): number
   for (const n of npcs) if (n.s > playerS) ahead++
   return 1 + ahead
 }
+
+/** minimal shared shape for collision resolution (player + NPCs) */
+export interface Racer {
+  s: number
+  d: number
+  v: number
+}
+
+const HIT_DS = 5.5
+const HIT_DD = 2.8
+
+/**
+ * T32/V17: pairwise bump resolution. Momentum-style speed exchange (sum of
+ * speeds never increases), lateral shove apart, slight s de-overlap.
+ * Deterministic — fixed iteration order, no randomness.
+ * Returns total impact magnitude involving racers[0] (the player), for shake.
+ */
+export function resolveCollisions(racers: Racer[], track: TrackData): number {
+  const limit = track.width / 2 - 1.5
+  let playerImpact = 0
+  for (let i = 0; i < racers.length; i++) {
+    for (let j = i + 1; j < racers.length; j++) {
+      const a = racers[i]
+      const b = racers[j]
+      if (Math.abs(a.s - b.s) >= HIT_DS || Math.abs(a.d - b.d) >= HIT_DD) continue
+
+      const dv = a.v - b.v
+      const transfer = dv * 0.3
+      a.v = Math.max(0, a.v - transfer)
+      b.v = Math.max(0, b.v + transfer)
+
+      const dir = a.d !== b.d ? Math.sign(a.d - b.d) : a.s >= b.s ? 1 : -1
+      a.d = clamp(a.d + dir * 1.3, -limit, limit)
+      b.d = clamp(b.d - dir * 1.3, -limit, limit)
+
+      if (Math.abs(a.s - b.s) < 2.5) {
+        if (a.s >= b.s) a.s += 0.5
+        else b.s += 0.5
+      }
+
+      if (i === 0 || j === 0) playerImpact += Math.abs(transfer) + 2
+    }
+  }
+  return playerImpact
+}
+
+function clamp(x: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, x))
+}

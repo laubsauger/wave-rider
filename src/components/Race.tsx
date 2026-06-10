@@ -49,6 +49,7 @@ export function Race() {
       <GpuCanvas
         camera={{ fov: 62, near: 0.1, far: 6000, position: [0, 4, 10] }}
         dpr={quality === 'low' ? 1 : quality === 'medium' ? 1.5 : 2}
+        shadows={quality === 'high'}
       >
         <RaceScene track={track} paused={paused} quality={quality} />
         {/* C7: low tier drops the post chain entirely */}

@@ -39,6 +39,14 @@ export interface ShipState {
   lastBoostIdx: number
   /** currently grinding a wall (impact fired) */
   onWall: boolean
+  /** ramped steer input (B7) — what yaw actually follows */
+  steerSmooth: number
+  /** airborne over a crest (V16) */
+  airborne: boolean
+  /** vertical velocity while airborne, m/s */
+  vy: number
+  /** extra height above hover while airborne, m */
+  air: number
 }
 
 export interface StepEvents {
@@ -47,6 +55,10 @@ export interface StepEvents {
   wallImpact: number
   boostFired: boolean
   finished: boolean
+  takeoff: boolean
+  landed: boolean
+  /** vertical speed at touchdown */
+  landImpact: number
 }
 
 export function initialShip(): ShipState {
@@ -63,12 +75,24 @@ export function initialShip(): ShipState {
     boostsHit: 0,
     lastBoostIdx: -1,
     onWall: false,
+    steerSmooth: 0,
+    airborne: false,
+    vy: 0,
+    air: 0,
   }
 }
 
 const SHIP_HALF_WIDTH = 1.3
 const BOOST_LEN = 14
 const BOOST_HALF_WIDTH = 2.2
+/** arcade gravity, m/s² — heavier than earth so jumps stay snappy */
+const GRAVITY = 34
+
+/** road slope dy/ds at sample i */
+function slopeAt(frames: TrackFrames, i: number): number {
+  const j = Math.min(frames.count - 2, Math.max(0, i))
+  return (frames.positions[(j + 1) * 3 + 1] - frames.positions[j * 3 + 1]) / frames.ds
+}
 
 export function stepShip(
   state: ShipState,
@@ -81,52 +105,85 @@ export function stepShip(
   events.wallImpact = 0
   events.boostFired = false
   events.finished = false
+  events.takeoff = false
+  events.landed = false
+  events.landImpact = 0
 
   if (state.finished) return
   const dt = PHYSICS_DT
 
   const vmax = track.avgSpeed * 1.45 + (state.boost > 0 ? 60 : 0)
-  const accel = track.avgSpeed * 0.55
+  // B8: slower spool — accel tapers hard as v climbs, top speed is earned
+  const accel = track.avgSpeed * 0.34
   const braking = (input.brakeLeft ? 1 : 0) + (input.brakeRight ? 1 : 0)
 
   // longitudinal
-  let a = input.thrust * accel * Math.max(0, 1 - state.v / vmax)
-  a -= state.v * 0.06 // base drag
+  const vRatio = Math.min(1, state.v / vmax)
+  let a = input.thrust * accel * (1 - Math.pow(vRatio, 1.4))
+  a -= state.v * 0.05 // base drag
   a -= braking * state.v * 0.35 // airbrake scrub
   if (state.boost > 0) a += 90
   state.v = Math.max(0, state.v + a * dt)
   state.boost = Math.max(0, state.boost - dt)
 
-  // steering: airbrake on one side tightens that direction
+  // B7: steer input ramps — attack slower than release, so a tap nudges
+  // instead of slamming
   const steerAssist =
     (input.brakeLeft && !input.brakeRight ? -0.6 : 0) + (input.brakeRight && !input.brakeLeft ? 0.6 : 0)
-  const steer = clamp(input.steer + steerAssist, -1.2, 1.2)
+  const steerTarget = clamp(input.steer + steerAssist, -1.2, 1.2)
+  const attacking = Math.abs(steerTarget) > Math.abs(state.steerSmooth)
+  const rate = attacking ? 3.2 : 8
+  state.steerSmooth += clamp(steerTarget - state.steerSmooth, -rate * dt, rate * dt)
+
   const grip = 1 / (1 + state.v / 220)
-  const targetYaw = steer * 0.45 * (0.6 + grip)
+  const airGrip = state.airborne ? 0.4 : 1
+  const targetYaw = state.steerSmooth * 0.45 * (0.6 + grip) * airGrip
   state.yaw += (targetYaw - state.yaw) * Math.min(1, dt * 10)
 
   // lateral motion in track space: own steering ± curvature drift
   const i = Math.round(state.s / frames.ds)
   const k = curvatureAt(frames, i)
-  const lateralV = Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.0035
+  const lateralV = (Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.0035) * airGrip
   state.d += lateralV * dt
 
-  // walls: hard impact penalty only on first contact; grinding afterwards
-  // costs light continuous friction, not a per-step multiplier (would zero
-  // speed at 120Hz)
+  // V16 airtime: when the road falls away faster than gravity pulls, fly
+  const slopeHere = slopeAt(frames, i)
+  if (!state.airborne) {
+    const slopeAhead = slopeAt(frames, i + 2)
+    const requiredDvy = state.v * (slopeAhead - slopeHere)
+    if (requiredDvy < -GRAVITY * dt * 3 && state.v > 30) {
+      state.airborne = true
+      state.vy = state.v * slopeHere
+      state.air = 0
+      events.takeoff = true
+    }
+  } else {
+    state.vy -= GRAVITY * dt
+    state.air += (state.vy - state.v * slopeHere) * dt
+    if (state.air <= 0) {
+      events.landed = true
+      events.landImpact = Math.max(0, state.v * slopeHere - state.vy)
+      state.air = 0
+      state.vy = 0
+      state.airborne = false
+    }
+  }
+
+  // walls: hard impact penalty on contact, friction while grinding
   const limit = track.width / 2 - SHIP_HALF_WIDTH
   if (Math.abs(state.d) > limit) {
     const impact = Math.abs(lateralV)
     state.d = clamp(state.d, -limit, limit)
     if (!state.onWall) {
-      state.v *= Math.max(0.88, 1 - impact * 0.008)
-      state.yaw *= 0.4
+      // harsher than v1: walls must hurt
+      state.v *= Math.max(0.72, 1 - impact * 0.02)
+      state.yaw *= 0.35
       events.wallHit = true
       events.wallImpact = impact
       state.wallHits++
       state.onWall = true
     } else {
-      state.v = Math.max(0, state.v - state.v * 0.35 * dt)
+      state.v = Math.max(0, state.v - state.v * 0.5 * dt)
     }
   } else if (state.onWall && Math.abs(state.d) < limit - 1.2) {
     // wide release band: brushing along the wall is one impact + grind,
@@ -135,12 +192,13 @@ export function stepShip(
   }
 
   // boost pads — fire each pad once as the ship crosses it in its lane
+  // (not while airborne; you have to be on the deck to catch the field)
   for (let bi = state.lastBoostIdx + 1; bi < track.boosts.length; bi++) {
     const pad = track.boosts[bi]
     if (pad.s > state.s + BOOST_LEN) break
     if (state.s >= pad.s - BOOST_LEN && state.s <= pad.s + BOOST_LEN) {
       const padD = pad.lane * (track.width / 2 - 1.5)
-      if (Math.abs(state.d - padD) <= BOOST_HALF_WIDTH + SHIP_HALF_WIDTH) {
+      if (!state.airborne && Math.abs(state.d - padD) <= BOOST_HALF_WIDTH + SHIP_HALF_WIDTH) {
         state.boost = 1.1
         state.v += 25
         state.boostsHit++
@@ -174,10 +232,11 @@ function clamp(x: number, lo: number, hi: number): number {
 }
 
 /**
- * V14 lean convention: POSITIVE result = bank into a RIGHT turn (right side
- * dips). Inputs: yaw > 0 = steering right, curvature k > 0 = track bends
- * right. Renderers own any sign flip their model orientation needs (B5).
+ * V18 lean convention (amends V14, fixes B6): lean comes from USER STEER
+ * only — positive steer (right) banks right. Track curvature does not
+ * auto-lean the ship. Renderers own any sign flip their model orientation
+ * needs (B5).
  */
-export function computeLean(yaw: number, k: number, v: number): number {
-  return clamp(yaw * 1.5 + k * v * 0.5, -0.85, 0.85)
+export function computeLean(steer: number, v: number): number {
+  return clamp(steer * (0.55 + Math.min(0.3, v / 700)), -0.85, 0.85)
 }

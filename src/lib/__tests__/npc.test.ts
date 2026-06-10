@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { generateTrack } from '../track/generate'
 import { sampleTrack } from '../track/sample'
-import { initialNpc, makeNpcs, racePosition, stepNpc, type NpcState } from '../physics/npc'
+import { initialNpc, makeNpcs, racePosition, resolveCollisions, stepNpc, type NpcState } from '../physics/npc'
 import { computeLean } from '../physics/ship'
 import type { AudioFeatures } from '../audio/analyze'
 
@@ -79,14 +79,52 @@ describe('NPC racers (T20, V13, V15)', () => {
   })
 })
 
-describe('computeLean (V14)', () => {
+describe('computeLean (V18, amends V14)', () => {
   it('steering right banks right (positive)', () => {
-    expect(computeLean(0.3, 0, 100)).toBeGreaterThan(0)
+    expect(computeLean(0.5, 100)).toBeGreaterThan(0)
   })
-  it('track curving right banks right even without steering', () => {
-    expect(computeLean(0, 0.008, 150)).toBeGreaterThan(0)
+  it('B6: no steer → no lean, at any speed', () => {
+    expect(computeLean(0, 50)).toBe(0)
+    expect(computeLean(0, 300)).toBe(0)
   })
-  it('left turn banks left (negative)', () => {
-    expect(computeLean(-0.3, -0.005, 120)).toBeLessThan(0)
+  it('left steer banks left (negative)', () => {
+    expect(computeLean(-0.5, 100)).toBeLessThan(0)
+  })
+})
+
+describe('collisions (T32, V17)', () => {
+  const makeRacers = () => [
+    { s: 100, d: 0, v: 200 },
+    { s: 103, d: 1.2, v: 120 },
+    { s: 50, d: 0, v: 80 }, // far away, untouched
+  ]
+
+  it('deterministic, no energy creation, walls respected', () => {
+    const a = makeRacers()
+    const b = makeRacers()
+    const ia = resolveCollisions(a, track)
+    const ib = resolveCollisions(b, track)
+    expect(a).toEqual(b)
+    expect(ia).toBe(ib)
+    expect(ia).toBeGreaterThan(0) // racers 0 and 1 overlap → player impact
+
+    const sumBefore = makeRacers().reduce((x, r) => x + r.v, 0)
+    const sumAfter = a.reduce((x, r) => x + r.v, 0)
+    expect(sumAfter).toBeLessThanOrEqual(sumBefore + 1e-9)
+
+    const limit = track.width / 2 - 1.5
+    for (const r of a) expect(Math.abs(r.d)).toBeLessThanOrEqual(limit + 1e-9)
+    // distant racer untouched
+    expect(a[2]).toEqual(makeRacers()[2])
+  })
+
+  it('faster ship slows, slower ship speeds up (energy transfer)', () => {
+    const racers = [
+      { s: 100, d: 0, v: 200 },
+      { s: 102, d: 0.5, v: 100 },
+    ]
+    resolveCollisions(racers, track)
+    expect(racers[0].v).toBeLessThan(200)
+    expect(racers[1].v).toBeGreaterThan(100)
   })
 })
