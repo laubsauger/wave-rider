@@ -290,8 +290,8 @@ export function RaceScene({
       <ExhaustTrails
         shipRef={shipGroup}
         offsets={[
-          [-0.58, -0.04, 1.5],
-          [0.58, -0.04, 1.5],
+          [-0.45, 0.22, 1.6],
+          [0.45, 0.22, 1.6],
         ]}
         color={track.theme.edge}
         intensity={() =>
@@ -485,8 +485,8 @@ function NpcShips({
             <ExhaustTrails
               shipRef={groupRefs[i]}
               offsets={[
-                [-0.58, -0.04, 1.5],
-                [0.58, -0.04, 1.5],
+                [-0.45, 0.22, 1.6],
+                [0.45, 0.22, 1.6],
               ]}
               color={spec.accent}
               intensity={npcPower}

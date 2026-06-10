@@ -115,9 +115,10 @@ T59|x|ship v4: lathed faceted fuselage, armor plates, antenna, underglow, decal 
 T60|x|corkscrews: track roll frame transport, barrel-roll sections @ onset-dense high energy|V1,C11
 T61|x|fov surge ↑ @ top speed|C11
 T62|.|full loops + GLTF-grade hulls → next session (quaternion course walk; ROADMAP)|—
-T63|.|camera steering damping: cubic response, slow-filtered, speed-scaled — pivots on strong/slow only|C11
-T64|.|gate wave: per-gate colors restored, beat flash radiates from player (proximity falloff), ⊥ uniform white blink|V19,C11
-T65|.|traction sim: lateral velocity state w/ grip convergence, airbrakes bite; banked corners (roll ∝ k); bank → grip ↑|V18,V20
+T63|x|camera steering damping: cubic response, slow-filtered, speed-scaled — pivots on strong/slow only|C11
+T64|x|gate wave: per-gate colors restored, beat flash radiates from player (proximity falloff), ⊥ uniform white blink|V19,C11
+T65|x|traction sim: lateral velocity state w/ grip convergence, airbrakes bite; banked corners (roll ∝ k); bank → grip ↑|V18,V20
+T66|x|ship v5: WipEout wedge — flat delta planform extrude, chamfered, embedded engine block, twin glow slots|C11
 
 ## §B bugs
 
