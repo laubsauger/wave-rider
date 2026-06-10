@@ -354,6 +354,8 @@ export function RaceScene({
     poseAt(frames, ship.s, ship.d, HOVER_HEIGHT + ship.air, s.pose)
     const g = shipGroup.current
     if (g) {
+      // T109: first person = no hull in the way
+      g.visible = cameraMode !== 'cockpit'
       const bobAmp = 1 + ship.v / 350
       const bob = (Math.sin(ship.time * 7) * 0.05 + Math.sin(ship.time * 13.7) * 0.02) * bobAmp
       g.position.set(
@@ -522,7 +524,7 @@ export function RaceScene({
       <ShadowRig shipRef={shipGroup} enabled={quality === 'high'} />
       <Track track={track} frames={frames} />
       <Scenery track={track} frames={frames} />
-      <GridFloor track={track} />
+      <GridFloor track={track} frames={frames} />
       <Ridges track={track} frames={frames} />
       <group ref={shipGroup}>
         <ShipMesh
@@ -631,8 +633,9 @@ function updateCamera(
       pose.pz + pose.tz * 12 + pose.bz * lookIn,
     )
   } else {
-    // T69: nose cam — ahead of the canopy bubble
-    camPos.set(pose.px - pose.tx * 1.7 + pose.nx * 0.5, pose.py - pose.ty * 1.7 + pose.ny * 0.5, pose.pz - pose.tz * 1.7 + pose.nz * 0.5)
+    // T69 → T109: cockpit cam sits AT the canopy front, ahead of the hull
+    // (the hull itself is hidden in cockpit mode — see ship visible toggle)
+    camPos.set(pose.px + pose.tx * 1.1 + pose.nx * 0.55, pose.py + pose.ty * 1.1 + pose.ny * 0.55, pose.pz + pose.tz * 1.1 + pose.nz * 0.55)
     camera.position.copy(camPos)
     camTarget.set(pose.px + pose.tx * 30, pose.py + pose.ty * 30, pose.pz + pose.tz * 30)
   }

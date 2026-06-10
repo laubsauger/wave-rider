@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { attribute, bumpMap, color, float, floor, fract, hash, min, sin, smoothstep, uniform, uv } from 'three/tsl'
+import { attribute, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
@@ -83,62 +83,35 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     return m
   }, [uRail])
 
-  // T22: road surface = deep black + lateral glow stripes every 20m (speed
-  // cue) + dashed center line. Stripe brightness rides the music (T21).
+  // T105: glass deck — near-black reflective surface, slightly transparent
+  // so the world reads below ("hyperspace racer on a glass plane"). Opacity
+  // firms up with the section energy. ONE pattern: lateral speed stripes
+  // (T22) — center dash, conduits, panel bump all OUT (user feedback).
   const uEnergy = useMemo(() => uniform(0), [])
   // T39: stripe color drifts toward the current section palette at runtime
   const uStripeCol = useMemo(() => uniform(new THREE.Color(track.theme.glow)), [track.theme.glow])
-  // R9g: energy veins crawl down-track, pace rides the music
-  const uVeinFlow = useMemo(() => uniform(0), [])
+  // T105: glass opacity rides the section energy
+  const uOpacity = useMemo(() => uniform(0.8), [])
   const roadMat = useMemo(() => {
-    const m = new THREE.MeshStandardNodeMaterial({
-      color: new THREE.Color(track.theme.road),
-      metalness: 0.55,
-      roughness: 0.38,
+    const m = new THREE.MeshPhysicalNodeMaterial({
+      color: new THREE.Color('#040609'),
+      metalness: 0.85,
+      roughness: 0.12,
       side: THREE.DoubleSide, // T46: no see-through from below at launch
+      transparent: true,
     })
+    m.opacityNode = uOpacity
     const glow = uStripeCol
-    const edge = color(new THREE.Color(track.theme.edge))
     const v = fract(uv().y)
     const stripe = smoothstep(0.93, 0.965, v).sub(smoothstep(0.965, 1.0, v))
+    // faint neon edge lines where deck meets the rails
     const xDist = uv().x.sub(0.5).abs()
-    const f3 = fract(uv().y.mul(3))
-    const dashGate = smoothstep(0.02, 0.08, f3).mul(smoothstep(0.62, 0.55, f3))
-    const dash = smoothstep(0.02, 0.011, xDist).mul(dashGate)
-
-    // R9g/T104: panel plating — recessed seams between deck panels, bump-
-    // mapped via the procedural height field (dFdx/dFdy under the hood)
-    const px = uv().x.mul(3)
-    const py = uv().y.mul(2)
-    const bx = min(fract(px), float(1).sub(fract(px)))
-    const by = min(fract(py), float(1).sub(fract(py)))
-    const panelHeight = smoothstep(0.0, 0.045, bx).mul(smoothstep(0.0, 0.045, by))
-    m.normalNode = bumpMap(panelHeight.mul(0.35))
-    // per-panel wear: cell-hashed albedo + roughness variation
-    const cellId = floor(px).add(floor(py).mul(57.31))
-    const wear = hash(cellId)
-    m.colorNode = color(new THREE.Color(track.theme.road)).mul(wear.mul(0.18).add(0.9))
-    m.roughnessNode = wear.mul(0.14).add(0.3)
-
-    // R9g/T104: energy conduits — straight twin lines flanking the deck,
-    // subtle pulse crawling down-track. (Snaking version read as wonky
-    // against the lateral stripes — user feedback.)
-    const vy = uv().y.mul(0.32).add(uVeinFlow)
-    const dv1 = uv().x.sub(0.18).abs()
-    const dv2 = uv().x.sub(0.82).abs()
-    const veinPulse = sin(vy.mul(6)).mul(0.5).add(0.5)
-    const vein = smoothstep(0.009, 0.0025, dv1)
-      .add(smoothstep(0.009, 0.0025, dv2))
-      .mul(veinPulse.mul(0.5).add(0.2))
-      .mul(uEnergy.mul(0.8).add(0.06))
-
+    const edgeLine = smoothstep(0.46, 0.495, xDist)
     m.emissiveNode = glow
       .mul(stripe.mul(uEnergy.mul(1.6).add(0.4)))
-      .add(edge.mul(dash.mul(0.45)))
-      .add(glow.mul(vein))
-      .add(glow.mul(0.05))
+      .add(glow.mul(edgeLine.mul(uEnergy.mul(0.5).add(0.25))))
     return m
-  }, [track.theme, uEnergy, uStripeCol, uVeinFlow])
+  }, [track.theme, uEnergy, uStripeCol, uOpacity])
 
   // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
   // beat = sharp onset spikes layered on top of the energy floor.
@@ -159,8 +132,8 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const goFlash = cd <= 0 && cd > -1 ? 1 + cd : 0
     if (gantryMat.current) gantryMat.current.emissiveIntensity = 2.6 + goFlash * 12
     if (stripMat.current) stripMat.current.emissiveIntensity = 0.9 + goFlash * 9
-    // R9g: veins crawl faster when the music pushes
-    uVeinFlow.value += dt * (0.04 + e * 0.25)
+    // T105: glass firms up when the music pushes, thins in breakdowns
+    uOpacity.value = 0.62 + secE * 0.22 + e * 0.12
     const sectionColor = track.sectionPalettes[telemetry.sectionIndex]
     if (sectionColor) {
       stripeTarget.set(sectionColor)
@@ -256,10 +229,11 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
-      {/* T73: start apron — dark deck, no glow band */}
+      {/* T73/T108: start apron — same black glass family as the road, low
+          roughness so it goes dark instead of catching the env wash */}
       <mesh position={deck.pos} quaternion={deck.q}>
         <boxGeometry args={[track.width + 10, 2.7, 240]} />
-        <meshStandardMaterial color="#05070d" metalness={0.4} roughness={0.8} />
+        <meshPhysicalMaterial color="#04060a" metalness={0.85} roughness={0.12} />
       </mesh>
       {/* start gantry over the line */}
       {[-1, 1].map((side) => (

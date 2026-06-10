@@ -13,16 +13,17 @@ function planformGeometry(widthScale: number, tipSweep: number): THREE.ExtrudeGe
   const w = widthScale
   const shape = new THREE.Shape()
   // symmetric delta planform, y = along ship (− nose), x = span
+  // T109: tips pulled in (was 1.28w — read chonky)
   shape.moveTo(0, -2.7) // nose tip
   shape.lineTo(0.34 * w, -1.1)
-  shape.lineTo(1.28 * w, 0.55 + tipSweep) // right wing tip
-  shape.lineTo(0.84 * w, 0.92 + tipSweep)
+  shape.lineTo(1.0 * w, 0.55 + tipSweep) // right wing tip
+  shape.lineTo(0.72 * w, 0.92 + tipSweep)
   shape.lineTo(0.36 * w, 0.85)
   shape.lineTo(0.22 * w, 1.46) // engine pod trailing edge — pinched tail
   shape.lineTo(-0.22 * w, 1.46)
   shape.lineTo(-0.36 * w, 0.85)
-  shape.lineTo(-0.84 * w, 0.92 + tipSweep)
-  shape.lineTo(-1.28 * w, 0.55 + tipSweep) // left wing tip
+  shape.lineTo(-0.72 * w, 0.92 + tipSweep)
+  shape.lineTo(-1.0 * w, 0.55 + tipSweep) // left wing tip
   shape.lineTo(-0.34 * w, -1.1)
   shape.closePath()
   const geo = new THREE.ExtrudeGeometry(shape, {

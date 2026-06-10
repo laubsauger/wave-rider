@@ -11,13 +11,13 @@ import { mulberry32, rngRange } from '../../lib/prng'
  * looks like every other dart.
  */
 
-/** conservative solid half-span of the v5 planform at length z (nose -2.7 → tail 1.42) */
+/** conservative solid half-span of the v6 planform at length z (nose -2.7 → tail 1.46) */
 function spanAt(z: number, w: number): number {
-  if (z < -2.6 || z > 1.38) return 0
+  if (z < -2.6 || z > 1.42) return 0
   if (z < -1.1) return 0.34 * w * ((z + 2.7) / 1.6)
-  if (z < 0.55) return (0.34 + (1.28 - 0.34) * ((z + 1.1) / 1.65)) * w * 0.92
-  if (z < 0.85) return (0.88 - (0.88 - 0.42) * ((z - 0.55) / 0.3)) * w * 0.92
-  return 0.36 * w
+  if (z < 0.55) return (0.34 + (1.0 - 0.34) * ((z + 1.1) / 1.65)) * w * 0.92
+  if (z < 0.85) return (0.72 - (0.72 - 0.36) * ((z - 0.55) / 0.3)) * w * 0.92
+  return 0.24 * w
 }
 
 function box(
@@ -69,11 +69,6 @@ export function buildHullDetail(variant: 0 | 1 | 2): HullDetail {
     z += len + rngRange(rng, 0.08, 0.16)
   }
 
-  // twin tail fins — angled blades flanking the engine pod (silhouette!)
-  for (const side of [-1, 1]) {
-    detail.push(box(0.045, 0.52, 0.72, side * 0.3 * w, topY + 0.16, 1.0, 0, side * -0.22))
-  }
-
   // wing-root intake scoops — chunky, swept with the leading edge
   for (const side of [-1, 1]) {
     detail.push(box(0.24 * w, 0.09, 0.46, side * 0.46 * w, topY - 0.01, 0.12, side * -0.3))
@@ -86,13 +81,14 @@ export function buildHullDetail(variant: 0 | 1 | 2): HullDetail {
   for (const side of [-1, 1]) {
     accent.push(box(0.3 * w, 0.022, 0.05, side * 0.5 * w, topY - 0.02, 0.45, side * -0.35))
   }
-  // livery: angled wing slashes, count varies per variant
+  // livery: angled wing slashes, count varies per variant (inboard of the
+  // narrower v6 tips)
   const stripes = 2 + (variant % 2)
   for (let si = 0; si < stripes; si++) {
     for (const side of [-1, 1]) {
       const sz = 0.28 + si * rngRange(rng, 0.2, 0.28)
       accent.push(
-        box(0.46 * w, 0.016, 0.06, side * (0.55 + si * 0.12) * w, topY - 0.025, sz, side * -0.5),
+        box(0.38 * w, 0.016, 0.06, side * (0.46 + si * 0.1) * w, topY - 0.025, sz, side * -0.5),
       )
     }
   }

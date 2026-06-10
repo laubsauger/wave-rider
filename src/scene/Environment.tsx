@@ -8,18 +8,75 @@ import { poseAt, type FramePose, type TrackFrames } from '../lib/track/sample'
 import { telemetry } from '../game/telemetry'
 
 /**
- * T31: neon grid floor far below the track — world-space TSL grid, fades
- * with distance, breathes with the music.
+ * T31 → T107: neon grid floor — low-res ribbon that FOLLOWS the track's
+ * path and elevation (~85m below, smoothed), so the world has an actual
+ * floor that weaves with the course instead of a flat plane slicing
+ * through it at one height. World-space TSL grid, fades with distance,
+ * breathes with the music.
  */
-export function GridFloor({ track }: { track: TrackData }) {
-  const meshRef = useRef<THREE.Mesh>(null)
+export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFrames }) {
   const uPulse = useMemo(() => uniform(0.4), [])
+
+  const geometry = useMemo(() => {
+    const STEP = 90 // m along track — low res on purpose
+    const LATERAL = 14
+    const HALF_W = 850
+    const n = Math.max(3, Math.floor(track.length / STEP))
+    const cx: number[] = []
+    const cy: number[] = []
+    const cz: number[] = []
+    for (let i = 0; i <= n; i++) {
+      const fi = Math.min(frames.count - 1, Math.round((i * STEP) / frames.ds))
+      cx.push(frames.positions[fi * 3])
+      cy.push(frames.positions[fi * 3 + 1])
+      cz.push(frames.positions[fi * 3 + 2])
+    }
+    // smooth the height twice so loops/jumps don't tent the floor
+    for (let p = 0; p < 3; p++) {
+      for (let i = 1; i < cy.length - 1; i++) cy[i] = (cy[i - 1] + cy[i] + cy[i + 1]) / 3
+    }
+    const positions = new Float32Array((n + 1) * LATERAL * 3)
+    for (let i = 0; i <= n; i++) {
+      const i0 = Math.max(0, i - 1)
+      const i1 = Math.min(n, i + 1)
+      let dx = cx[i1] - cx[i0]
+      let dz = cz[i1] - cz[i0]
+      const dl = Math.hypot(dx, dz) || 1
+      dx /= dl
+      dz /= dl
+      // horizontal perpendicular to the path
+      const pxd = -dz
+      const pzd = dx
+      for (let j = 0; j < LATERAL; j++) {
+        const t = (j / (LATERAL - 1)) * 2 - 1
+        const o = (i * LATERAL + j) * 3
+        positions[o] = cx[i] + pxd * t * HALF_W
+        positions[o + 1] = cy[i] - 85
+        positions[o + 2] = cz[i] + pzd * t * HALF_W
+      }
+    }
+    const indices = new Uint32Array(n * (LATERAL - 1) * 6)
+    let k = 0
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < LATERAL - 1; j++) {
+        const a = i * LATERAL + j
+        const b = a + LATERAL
+        indices.set([a, b, a + 1, a + 1, b, b + 1], k)
+        k += 6
+      }
+    }
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    g.setIndex(new THREE.BufferAttribute(indices, 1))
+    return g
+  }, [track, frames])
 
   const material = useMemo(() => {
     const m = new THREE.MeshBasicNodeMaterial({
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
+      side: THREE.DoubleSide,
     })
     const gx = abs(fract(positionWorld.x.div(45)).sub(0.5))
     const gz = abs(fract(positionWorld.z.div(45)).sub(0.5))
@@ -31,17 +88,12 @@ export function GridFloor({ track }: { track: TrackData }) {
     return m
   }, [track.theme.glow, uPulse])
 
-  useFrame(({ camera }) => {
+  useFrame(() => {
     // T57: the floor shimmers with the high end, not the beat
     uPulse.value = 0.2 + (telemetry.centroid * 0.55 + telemetry.energy * 0.15) * track.theme.pulse
-    if (meshRef.current) meshRef.current.position.set(camera.position.x, -70, camera.position.z)
   })
 
-  return (
-    <mesh ref={meshRef} rotation={[-Math.PI / 2, 0, 0]} material={material} frustumCulled={false}>
-      <planeGeometry args={[3600, 3600, 1, 1]} />
-    </mesh>
-  )
+  return <mesh geometry={geometry} material={material} frustumCulled={false} />
 }
 
 /**

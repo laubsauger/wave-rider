@@ -60,7 +60,7 @@ export function Race() {
       >
         <RaceScene track={track} paused={paused} quality={quality} />
         {/* C7: low tier drops the post chain entirely */}
-        <Effects fxIntensity={quality === 'low' ? 0 : fxIntensity} theme={track.theme} />
+        <Effects fxIntensity={quality === 'low' ? 0 : fxIntensity} />
       </GpuCanvas>
       <Hud accent={track.theme.edge} track={track} />
       {/* master mute — M key or click */}

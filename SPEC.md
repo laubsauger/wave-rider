@@ -158,6 +158,11 @@ T101|x|trails keep owner color: narrow age-faded white core (0.78–0.99), accen
 T102|x|photosensitivity warning: one-time ack gate before menu (localStorage), points at FX slider|V10
 T103|x|menu backdrop: drifting star shell + breathing nebula disc ⊥ pure black; now-playing font ↓|C11
 T104|x|AAA fidelity arc → ROADMAP R9a–R9g (GLTF hulls, loops, post polish, env reflections, sparks, biomes, surface detail)|—
+T105|x|glass road: black glass deck (theme diffuse ↓↓, reflective, slight transparency), neon highlights only; opacity ↑ w/ section energy; ONE pattern — lateral stripes stay, center dash + conduits + panel bump OUT|C11,V3
+T106|x|post v4: grain seed fix (B25 static streaks) + amplitude ↓, chromatic aberration ∝ speed, per-theme shadow tint REMOVED (too much), DoF deferred|V10,V21
+T107|x|terrain floor: low-res grid ribbon follows track path + elevation (y−85), ⊥ flat plane @ fixed height through world|C11
+T108|x|start apron matches glass road — ⊥ pale spawn slab|C11
+T109|x|ship v6: wing tips narrowed (chonk ↓), tail fins OUT, cockpit cam @ canopy front + hull hidden in cockpit (⊥ view obstruction)|C11,V7
 
 ## §B bugs
 
@@ -185,3 +190,4 @@ B21|2026-06-10|conn close/error → full disconnect() destroys HOST peer too →
 B22|2026-06-10|host startRace() immediately after sending bytes → counts down alone while joiner still transfers+analyzes; flip-on-first-packet ≠ sync|ready handshake + host-arbitrated start (T88)
 B23|2026-06-10|post outputNode vec4 s-curve warped alpha → WebGPU pipeline died SILENT: black world, 0 console errors, DOM HUD fine (T104/R9c)|V21
 B24|2026-06-10|telemetry.countdown init 0 sits INSIDE GO window (-1,0] → HUD flashed GO on mount before sim wrote 3.8; stale post-race value re-flashed on next mount|init 9 + RaceScene mount reset + READY state >3
+B25|2026-06-10|grain hash(seed).toUint() quantizes — seed multipliers below pixel pitch → neighbor px collapse to same hash → horizontal static streaks crawling frame|seed mults ≫ resolution (≈39k/21k) + amplitude ↓ (T106)
