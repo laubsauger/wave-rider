@@ -40,9 +40,12 @@ function BundledCard({ song }: { song: BundledSong }) {
       onClick={() => void startBundledRace(song.url, song.title)}
     >
       {meta && <Waveform peaks={meta.waveform} color="#2ff3ff" />}
-      <span className="relative text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon)">
+      <span className="relative block text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon)">
         {song.title}
       </span>
+      {song.artist && (
+        <span className="relative block text-[10px] tracking-[0.35em] text-white/35">{song.artist}</span>
+      )}
       <span className="relative float-right mt-1 text-sm tabular-nums text-white/40">
         {meta?.durationLabel ?? '…'}
       </span>
