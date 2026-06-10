@@ -42,7 +42,3 @@ Thumbs.db
 
 # Local history (VS Code extension)
 .lh/
-
-# Local dev audio (built-in songs are synthesized; upload tracks in-app)
-audio/*
-!audio/.gitkeep
