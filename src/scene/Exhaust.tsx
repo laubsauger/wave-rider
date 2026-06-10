@@ -137,11 +137,11 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
 
       const n = trail.filled
       for (let i = 0; i < POINTS; i++) {
-        const j = Math.min(i, n - 1)
+        const j = Math.max(0, Math.min(i, n - 1))
         const x = trail.history[j * 3]
         const y = trail.history[j * 3 + 1]
         const z = trail.history[j * 3 + 2]
-        const k = Math.min(j + 1, n - 1)
+        const k = Math.max(0, Math.min(j + 1, n - 1))
         tmp.dir.set(trail.history[k * 3] - x, trail.history[k * 3 + 1] - y, trail.history[k * 3 + 2] - z)
         tmp.toCam.set(camera.position.x - x, camera.position.y - y, camera.position.z - z)
         tmp.side.crossVectors(tmp.dir, tmp.toCam)

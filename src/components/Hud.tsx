@@ -163,20 +163,27 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
       const kph = telemetry.speed * 3.6
       if (speedRef.current) speedRef.current.textContent = String(Math.round(kph))
       if (timeRef.current) timeRef.current.textContent = fmtTime(telemetry.timeMs)
-      if (countdownRef.current) {
-        const c = telemetry.countdown
-        const el = countdownRef.current
-        if (c > 0) {
-          el.textContent = String(Math.ceil(c))
-          el.style.opacity = String(0.4 + (c % 1) * 0.6)
-          el.style.transform = `translate(-50%, -50%) scale(${1 + (1 - (c % 1)) * 0.35})`
-        } else if (c > -0.9) {
-          el.textContent = 'GO'
-          el.style.opacity = String(Math.max(0, (c + 0.9) / 0.9))
-          el.style.transform = `translate(-50%, -50%) scale(${1.2 - (c + 0.9) * 0.2})`
+      const el = countdownRef.current
+      if (el) {
+        if (telemetry.syncState === 'waiting') {
+          el.textContent = 'WAITING FOR OPPONENT...'
+          el.className = 'absolute inset-0 flex items-center justify-center text-4xl font-bold tracking-[0.2em] text-white/80 animate-pulse'
         } else {
-          el.textContent = ''
-          el.style.opacity = '0'
+          el.className = 'absolute inset-0 flex items-center justify-center text-8xl font-bold italic tracking-widest text-white/80 drop-shadow-[0_0_20px_currentColor] sm:text-[12rem]'
+          const c = Math.ceil(telemetry.countdown)
+          if (c > 0 && c <= 3) el.textContent = String(c)
+          else if (telemetry.countdown > -1 && telemetry.countdown <= 0) el.textContent = 'GO'
+          else el.textContent = ''
+          if (telemetry.countdown > -1 && telemetry.countdown <= 0) {
+            el.style.transform = `scale(${1 + Math.max(0, telemetry.countdown + 1) * 0.5})`
+            el.style.opacity = String(Math.max(0, telemetry.countdown + 1))
+            el.style.color = '#ff2fd6'
+          } else if (c > 0 && c <= 3) {
+            const frac = c - telemetry.countdown
+            el.style.transform = `scale(${1.2 - frac * 0.2})`
+            el.style.opacity = String(1 - frac)
+            el.style.color = accent
+          }
         }
       }
       if (posRef.current) posRef.current.textContent = `${telemetry.position}`

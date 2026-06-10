@@ -11,7 +11,26 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    network.onStateChange = (s) => setP2pState(s)
+    network.onStateChange = (s) => {
+      setP2pState(s)
+      if (s === 'connected' && network.isHost) {
+        const state = useGame.getState()
+        const title = state.songTitle
+        const builtin = BUNDLED_SONGS.find((song) => song.title === title)
+        if (builtin) {
+          network.send({ type: 'lobby_song_builtin', songId: builtin.id })
+        } else {
+          const userSong = state.userSongs.find((song) => song.title === title)
+          if (userSong) {
+            network.send({ type: 'lobby_song_custom', title: userSong.title, bytes: userSong.bytes })
+          } else {
+            setError('Could not find track bytes to send!')
+            return
+          }
+        }
+        state.startRace()
+      }
+    }
     network.onMessage = (msg) => {
       handleNetworkMessage(msg).catch((e) => setError(String(e)))
     }
@@ -32,31 +51,14 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
     if (msg.type === 'lobby_song_builtin') {
       const song = BUNDLED_SONGS.find(s => s.id === msg.songId)
       if (song) {
-        useGame.getState().setMultiplayer(true)
+        useGame.getState().setMultiplayer(true, false)
         await startBundledRace(song.url, song.title)
       }
     } else if (msg.type === 'lobby_song_custom') {
       const file = new File([msg.bytes], msg.title, { type: 'audio/mpeg' })
-      useGame.getState().setMultiplayer(true)
+      useGame.getState().setMultiplayer(true, false)
       await startFileRace(file)
     }
-  }
-
-  const selectBuiltin = async (songId: string) => {
-    network.send({ type: 'lobby_song_builtin', songId })
-    const song = BUNDLED_SONGS.find(s => s.id === songId)
-    if (song) {
-      useGame.getState().setMultiplayer(true)
-      await startBundledRace(song.url, song.title)
-    }
-  }
-
-  const selectCustom = async (file: File | undefined) => {
-    if (!file) return
-    const bytes = await file.arrayBuffer()
-    network.send({ type: 'lobby_song_custom', title: file.name, bytes })
-    useGame.getState().setMultiplayer(true)
-    await startFileRace(file)
   }
 
   const cancel = () => {
@@ -91,31 +93,9 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
         )}
 
         {p2pState === 'connected' && network.isHost && (
-          <div className="flex flex-col gap-4">
-            <p className="text-center text-sm tracking-widest text-[#b4ff39]">OPPONENT CONNECTED!</p>
-            <p className="text-xs tracking-widest text-white/50">SELECT TRACK TO BEGIN:</p>
-            {BUNDLED_SONGS.map(song => (
-              <button 
-                key={song.id}
-                onClick={() => void selectBuiltin(song.id)}
-                className="border border-white/20 bg-black py-2 hover:bg-white/10"
-              >
-                {song.title}
-              </button>
-            ))}
-            <button 
-              onClick={() => fileInput.current?.click()}
-              className="border border-dashed border-(--color-neon-2) py-2 text-(--color-neon-2) hover:bg-(--color-neon-2)/10"
-            >
-              UPLOAD CUSTOM TRACK
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept="audio/*"
-              className="hidden"
-              onChange={(e) => void selectCustom(e.target.files?.[0])}
-            />
+          <div className="text-center">
+            <p className="text-sm tracking-widest text-[#b4ff39]">OPPONENT CONNECTED!</p>
+            <p className="mt-4 animate-pulse text-xs text-white/50">SENDING TRACK DATA...</p>
           </div>
         )}
 

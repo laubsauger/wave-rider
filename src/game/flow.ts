@@ -38,7 +38,7 @@ export async function startBuiltinRace(spec: SongSpec): Promise<void> {
   const track = generateTrack(features)
   const songBuffer = pcmToAudioBuffer(pcm, audioContext())
   game.setAnalysis(1)
-  useGame.getState().loadRace({ features, track, songBuffer, songTitle: spec.title })
+  useGame.getState().setupRace({ features, track, songBuffer, songTitle: spec.title })
 }
 
 export async function startBundledRace(url: string, title: string): Promise<void> {
@@ -98,5 +98,5 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = f
       bytes: bytes.slice(0),
     })
   }
-  useGame.getState().loadRace({ features, track, songBuffer, songTitle: title })
+  useGame.getState().setupRace({ features, track, songBuffer, songTitle: title })
 }

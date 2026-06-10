@@ -46,6 +46,11 @@ export function NetworkShip({ s, d, v, yaw, frames, accent, finished, isGhost }:
     <group>
       <group ref={groupRef}>
         <ShipMesh accent={accent} power={power} variant={1} opacity={isGhost ? 0.35 : 1} transparent={isGhost} />
+        {/* Indicator arrow pointing at the ship, visible through walls */}
+        <mesh position={[0, 4, 0]} rotation={[Math.PI, 0, 0]} renderOrder={999}>
+          <coneGeometry args={[0.5, 1.5, 4]} />
+          <meshBasicMaterial color={accent} depthTest={false} depthWrite={false} transparent opacity={0.8} />
+        </mesh>
       </group>
       <ExhaustTrails
         shipRef={groupRef}

@@ -8,6 +8,8 @@ import { Race } from './components/Race'
 import { Results } from './components/Results'
 import { RotateOverlay } from './components/RotateOverlay'
 import { MultiplayerLobby } from './components/MultiplayerLobby'
+import { TrackSetup } from './components/TrackSetup'
+import { GhostLobby } from './components/GhostLobby'
 import { deserializeGhost } from './lib/network/ghost'
 
 export default function App() {
@@ -32,7 +34,8 @@ export default function App() {
         deserializeGhost(ghostData)
           .then(data => {
             useGame.getState().setGhostPlayback(data)
-            setScreen('menu')
+            window.history.replaceState({}, '', window.location.pathname)
+            setScreen('ghost-lobby')
           })
           .catch(e => {
             console.error('Invalid ghost data', e)
@@ -54,6 +57,8 @@ export default function App() {
       {screen === 'unsupported' && <Unsupported />}
       {screen === 'menu' && <Menu />}
       {screen === 'multiplayer-lobby' && <MultiplayerLobby initialJoinId={new URLSearchParams(window.location.search).get('join') || undefined} />}
+      {screen === 'track-setup' && <TrackSetup />}
+      {screen === 'ghost-lobby' && <GhostLobby />}
       {screen === 'analyzing' && <Analyzing />}
       {screen === 'race' && <Race />}
       {screen === 'results' && <Results />}

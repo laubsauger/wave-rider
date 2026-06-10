@@ -65,6 +65,7 @@ export function RaceScene({
   const toggleCamera = useGame((s) => s.toggleCamera)
   const finishRace = useGame((s) => s.finishRace)
   const isMultiplayer = useGame((s) => s.isMultiplayer)
+  const isHost = useGame((s) => s.isHost)
   const ghostPlayback = useGame((s) => s.ghostPlayback)
   const setGhostData = useGame((s) => s.setGhostData)
 
@@ -115,6 +116,8 @@ export function RaceScene({
     opponent: null as OpponentState | null,
     ghostReplayPos: { s: 0, d: 0, v: 0, yaw: 0 },
     lastNetSend: 0,
+    syncState: 'running' as 'waiting' | 'syncing' | 'running',
+    syncStartTime: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -126,6 +129,19 @@ export function RaceScene({
     })
     const s = sim.current
     s.npcs = isMultiplayer || ghostPlayback ? [] : npcSpecs.map((_, i) => initialNpc(i))
+
+    if (isMultiplayer) {
+      s.syncState = 'waiting'
+      telemetry.syncState = 'waiting'
+      s.ship.d = isHost ? -5 : 5
+      if (s.opponent) {
+        s.opponent.d = isHost ? 5 : -5
+      }
+    } else {
+      s.syncState = 'running'
+      telemetry.syncState = 'ready'
+    }
+
     // T35: song starts at GO, not on mount — see countdown in the frame loop
     s.started = true
 
@@ -139,6 +155,13 @@ export function RaceScene({
           sim.current.opponent = msg.state
         } else if (msg.type === 'race_finish') {
           useGame.getState().setOpponentFinish(msg.timeMs)
+        } else if (msg.type === 'lobby_ready' && sim.current.syncState === 'waiting') {
+          sim.current.syncState = 'syncing'
+          network.send({ type: 'race_start' })
+        } else if (msg.type === 'race_start' && sim.current.syncState !== 'running') {
+          sim.current.syncState = 'running'
+          telemetry.syncState = 'ready'
+          sim.current.syncStartTime = Date.now() + 500
         }
       }
     }
@@ -155,6 +178,20 @@ export function RaceScene({
   useFrame((_, dt) => {
     const s = sim.current
     if (!s.started || paused) return
+
+    if (isMultiplayer) {
+      if (s.syncState === 'waiting') {
+        if (Date.now() - s.lastNetSend > 100) {
+          network.send({ type: 'lobby_ready' })
+          s.lastNetSend = Date.now()
+        }
+        return
+      } else if (s.syncState === 'syncing') {
+        return
+      } else if (s.syncState === 'running' && s.syncStartTime > Date.now()) {
+        return
+      }
+    }
 
     // T35 countdown: hold the grid, fire the song at GO
     if (s.countdown > -1) {
@@ -236,8 +273,8 @@ export function RaceScene({
     }
 
     if (s.ghostRecorder) s.ghostRecorder.record(ship)
-    if (isMultiplayer && ship.time >= s.lastNetSend + 0.1) {
-      s.lastNetSend = ship.time
+    if (isMultiplayer && Date.now() >= s.lastNetSend + 100) {
+      s.lastNetSend = Date.now()
       network.send({ type: 'state_update', state: { s: ship.s, d: ship.d, v: ship.v, yaw: ship.yaw, finished: ship.finished } })
     }
 
@@ -337,7 +374,7 @@ export function RaceScene({
       <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
         <ShipMesh
-          accent={track.theme.edge}
+          accent={isMultiplayer && !isHost ? '#b4ff39' : track.theme.edge}
           power={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
         />
       </group>
@@ -347,14 +384,10 @@ export function RaceScene({
           [-0.45, 0.22, 1.6],
           [0.45, 0.22, 1.6],
         ]}
-        color={track.theme.edge}
-        intensity={() =>
-          sim.current.input.thrust * 0.6 +
-          (sim.current.ship.boost > 0 ? 0.8 : 0) +
-          Math.min(0.35, sim.current.ship.v / 700)
-        }
+        color={isMultiplayer && !isHost ? '#b4ff39' : track.theme.edge}
+        intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
       />
-      {sim.current.npcs.length > 0 && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
+      {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
       {isMultiplayer && sim.current.opponent && (
         <NetworkShip 
           s={sim.current.opponent.s} 
@@ -362,7 +395,7 @@ export function RaceScene({
           v={sim.current.opponent.v} 
           yaw={sim.current.opponent.yaw} 
           frames={frames} 
-          accent="#b4ff39"
+          accent={isHost ? '#b4ff39' : track.theme.edge}
           finished={sim.current.opponent.finished}
         />
       )}

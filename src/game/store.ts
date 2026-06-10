@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { TrackData } from '../lib/track/generate'
 import type { AudioFeatures } from '../lib/audio/analyze'
 
-export type Screen = 'boot' | 'unsupported' | 'menu' | 'multiplayer-lobby' | 'analyzing' | 'race' | 'results'
+export type Screen = 'boot' | 'unsupported' | 'menu' | 'multiplayer-lobby' | 'ghost-lobby' | 'track-setup' | 'analyzing' | 'race' | 'results'
 export type CameraMode = 'chase' | 'cockpit'
 
 export interface Settings {
@@ -46,6 +46,7 @@ interface GameState {
   
   // Multiplayer & Ghost
   isMultiplayer: boolean
+  isHost: boolean
   opponentFinished: boolean
   opponentTimeMs: number | null
   
@@ -57,14 +58,15 @@ interface GameState {
   setSettings: (s: Partial<Settings>) => void
   toggleCamera: () => void
   setAnalysis: (p: number) => void
-  loadRace: (args: {
+  setupRace: (args: {
     features: AudioFeatures
     track: TrackData
     songBuffer: AudioBuffer | null
     songTitle: string
   }) => void
+  startRace: () => void
   finishRace: (r: RaceResult) => void
-  setMultiplayer: (isMultiplayer: boolean) => void
+  setMultiplayer: (isMultiplayer: boolean, isHost?: boolean) => void
   setOpponentFinish: (timeMs: number) => void
   setGhostData: (ghost: import('../lib/network/ghost').GhostData | null) => void
   setGhostPlayback: (ghost: import('../lib/network/ghost').GhostData | null) => void
@@ -82,6 +84,7 @@ export const useGame = create<GameState>((set) => ({
   analysisProgress: 0,
   userSongs: [],
   isMultiplayer: false,
+  isHost: false,
   opponentFinished: false,
   opponentTimeMs: null,
   ghostData: null,
@@ -96,11 +99,12 @@ export const useGame = create<GameState>((set) => ({
   toggleCamera: () =>
     set((st) => ({ cameraMode: st.cameraMode === 'chase' ? 'cockpit' : 'chase' })),
   setAnalysis: (analysisProgress) => set({ analysisProgress }),
-  loadRace: ({ features, track, songBuffer, songTitle }) =>
-    set({ features, track, songBuffer, songTitle, screen: 'race', result: null, opponentFinished: false, opponentTimeMs: null, ghostData: null }),
+  setupRace: ({ features, track, songBuffer, songTitle }) =>
+    set({ features, track, songBuffer, songTitle, screen: 'track-setup', result: null, opponentFinished: false, opponentTimeMs: null, ghostData: null }),
+  startRace: () => set({ screen: 'race' }),
   finishRace: (result) => set({ result, screen: 'results' }),
-  setMultiplayer: (isMultiplayer) => set({ isMultiplayer }),
-  setOpponentFinish: (timeMs) => set({ opponentFinished: true, opponentTimeMs: timeMs }),
+  setMultiplayer: (isMultiplayer, isHost = false) => set({ isMultiplayer, isHost }),
+  setOpponentFinish: (opponentTimeMs) => set({ opponentFinished: true, opponentTimeMs }),
   setGhostData: (ghostData) => set({ ghostData }),
   setGhostPlayback: (ghostPlayback) => set({ ghostPlayback }),
 }))

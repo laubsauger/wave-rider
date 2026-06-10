@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { requestFullscreen } from '../lib/fullscreen'
 
 /**
  * V4: portrait on a touch device blocks gameplay behind a rotate prompt.
@@ -18,9 +19,13 @@ export function RotateOverlay() {
 
   if (!portrait) return null
   return (
-    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-6 bg-(--color-void)">
+    <div 
+      className="absolute inset-0 z-50 flex cursor-pointer flex-col items-center justify-center gap-6 bg-(--color-void)"
+      onClick={() => void requestFullscreen()}
+    >
       <div className="animate-[spin_3s_ease-in-out_infinite] text-6xl">📱</div>
       <p className="text-xl tracking-[0.25em] text-(--color-neon)">ROTATE TO LANDSCAPE</p>
+      <p className="text-sm tracking-widest text-white/50">(TAP TO ENTER FULLSCREEN)</p>
     </div>
   )
 }

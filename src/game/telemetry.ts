@@ -26,6 +26,8 @@ export interface RaceTelemetry {
   sectionIndex: number
   /** T48/T49: world x,y,z triplets — [0]=player, then NPCs */
   racersXZ: Float32Array
+  /** P2P synchronization state */
+  syncState: 'waiting' | 'ready'
 }
 
 export const telemetry: RaceTelemetry = {
@@ -44,4 +46,5 @@ export const telemetry: RaceTelemetry = {
   centroid: 0,
   sectionIndex: 0,
   racersXZ: new Float32Array(18),
+  syncState: 'ready',
 }
