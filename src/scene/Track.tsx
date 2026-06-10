@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { attribute, color, fract, smoothstep, uniform, uv } from 'three/tsl'
+import { attribute, bumpMap, color, float, floor, fract, hash, min, sin, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
@@ -87,6 +87,8 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   const uEnergy = useMemo(() => uniform(0), [])
   // T39: stripe color drifts toward the current section palette at runtime
   const uStripeCol = useMemo(() => uniform(new THREE.Color(track.theme.glow)), [track.theme.glow])
+  // R9g: energy veins crawl down-track, pace rides the music
+  const uVeinFlow = useMemo(() => uniform(0), [])
   const roadMat = useMemo(() => {
     const m = new THREE.MeshStandardNodeMaterial({
       color: new THREE.Color(track.theme.road),
@@ -102,12 +104,40 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const f3 = fract(uv().y.mul(3))
     const dashGate = smoothstep(0.02, 0.08, f3).mul(smoothstep(0.62, 0.55, f3))
     const dash = smoothstep(0.02, 0.011, xDist).mul(dashGate)
+
+    // R9g/T104: panel plating — recessed seams between deck panels, bump-
+    // mapped via the procedural height field (dFdx/dFdy under the hood)
+    const px = uv().x.mul(3)
+    const py = uv().y.mul(2)
+    const bx = min(fract(px), float(1).sub(fract(px)))
+    const by = min(fract(py), float(1).sub(fract(py)))
+    const panelHeight = smoothstep(0.0, 0.045, bx).mul(smoothstep(0.0, 0.045, by))
+    m.normalNode = bumpMap(panelHeight.mul(0.35))
+    // per-panel wear: cell-hashed albedo + roughness variation
+    const cellId = floor(px).add(floor(py).mul(57.31))
+    const wear = hash(cellId)
+    m.colorNode = color(new THREE.Color(track.theme.road)).mul(wear.mul(0.18).add(0.9))
+    m.roughnessNode = wear.mul(0.14).add(0.3)
+
+    // R9g/T104: animated energy veins — twin sinuous conduits snaking along
+    // the deck, lit by the section palette, brightness rides the energy
+    const vy = uv().y.mul(0.32).add(uVeinFlow)
+    const lane = sin(vy.mul(2.6)).mul(0.2)
+    const dv1 = uv().x.sub(0.5).sub(lane).sub(0.17).abs()
+    const dv2 = uv().x.sub(0.5).add(lane).add(0.17).abs()
+    const veinPulse = sin(vy.mul(9)).mul(0.5).add(0.5)
+    const vein = smoothstep(0.014, 0.003, dv1)
+      .add(smoothstep(0.014, 0.003, dv2))
+      .mul(veinPulse.mul(0.7).add(0.3))
+      .mul(uEnergy.mul(1.3).add(0.12))
+
     m.emissiveNode = glow
       .mul(stripe.mul(uEnergy.mul(1.6).add(0.4)))
       .add(edge.mul(dash.mul(0.45)))
+      .add(glow.mul(vein))
       .add(glow.mul(0.05))
     return m
-  }, [track.theme, uEnergy])
+  }, [track.theme, uEnergy, uStripeCol, uVeinFlow])
 
   // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
   // beat = sharp onset spikes layered on top of the energy floor.
@@ -124,6 +154,12 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       const s = 1.8 + b * 3.2
       padMat.current.color.setRGB(s, s, s)
     }
+    const cd = telemetry.countdown
+    const goFlash = cd <= 0 && cd > -1 ? 1 + cd : 0
+    if (gantryMat.current) gantryMat.current.emissiveIntensity = 2.6 + goFlash * 12
+    if (stripMat.current) stripMat.current.emissiveIntensity = 0.9 + goFlash * 9
+    // R9g: veins crawl faster when the music pushes
+    uVeinFlow.value += dt * (0.04 + e * 0.25)
     const sectionColor = track.sectionPalettes[telemetry.sectionIndex]
     if (sectionColor) {
       stripeTarget.set(sectionColor)
@@ -156,18 +192,65 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     return { matrices, colors }
   }, [geo.pads, track])
 
-  // T46: solid deck under the starting grid
+  // T46/T105: start zone — deck + a 280m lead-in road so the ribbon's cut
+  // edge sits far behind the camera, plus grid-slot markings
   const deck = useMemo(() => {
     const p = new THREE.Vector3(frames.positions[0], frames.positions[1], frames.positions[2])
     const t = new THREE.Vector3(frames.tangents[0], frames.tangents[1], frames.tangents[2])
     const up = new THREE.Vector3(frames.normals[0], frames.normals[1], frames.normals[2])
+    const b = new THREE.Vector3().crossVectors(t, up).normalize()
     const pos = p.clone().addScaledVector(t, -70).addScaledVector(up, -1.42)
     const q = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().lookAt(new THREE.Vector3(), t, up),
     )
-    const col = new THREE.Vector3().crossVectors(t, up).normalize()
-    return { pos, q, fwd: t.clone(), col }
-  }, [frames])
+
+    // lead-in road surface: flat quad strip from s=0 back 280m
+    const halfW = (track.width * (frames.widths[0] ?? 1)) / 2
+    const p0 = p.clone().addScaledVector(up, -0.02)
+    const p1 = p.clone().addScaledVector(t, -280).addScaledVector(up, -0.02)
+    const quad = (wL: number, wR: number, lift: number) => {
+      const g = new THREE.BufferGeometry()
+      const a0 = p0.clone().addScaledVector(b, wL).addScaledVector(up, lift)
+      const a1 = p0.clone().addScaledVector(b, wR).addScaledVector(up, lift)
+      const a2 = p1.clone().addScaledVector(b, wL).addScaledVector(up, lift)
+      const a3 = p1.clone().addScaledVector(b, wR).addScaledVector(up, lift)
+      g.setAttribute(
+        'position',
+        new THREE.BufferAttribute(
+          new Float32Array([...a0.toArray(), ...a1.toArray(), ...a2.toArray(), ...a1.toArray(), ...a3.toArray(), ...a2.toArray()]),
+          3,
+        ),
+      )
+      // uv.y continues the road's 20m stripe cadence backwards; uv.x spans
+      // the width so the center dash lines up — lets us reuse roadMat
+      const vEnd = -280 / 20
+      g.setAttribute(
+        'uv',
+        new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, vEnd, 1, 0, 1, vEnd, 0, vEnd]), 2),
+      )
+      g.computeVertexNormals()
+      return g
+    }
+    const leadRoad = quad(-halfW, halfW, 0)
+    const stripL = quad(-halfW - 0.6, -halfW, 0.22)
+    const stripR = quad(halfW, halfW + 0.6, 0.22)
+
+    // 3×2 grid-slot outlines behind the line
+    const slots: { pos: THREE.Vector3; q: THREE.Quaternion }[] = []
+    for (let i = 0; i < 6; i++) {
+      const row = Math.floor(i / 2)
+      const col = i % 2 === 0 ? -5 : 5
+      slots.push({
+        pos: p.clone().addScaledVector(t, -(row === 0 ? 0 : 14 * row)).addScaledVector(b, row === 0 && i < 2 ? 0 : col).addScaledVector(up, 0.06),
+        q,
+      })
+    }
+    return { pos, q, fwd: t.clone(), col: b, leadRoad, stripL, stripR, slots }
+  }, [frames, track.width])
+
+  // T105: GO flash — gantry + lead-in strips flare as the countdown breaks
+  const gantryMat = useRef<THREE.MeshStandardMaterial>(null)
+  const stripMat = useRef<THREE.MeshStandardMaterial>(null)
 
   return (
     <group>
@@ -197,8 +280,28 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
         quaternion={deck.q}
       >
         <boxGeometry args={[track.width + 8, 1.6, 1.6]} />
-        <meshStandardMaterial color="#000" emissive={track.theme.edge} emissiveIntensity={2.6} toneMapped={false} />
+        <meshStandardMaterial ref={gantryMat} color="#000" emissive={track.theme.edge} emissiveIntensity={2.6} toneMapped={false} />
       </mesh>
+      {/* T105: lead-in road wears the SAME shader as the track — seamless */}
+      <mesh geometry={deck.leadRoad} material={roadMat} />
+      {[deck.stripL, deck.stripR].map((g, i) => (
+        <mesh key={i} geometry={g}>
+          <meshStandardMaterial
+            ref={i === 0 ? stripMat : undefined}
+            color="#000"
+            emissive={track.theme.edge}
+            emissiveIntensity={0.9}
+            toneMapped={false}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+      ))}
+      {deck.slots.map((sl, i) => (
+        <mesh key={i} position={sl.pos} quaternion={sl.q}>
+          <boxGeometry args={[6, 0.05, 9]} />
+          <meshStandardMaterial color="#0a0e1a" emissive={track.theme.glow} emissiveIntensity={0.35} transparent opacity={0.85} />
+        </mesh>
+      ))}
       {[geo.railL, geo.railR].map((g, i) => (
         <mesh key={i} geometry={g} material={railMaterial} />
       ))}

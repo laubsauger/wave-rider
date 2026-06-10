@@ -19,6 +19,7 @@ export type SegmentType =
   | 'speedway'
   | 'ridge'
   | 'wallride'
+  | 'loop'
 
 export interface TrackSegment {
   type: SegmentType
@@ -77,6 +78,13 @@ export interface TrackData {
   sectionPalettes: string[]
   /** T60: track roll angle (rad) per control point — corkscrew frame twist */
   rolls: number[]
+  /**
+   * T104/R9b: track-up per control point, xyz triplets. (0,1,0) everywhere
+   * except vertical loops, where the analytic circle normal (toward loop
+   * center) carries the frame through inversion — world-up projection
+   * degenerates there.
+   */
+  ups: number[]
 }
 
 const CTRL_SPACING = 30 // meters between spline control points
@@ -96,7 +104,7 @@ export function generateTrack(features: AudioFeatures): TrackData {
   const length = avgSpeed * features.duration
   const width = 26 - features.intensity * 6 // intense music → narrower, scarier
 
-  const { points, segments, rolls } = layoutCourse(features, length, rng, avgSpeed)
+  const { points, segments, rolls, ups } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
   // T77: speedways carry dense boost rows
   for (const seg of segments) {
@@ -123,6 +131,7 @@ export function generateTrack(features: AudioFeatures): TrackData {
     sectionEnergies: features.sections.map((s) => s.energy),
     sectionPalettes: sectionPalettes(theme.edge, features.sections),
     rolls,
+    ups,
   }
 }
 
@@ -195,13 +204,15 @@ function layoutCourse(
   totalLength: number,
   rng: Rng,
   avgSpeed: number,
-): { points: TrackPoint[]; segments: TrackSegment[]; rolls: number[] } {
+): { points: TrackPoint[]; segments: TrackSegment[]; rolls: number[]; ups: number[] } {
   const points: TrackPoint[] = []
   const segments: TrackSegment[] = []
   const rolls: number[] = []
+  const ups: number[] = []
   const cur: Cursor = { x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 }
   points.push({ x: 0, y: 0, z: 0 })
   rolls.push(0)
+  ups.push(0, 1, 0)
 
   // T25: map song events into track space at design pace
   const drops = features.events
@@ -246,12 +257,16 @@ function layoutCourse(
           slope: rngRange(rng, -0.03, -0.01),
         }
       } else {
-        seg = chooseSegment(sec, onsetDensity, rng)
+        seg = chooseSegment(sec, onsetDensity, rng, avgSpeed)
+        if (seg.type === 'loop' && seg.length > remaining) {
+          // a truncated loop would strand the cursor mid-circle — bail to a straight
+          seg = { type: 'straight', length: remaining, curvature: 0, slope: 0 }
+        }
         seg.curvature *= kScale
-        seg.slope += slopeBias
+        if (seg.type !== 'loop') seg.slope += slopeBias
       }
       const segLen = Math.min(remaining, seg.length)
-      walkSegment(cur, points, rolls, seg, segLen)
+      walkSegment(cur, points, rolls, ups, seg, segLen)
       segments.push({
         type: seg.type,
         start: s,
@@ -265,7 +280,7 @@ function layoutCourse(
     }
   }
 
-  return { points, segments, rolls }
+  return { points, segments, rolls, ups }
 }
 
 interface SegmentPlan {
@@ -277,6 +292,10 @@ interface SegmentPlan {
   slope: number
   widthScale?: number
   walls?: boolean
+  /** R9b: vertical loop radius, m */
+  radius?: number
+  /** R9b: lateral exit shift direction so the loop clears its own entry */
+  side?: 1 | -1
 }
 
 /**
@@ -285,12 +304,25 @@ interface SegmentPlan {
  *  - mid energy: sweeping curves, occasional hills
  *  - low energy: wide flowing curves, gentle elevation
  */
-function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): SegmentPlan {
+function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpeed: number): SegmentPlan {
   const e = sec.energy
   const roll = rng()
   // T77/T78: special track parts — wide boost speedways, narrow rail-less
   // ridges where falling off is on the table
   const special = rng()
+  // R9b: full vertical loop when the music slams hardest — radius scales
+  // with design speed so the circle reads at pace
+  if (e > 0.7 && onsetDensity > 1.4 && special >= 0.27 && special < 0.325) {
+    const radius = 42 + avgSpeed * 0.1
+    return {
+      type: 'loop',
+      length: Math.PI * 2 * radius,
+      curvature: 0,
+      slope: 0,
+      radius,
+      side: rng() < 0.5 ? -1 : 1,
+    }
+  }
   if (e > 0.5 && special < 0.09) {
     return {
       type: 'speedway',
@@ -375,9 +407,42 @@ function walkSegment(
   cur: Cursor,
   points: TrackPoint[],
   rolls: number[],
+  ups: number[],
   seg: SegmentPlan,
   length: number,
 ): void {
+  // R9b: vertical loop — analytic circle in the heading plane, inclined
+  // sideways so the exit clears the entry road. Heading/pitch Euler walk
+  // gimbals at ±90°, so the loop is walked parametrically instead.
+  if (seg.type === 'loop' && seg.radius && seg.side) {
+    const R = seg.radius
+    const steps = Math.max(12, Math.round(length / Math.min(CTRL_SPACING, R * 0.3)))
+    const fx = Math.sin(cur.heading)
+    const fz = -Math.cos(cur.heading)
+    // right-hand side vector r = f × worldUp (horizontal)
+    const rx = -fz
+    const rz = fx
+    const W = (38 + R * 0.18) * seg.side // lateral exit shift, clears track width
+    const x0 = cur.x
+    const y0 = cur.y
+    const z0 = cur.z
+    for (let i = 1; i <= steps; i++) {
+      const th = (i / steps) * Math.PI * 2
+      const fwd = Math.sin(th) * R
+      const lift = (1 - Math.cos(th)) * R
+      const side = (i / steps) * W
+      points.push({ x: x0 + fx * fwd + rx * side, y: y0 + lift, z: z0 + fz * fwd + rz * side })
+      // track-up points at the loop center: up·cosθ − f·sinθ
+      ups.push(-fx * Math.sin(th), Math.cos(th), -fz * Math.sin(th))
+      rolls.push(cur.roll)
+    }
+    cur.x = x0 + rx * W
+    cur.z = z0 + rz * W
+    cur.y = y0
+    cur.pitch = 0
+    return
+  }
+
   const steps = Math.max(1, Math.round(length / CTRL_SPACING))
   const ds = length / steps
   const isChicane = seg.type === 'chicane'
@@ -428,6 +493,7 @@ function walkSegment(
     }
     points.push({ x: cur.x, y: cur.y, z: cur.z })
     rolls.push(cur.roll)
+    ups.push(0, 1, 0)
   }
   // after a jump, level out so the landing is catchable
   if (isJump) cur.pitch *= 0.3

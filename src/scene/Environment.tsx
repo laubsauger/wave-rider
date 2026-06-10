@@ -1,5 +1,5 @@
-import { useMemo, useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { abs, cameraPosition, color, fract, positionWorld, smoothstep, uniform } from 'three/tsl'
 import { mulberry32, rngRange } from '../lib/prng'
@@ -42,6 +42,69 @@ export function GridFloor({ track }: { track: TrackData }) {
       <planeGeometry args={[3600, 3600, 1, 1]} />
     </mesh>
   )
+}
+
+/**
+ * R9d/T104: procedural equirect environment map — deep black sky, faint
+ * horizon band, scattered neon blobs in the theme palette. WebGPURenderer
+ * consumes scene.environment via EnvironmentNode/PMREM (verified in three
+ * 0.182). Hull clearcoat picks up the neon reflections; intensity kept low
+ * so the C11 deep blacks stay deep. Tier-gated by the caller (C7).
+ */
+export function SceneEnvironment({ track }: { track: TrackData }) {
+  const scene = useThree((s) => s.scene)
+
+  useEffect(() => {
+    const W = 128
+    const H = 64
+    const data = new Uint8Array(W * H * 4)
+    const glow = new THREE.Color(track.theme.glow)
+    const edge = new THREE.Color(track.theme.edge)
+    const rng = mulberry32((track.seed ^ 0x517e9d) >>> 0)
+    const blobs = Array.from({ length: 14 }, () => ({
+      u: rng(),
+      v: 0.3 + rng() * 0.35,
+      r: 0.015 + rng() * 0.05,
+      c: rng() < 0.5 ? glow : edge,
+      i: 0.6 + rng() * 1.6,
+    }))
+    for (let y = 0; y < H; y++) {
+      const v = y / (H - 1)
+      // faint horizon band just below the midline
+      const horizon = Math.exp(-Math.pow((v - 0.55) / 0.06, 2)) * 0.22
+      for (let x = 0; x < W; x++) {
+        const u = x / (W - 1)
+        let r = glow.r * horizon
+        let g = glow.g * horizon
+        let b = glow.b * horizon
+        for (const bl of blobs) {
+          const du = Math.min(Math.abs(u - bl.u), 1 - Math.abs(u - bl.u)) // wrap seam
+          const dv = v - bl.v
+          const f = Math.exp(-(du * du + dv * dv) / (bl.r * bl.r)) * bl.i
+          r += bl.c.r * f
+          g += bl.c.g * f
+          b += bl.c.b * f
+        }
+        const o = (y * W + x) * 4
+        data[o] = Math.min(255, r * 255)
+        data[o + 1] = Math.min(255, g * 255)
+        data[o + 2] = Math.min(255, b * 255)
+        data[o + 3] = 255
+      }
+    }
+    const tex = new THREE.DataTexture(data, W, H)
+    tex.mapping = THREE.EquirectangularReflectionMapping
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.needsUpdate = true
+    scene.environment = tex
+    scene.environmentIntensity = 0.45
+    return () => {
+      scene.environment = null
+      tex.dispose()
+    }
+  }, [scene, track])
+
+  return null
 }
 
 /** T31: distant low-poly ridge silhouettes flanking the course. */

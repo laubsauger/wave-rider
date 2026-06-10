@@ -29,9 +29,10 @@ import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
-import { GridFloor, Ridges, WarpStreaks } from './Environment'
+import { GridFloor, Ridges, SceneEnvironment, WarpStreaks } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
+import { Sparks } from './Sparks'
 import { NetworkShip } from './NetworkShip'
 import type { TrackData } from '../lib/track/generate'
 
@@ -174,6 +175,8 @@ export function RaceScene({
     /** T89 */
     engine: null as EngineSound | null,
     lastCountInt: 9,
+    /** R9e: one-shot landing impact pulse — Sparks consumes + clears */
+    landPulse: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -324,7 +327,10 @@ export function RaceScene({
     // shake trauma (V10: scaled by fxIntensity at application time)
     if (wallEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + 0.25 + wallEvent * 0.02)
     if (boostEvent) s.shake.trauma = Math.min(1, s.shake.trauma + 0.18)
-    if (landEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + Math.min(0.45, landEvent * 0.012))
+    if (landEvent > 0) {
+      s.shake.trauma = Math.min(1, s.shake.trauma + Math.min(0.45, landEvent * 0.012))
+      s.landPulse = landEvent // R9e: dust burst
+    }
     s.shake.trauma = Math.max(0, s.shake.trauma - dt * 1.6)
 
     // T45: accel feel — camera pulls back under thrust, snaps in on scrub
@@ -508,6 +514,8 @@ export function RaceScene({
       <color attach="background" args={[track.theme.sky]} />
       <fog attach="fog" args={[track.theme.fog, 60, 3 / track.theme.fogDensity]} />
       <ambientLight intensity={0.3} color={track.theme.glow} />
+      {/* R9d: env reflections on hulls — skip on low tier (C7) */}
+      {quality !== 'low' && <SceneEnvironment track={track} />}
       <ShadowRig shipRef={shipGroup} enabled={quality === 'high'} />
       <Track track={track} frames={frames} />
       <Scenery track={track} frames={frames} />
@@ -540,6 +548,21 @@ export function RaceScene({
         ]}
         color={isMultiplayer && !isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
         intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
+      />
+      {/* R9e: grind/airbrake sparks + landing dust */}
+      <Sparks
+        shipRef={shipGroup}
+        accent={track.theme.glow}
+        fxIntensity={fxIntensity}
+        source={() => ({
+          onWall: sim.current.ship.onWall,
+          braking: sim.current.input.brakeLeft || sim.current.input.brakeRight,
+          airborne: sim.current.ship.airborne,
+          v: sim.current.ship.v,
+          d: sim.current.ship.d,
+          landPulse: sim.current.landPulse,
+          clearLand: () => void (sim.current.landPulse = 0),
+        })}
       />
       {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
       {/* B19: mounted unconditionally — reads live state per frame */}

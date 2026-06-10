@@ -24,11 +24,13 @@ export interface TrackFrames {
   walls: Float32Array
 }
 
-const UP = new Vector3(0, 1, 0)
-
 export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
   const pts = track.points.map((p) => new Vector3(p.x, p.y, p.z))
   const curve = new CatmullRomCurve3(pts, false, 'centripetal', 0.5)
+  // R9b: default arcLengthDivisions (200) gives ~145m arc resolution on a
+  // 30km track — getPointAt and the ctrl-attribute mapping below MUST share
+  // one high-res parameterization or ups/rolls land ~100m off their geometry.
+  curve.arcLengthDivisions = Math.max(200, pts.length * 4)
   const length = curve.getLength()
   const count = Math.max(2, Math.ceil(length / ds) + 1)
 
@@ -45,17 +47,42 @@ export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
   const b = new Vector3()
 
   const rolls = track.rolls
+  const ups = track.ups
+  // R9b: control points are NOT arc-uniform (loop spacing ≠ CTRL_SPACING,
+  // chords ≠ walk distance), so per-point attributes (ups, rolls) must be
+  // looked up by true arc position. CatmullRomCurve3.getPoint(j/(N-1)) hits
+  // control point j exactly — integrate arc length at uniform t to map it.
+  const nPts = pts.length
+  const tLengths = curve.getLengths(curve.arcLengthDivisions)
+  const ctrlS = new Float32Array(nPts)
+  for (let j = 0; j < nPts; j++) {
+    const f = (j / (nPts - 1)) * (tLengths.length - 1)
+    const j0 = Math.floor(f)
+    const j1 = Math.min(tLengths.length - 1, j0 + 1)
+    ctrlS[j] = tLengths[j0] + (tLengths[j1] - tLengths[j0]) * (f - j0)
+  }
+
+  let cj = 0
   for (let i = 0; i < count; i++) {
     const u = i / (count - 1)
     curve.getPointAt(u, p)
     curve.getTangentAt(u, t)
-    // project world-up out of tangent → track-up
-    n.copy(UP).addScaledVector(t, -UP.dot(t)).normalize()
+    const sArc = u * length
+    while (cj < nPts - 2 && ctrlS[cj + 1] <= sArc) cj++
+    const span = Math.max(1e-6, ctrlS[cj + 1] - ctrlS[cj])
+    const ua = Math.min(1, Math.max(0, (sArc - ctrlS[cj]) / span))
+    // R9b: track-up comes from the generator's per-control-point ups —
+    // (0,1,0) everywhere except loops, where the analytic circle normal
+    // carries the frame through inversion. Project the tangent out of it.
+    n.set(
+      ups[cj * 3] * (1 - ua) + ups[(cj + 1) * 3] * ua,
+      ups[cj * 3 + 1] * (1 - ua) + ups[(cj + 1) * 3 + 1] * ua,
+      ups[cj * 3 + 2] * (1 - ua) + ups[(cj + 1) * 3 + 2] * ua,
+    )
+    n.addScaledVector(t, -n.dot(t)).normalize()
     b.crossVectors(t, n).normalize()
     // T60: corkscrew — twist the frame around the tangent by the walked roll
-    const ri = u * (rolls.length - 1)
-    const r0 = Math.floor(ri)
-    const roll = rolls[r0] + (rolls[Math.min(rolls.length - 1, r0 + 1)] - rolls[r0]) * (ri - r0)
+    const roll = rolls[cj] + (rolls[Math.min(rolls.length - 1, cj + 1)] - rolls[cj]) * ua
     if (roll !== 0) {
       n.applyAxisAngle(t, roll)
       b.crossVectors(t, n).normalize()
@@ -96,7 +123,11 @@ export function curvatureAt(frames: TrackFrames, i: number): number {
   let d = angB - angA
   if (d > Math.PI) d -= 2 * Math.PI
   if (d < -Math.PI) d += 2 * Math.PI
-  return d / frames.ds
+  // R9b: horizontal heading is meaningless where the tangent goes vertical
+  // (inside loops it flips by π at the apex) — weight by the horizontal
+  // tangent magnitude so loop traversal doesn't read as an instant hairpin.
+  const w = Math.min(Math.hypot(ax, az), Math.hypot(bx, bz))
+  return (d / frames.ds) * Math.min(1, w)
 }
 
 export interface FramePose {

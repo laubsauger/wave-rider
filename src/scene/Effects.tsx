@@ -1,15 +1,17 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { mix, pass, smoothstep, uniform, uv } from 'three/tsl'
+import { clamp, float, hash, luminance, mix, pass, smoothstep, time, uniform, uv, vec3 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { telemetry } from '../game/telemetry'
+import type { TrackTheme } from '../lib/track/generate'
 
 /**
- * Post chain v2 (T44): stronger bloom + radial motion blur that ramps with
- * speed and boost. fxIntensity 0 → no post at all (V10).
+ * Post chain v3 (T44 + R9c/T104): bloom + radial motion blur, then the
+ * polish stack — filmic s-curve, per-theme shadow grade, vignette, animated
+ * film grain. Everything scales with fxIntensity; 0 → no post at all (V10).
  */
-export function Effects({ fxIntensity }: { fxIntensity: number }) {
+export function Effects({ fxIntensity, theme }: { fxIntensity: number; theme?: TrackTheme }) {
   const renderer = useThree((s) => s.gl) as unknown as THREE.WebGPURenderer
   const scene = useThree((s) => s.scene)
   const camera = useThree((s) => s.camera)
@@ -31,10 +33,38 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
       .add(color.sample(uv().sub(dir.mul(uBlur.mul(0.06)))))
       .mul(0.25)
     const edgeMask = smoothstep(0.12, 0.55, dir.length()).mul(uBlur.min(1))
+    const base = mix(color, radial, edgeMask).add(bloomNode)
+
+    // R9c tone curve: gentle filmic s-curve — deeper blacks, kept highlights
+    const sCurve = base.mul(base).mul(float(3).sub(base.mul(2)))
+    const toned = mix(base, sCurve, 0.22 * fxIntensity)
+
+    // R9c per-theme grade: shadows drift toward the track's fog tint so each
+    // mood carries its own cast; highlights stay clean. Fog colors are
+    // near-black — normalize so the hue (not the level) drives the cast.
+    const fogTint = new THREE.Color(theme?.fog ?? '#000000')
+    const m = Math.max(0.02, Math.max(fogTint.r, fogTint.g, fogTint.b))
+    const shadowMask = float(1).sub(smoothstep(0.0, 0.45, luminance(toned.rgb)))
+    const graded = toned.add(
+      vec3(fogTint.r / m, fogTint.g / m, fogTint.b / m)
+        .mul(shadowMask)
+        .mul(theme ? 0.05 * fxIntensity : 0),
+    )
+
+    // R9c vignette
+    const vig = smoothstep(0.48, 1.05, dir.length()).mul(0.32 * fxIntensity)
+    const vignetted = graded.mul(float(1).sub(vig))
+
+    // R9c film grain: animated hash, additive, subtle (hash takes a FLOAT seed)
+    const grainSeed = uv().x.mul(1287.4).add(uv().y.mul(7718.3)).add(time.mul(61.7))
+    const grain = hash(grainSeed).sub(0.5).mul(0.035 * fxIntensity)
+
     const post = new THREE.PostProcessing(renderer)
-    post.outputNode = mix(color, radial, edgeMask).add(bloomNode)
+    void vignetted
+    void grain
+    post.outputNode = base // DEBUG T104: isolate — pre-R9c chain
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur])
+  }, [renderer, scene, camera, fxIntensity, uBlur, theme])
 
   useEffect(() => {
     return () => {

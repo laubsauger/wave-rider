@@ -28,6 +28,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
   const gateMat = useRef<THREE.MeshBasicMaterial>(null)
   const gateMesh = useRef<THREE.InstancedMesh | null>(null)
   const chevronMat = useRef<THREE.MeshBasicMaterial>(null)
+  const biomeMat = useRef<THREE.MeshStandardMaterial>(null)
 
   const data = useMemo(() => {
     const rng = mulberry32((track.seed ^ 0x777aa1) >>> 0)
@@ -186,6 +187,48 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       }
     }
 
+    // R9f/T104: biome layer — mood picks the trackside world. City canyon
+    // (aggressive/energetic), open desert monoliths (flowing), crystal
+    // cavern shards (chill). Seeded scatter (V8), palette-tinted (V19).
+    const biome = track.mood === 'chill' ? 'cavern' : track.mood === 'flowing' ? 'desert' : 'city'
+    const biomeMatrices: THREE.Matrix4[] = []
+    const biomeColors: THREE.Color[] = []
+    const biomeSpacing = biome === 'desert' ? 260 : biome === 'city' ? 110 : 90
+    for (let s = 80; s < track.length - 80; s += biomeSpacing * rngRange(rng, 0.65, 1.45)) {
+      if (biomeMatrices.length >= 380) break
+      for (const side of [-1, 1]) {
+        if (rng() < (biome === 'desert' ? 0.45 : 0.3)) continue
+        if (biome === 'city') {
+          // tower slabs crowding the course into a canyon
+          const lateral = side * (halfW + rngRange(rng, 30, 130))
+          const h = rngRange(rng, 30, 120)
+          poseAt(frames, s, lateral, 0, pose)
+          obj.position.set(pose.px, pose.py + h / 2 - 30, pose.pz)
+          obj.rotation.set(0, rng() * Math.PI, 0)
+          obj.scale.set(rngRange(rng, 6, 16), h, rngRange(rng, 6, 16))
+        } else if (biome === 'desert') {
+          // sparse monoliths far off the racing line
+          const lateral = side * (halfW + rngRange(rng, 60, 220))
+          const h = rngRange(rng, 18, 64)
+          poseAt(frames, s, lateral, 0, pose)
+          obj.position.set(pose.px, pose.py + h / 2 - 32, pose.pz)
+          obj.rotation.set(0, rng() * Math.PI * 2, 0)
+          obj.scale.set(rngRange(rng, 14, 38), h, rngRange(rng, 14, 38))
+        } else {
+          // crystal shards jutting at angles near the track
+          const lateral = side * (halfW + rngRange(rng, 18, 80))
+          const r = rngRange(rng, 3, 11)
+          poseAt(frames, s, lateral, rngRange(rng, -18, 14), pose)
+          obj.position.set(pose.px, pose.py, pose.pz)
+          obj.rotation.set(rngRange(rng, -0.5, 0.5), rng() * Math.PI * 2, rngRange(rng, -0.5, 0.5))
+          obj.scale.set(r * 0.45, r, r * 0.45)
+        }
+        obj.updateMatrix()
+        biomeMatrices.push(obj.matrix.clone())
+        biomeColors.push(c.set(paletteAt(track, s)).clone())
+      }
+    }
+
     return {
       pylonMatrices,
       glowMatrices,
@@ -201,6 +244,9 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       gateS,
       chevronMatrices,
       chevronColors,
+      biome,
+      biomeMatrices,
+      biomeColors,
     }
   }, [track, frames])
 
@@ -221,6 +267,10 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     if (ringMat.current) ringMat.current.opacity = 0.12 + secE * 0.15 + e * 0.45
     if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.22 + secE * 0.3 + e * 0.9
     if (chevronMat.current) chevronMat.current.color.setScalar(0.8 + c * 2.6)
+    // R9f: crystal cavern breathes with the section energy
+    if (biomeMat.current && data.biome === 'cavern') {
+      biomeMat.current.emissiveIntensity = 0.18 + secE * 0.35 + e * 0.7
+    }
 
     // T58: threading a gate → big flash + HUD kick
     const playerS = telemetry.progress * track.length
@@ -277,6 +327,37 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       <Instanced matrices={data.chevronMatrices} colors={data.chevronColors}>
         <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial ref={chevronMat} color="#ffffff" toneMapped={false} />
+      </Instanced>
+      {/* R9f: biome layer — geometry + material keyed by mood */}
+      <Instanced matrices={data.biomeMatrices} colors={data.biome === 'cavern' ? data.biomeColors : undefined}>
+        {data.biome === 'city' ? (
+          <boxGeometry args={[1, 1, 1]} />
+        ) : data.biome === 'desert' ? (
+          <coneGeometry args={[0.6, 1, 5]} />
+        ) : (
+          <octahedronGeometry args={[1, 0]} />
+        )}
+        {data.biome === 'cavern' ? (
+          <meshStandardMaterial
+            ref={biomeMat}
+            color="#10142a"
+            metalness={0.3}
+            roughness={0.15}
+            emissive="#ffffff"
+            emissiveIntensity={0.4}
+            flatShading
+          />
+        ) : (
+          <meshStandardMaterial
+            ref={biomeMat}
+            color={data.biome === 'city' ? '#090c18' : '#120e16'}
+            metalness={data.biome === 'city' ? 0.6 : 0.1}
+            roughness={data.biome === 'city' ? 0.45 : 0.9}
+            emissive={track.theme.glow}
+            emissiveIntensity={data.biome === 'city' ? 0.08 : 0.02}
+            flatShading
+          />
+        )}
       </Instanced>
       <Instanced matrices={data.ringMatrices} colors={data.ringColors}>
         <torusGeometry args={[11, 0.35, 8, 48]} />

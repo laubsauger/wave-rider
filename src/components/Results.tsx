@@ -57,7 +57,7 @@ export function Results() {
           </>
         )}
       </div>
-      <div className="flex gap-4">
+      <div className="flex flex-wrap items-center justify-center gap-4">
         <button
           className="border px-6 py-2 tracking-widest transition hover:bg-white/10"
           style={{ borderColor: accent, color: accent }}
@@ -76,6 +76,21 @@ export function Results() {
         >
           MENU
         </button>
+        {typeof navigator !== 'undefined' && !!navigator.share && (
+          <button
+            className="flex items-center gap-2 border border-white/30 px-6 py-2 tracking-widest text-white/60 transition hover:bg-white/10"
+            onClick={() => {
+              navigator.share({
+                title: 'Wave Rider',
+                text: `I just placed ${result.place}/${result.totalRacers} with a time of ${fmtTime(result.timeMs)} on ${result.songTitle} in Wave Rider!`,
+                url: window.location.origin + window.location.pathname,
+              }).catch(() => {})
+            }}
+          >
+            SHARE
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+          </button>
+        )}
       </div>
       
       {ghostData && !isMultiplayer && (

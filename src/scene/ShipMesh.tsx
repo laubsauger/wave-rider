@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
+import { buildHullDetail } from './hull/buildHull'
 
 /**
  * Ship v5 (T66): WipEout-style wedge racer. Wide flat delta planform
@@ -64,6 +65,9 @@ export function ShipMesh({
     return planformGeometry(1, 0)
   }, [variant])
 
+  // R9a: panel lines + plates + greebles + livery, merged to 2 draw calls
+  const hullDetail = useMemo(() => buildHullDetail(variant), [variant])
+
   const hull = useMemo(
     () => ({ metalness: 0.9, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.15, flatShading: true, opacity: opacity ?? 1, transparent: transparent ?? false }),
     [opacity, transparent],
@@ -99,6 +103,21 @@ export function ShipMesh({
       <mesh castShadow position={[0, 0.34, -0.15]} scale={[0.4, 0.1, 2.0]}>
         <boxGeometry />
         <meshPhysicalMaterial color="#69758f" {...hull} />
+      </mesh>
+      {/* R9a: merged detail pass — panel lines, armor plates, greebles, antenna */}
+      <mesh castShadow geometry={hullDetail.detail}>
+        <meshPhysicalMaterial color="#525d78" {...hull} roughness={0.42} />
+      </mesh>
+      {/* R9a: merged livery pass — vents + wing slashes in team accent */}
+      <mesh geometry={hullDetail.accent}>
+        <meshStandardMaterial
+          color="#000"
+          emissive={accent}
+          emissiveIntensity={1.5}
+          toneMapped={false}
+          transparent={transparent}
+          opacity={opacity ?? 1}
+        />
       </mesh>
       {/* canopy — low bubble, front third */}
       <mesh position={[0, 0.38, -1.0]} scale={[0.22, 0.12, 0.62]}>

@@ -169,6 +169,49 @@ describe('airtime (T26, V16)', () => {
   })
 })
 
+describe('vertical loops (R9b/T104)', () => {
+  // hot, onset-dense everywhere → loops spawn (see frames.test.ts)
+  const loopFeatures = (): AudioFeatures => ({
+    ...features(180),
+    bpm: 128,
+    intensity: 0.7,
+    onsets: Array.from({ length: 359 }, (_, i) => 0.5 + i * 0.5),
+    sections: [
+      { start: 0, end: 60, energy: 0.75, brightness: 0.5 },
+      { start: 60, end: 120, energy: 0.4, brightness: 0.4 },
+      { start: 120, end: 180, energy: 0.8, brightness: 0.6 },
+    ],
+  })
+
+  it('ship rides a full loop: no fall, no NaN, V12 cap holds', () => {
+    const track = generateTrack(loopFeatures())
+    const loop = track.segments.find((sg) => sg.type === 'loop')
+    expect(loop).toBeDefined()
+
+    const frames = sampleTrack(track, 3)
+    const ship = initialShip()
+    const ev = noEvents()
+    // drop in just before the loop at design pace
+    ship.s = Math.max(0, loop!.start - 200)
+    ship.v = track.avgSpeed
+    const cap = (track.avgSpeed * 1.45 + 60) * 1.1
+    const maxSteps = Math.ceil(120 / PHYSICS_DT)
+    let prevS = ship.s
+    for (let i = 0; i < maxSteps && !ship.finished; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      if (ship.s > loop!.end + 100) break
+      expect(Number.isFinite(ship.s)).toBe(true)
+      expect(Number.isFinite(ship.d)).toBe(true)
+      expect(Number.isFinite(ship.v)).toBe(true)
+      expect(ship.v).toBeLessThanOrEqual(cap)
+      expect(ship.falling).toBe(false) // loop has walls — the field holds you
+      expect(ship.s).toBeGreaterThanOrEqual(prevS)
+      prevS = ship.s
+    }
+    expect(prevS).toBeGreaterThan(loop!.end) // made it through, no stall
+  })
+})
+
 describe('steer ramp (T27, B7)', () => {
   const track = generateTrack(features())
   const frames = sampleTrack(track, 3)
