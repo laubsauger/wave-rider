@@ -24,19 +24,29 @@ export function ShipMesh({
   accent = '#2ff3ff',
   boost = 0,
   power,
+  variant = 0,
 }: {
   accent?: string
   boost?: number
   /** optional per-frame thrust/boost intensity 0..2 — drives flame cones */
   power?: () => number
+  /** T41: 0 dart (hero), 1 talon (forward-swept), 2 manta (wide flat) */
+  variant?: 0 | 1 | 2
 }) {
   const engineL = useRef<THREE.MeshStandardMaterial>(null)
   const engineR = useRef<THREE.MeshStandardMaterial>(null)
   const flameL = useRef<THREE.Mesh>(null)
   const flameR = useRef<THREE.Mesh>(null)
 
-  // T36: pod-racer proportions — narrow span, long body
-  const wingGeo = useMemo(() => deltaWingGeometry(1.05, 0.85, 0.62), [])
+  // T36/T41: pod-racer proportions — narrow span, long body; per-variant wings
+  const wingGeo = useMemo(() => {
+    if (variant === 1) return deltaWingGeometry(1.15, 0.7, -0.5) // talon: forward swept
+    if (variant === 2) return deltaWingGeometry(1.55, 1.1, 0.35) // manta: broad blade
+    return deltaWingGeometry(1.05, 0.85, 0.62)
+  }, [variant])
+  const nacelleX = variant === 2 ? 0.85 : 0.58
+  const finScale: [number, number, number] =
+    variant === 1 ? [0.05, 0.9, 0.4] : variant === 2 ? [0.05, 0.001, 0.001] : [0.05, 0.65, 0.5]
   const hull = useMemo(
     () => ({ color: '#aeb9d6', metalness: 0.92, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.12, flatShading: true }),
     [],
@@ -102,14 +112,19 @@ export function ShipMesh({
           <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={2.4} toneMapped={false} />
         </mesh>
       ))}
-      {/* tail fin */}
-      <mesh castShadow position={[0, 0.26, 1.45]} rotation={[0.5, 0, 0]} scale={[0.05, 0.65, 0.5]}>
+      {/* tail fin (manta variant drops it) */}
+      <mesh castShadow position={[0, 0.26, 1.45]} rotation={[0.5, 0, 0]} scale={finScale}>
         <boxGeometry />
         <meshPhysicalMaterial {...hull} color="#8e9cc0" />
       </mesh>
+      {/* dorsal intake greeble */}
+      <mesh castShadow position={[0, 0.16, 0.5]} scale={[0.22, 0.1, 0.6]}>
+        <boxGeometry />
+        <meshPhysicalMaterial {...hull} color="#39435c" />
+      </mesh>
       {/* nacelles + engine glow + flames */}
       {[-1, 1].map((side) => (
-        <group key={side} position={[side * 0.58, -0.04, 0.85]}>
+        <group key={side} position={[side * nacelleX, -0.04, 0.85]}>
           <mesh castShadow scale={[0.2, 0.2, 1.15]} rotation={[Math.PI / 2, 0, 0]}>
             <cylinderGeometry args={[0.9, 1.05, 1, 6]} />
             <meshPhysicalMaterial {...hull} color="#39435c" />

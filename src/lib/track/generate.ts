@@ -187,10 +187,17 @@ function layoutCourse(
     (sec) => ((sec.end - sec.start) / features.duration) * totalLength,
   )
 
+  // V20/B10: curvature must scale with design speed — target max lateral
+  // accel ~50 m/s² at the reference max curve k of 0.012
+  const kScale = Math.min(1, 50 / (avgSpeed * avgSpeed * 0.012))
+
   for (let si = 0; si < features.sections.length; si++) {
     const sec = features.sections[si]
     const secLen = sectionLengths[si]
     const onsetDensity = onsetsPerSecond(features, sec)
+    // T38: each section trends up or down — vertical separation where the
+    // course crosses itself, and the skyline keeps changing
+    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.014 + (sec.energy - 0.5) * 0.022
     let remaining = secLen
 
     while (remaining > 1) {
@@ -205,11 +212,13 @@ function layoutCourse(
         seg = {
           type: 'glide',
           length: rngRange(rng, 320, 520),
-          curvature: rngRange(rng, 0.0015, 0.004) * (rng() < 0.5 ? -1 : 1),
+          curvature: rngRange(rng, 0.0015, 0.004) * (rng() < 0.5 ? -1 : 1) * kScale,
           slope: rngRange(rng, -0.03, -0.01),
         }
       } else {
         seg = chooseSegment(sec, onsetDensity, rng)
+        seg.curvature *= kScale
+        seg.slope += slopeBias
       }
       const segLen = Math.min(remaining, seg.length)
       walkSegment(cur, points, seg, segLen)

@@ -1,6 +1,80 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { telemetry } from '../game/telemetry'
 import { useGame } from '../game/store'
+import { NPC_ACCENTS } from '../lib/physics/npc'
+import type { TrackData } from '../lib/track/generate'
+
+const MAP_SIZE = 148
+
+/** T48: top-down course map + live racer dots, canvas-drawn at display rate */
+function Minimap({ track, accent }: { track: TrackData; accent: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  const proj = useMemo(() => {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
+    for (const p of track.points) {
+      if (p.x < minX) minX = p.x
+      if (p.x > maxX) maxX = p.x
+      if (p.z < minZ) minZ = p.z
+      if (p.z > maxZ) maxZ = p.z
+    }
+    const span = Math.max(maxX - minX, maxZ - minZ, 1)
+    const scale = (MAP_SIZE - 16) / span
+    const ox = (MAP_SIZE - (maxX - minX) * scale) / 2 - minX * scale
+    const oz = (MAP_SIZE - (maxZ - minZ) * scale) / 2 - minZ * scale
+    const toMap = (x: number, z: number): [number, number] => [x * scale + ox, z * scale + oz]
+    return { toMap }
+  }, [track.points])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    let raf = 0
+    const tick = () => {
+      raf = requestAnimationFrame(tick)
+      ctx.clearRect(0, 0, MAP_SIZE, MAP_SIZE)
+      ctx.strokeStyle = 'rgba(255,255,255,0.28)'
+      ctx.lineWidth = 2
+      ctx.beginPath()
+      track.points.forEach((p, i) => {
+        const [x, y] = proj.toMap(p.x, p.z)
+        if (i === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
+      })
+      ctx.stroke()
+      // npc dots first, player on top
+      for (let i = 1; i < telemetry.racers; i++) {
+        const [x, y] = proj.toMap(telemetry.racersXZ[i * 2], telemetry.racersXZ[i * 2 + 1])
+        ctx.fillStyle = NPC_ACCENTS[i - 1] ?? '#ffffff'
+        ctx.beginPath()
+        ctx.arc(x, y, 2.4, 0, Math.PI * 2)
+        ctx.fill()
+      }
+      const [px, py] = proj.toMap(telemetry.racersXZ[0], telemetry.racersXZ[1])
+      ctx.fillStyle = accent
+      ctx.shadowColor = accent
+      ctx.shadowBlur = 6
+      ctx.beginPath()
+      ctx.arc(px, py, 3.4, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.shadowBlur = 0
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [track.points, proj, accent])
+
+  return (
+    <canvas
+      ref={canvasRef}
+      width={MAP_SIZE}
+      height={MAP_SIZE}
+      className="border border-white/15 bg-black/40"
+      style={{ width: MAP_SIZE, height: MAP_SIZE }}
+    />
+  )
+}
 
 function fmtTime(ms: number): string {
   const m = Math.floor(ms / 60000)
@@ -17,7 +91,7 @@ const MAX_KPH = 1100
  * HUD v2 (T19, V6): DOM-driven at display rate via rAF reading telemetry —
  * zero React re-renders during the race. All elements inside .hud-safe.
  */
-export function Hud({ accent }: { accent: string }) {
+export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const speedRef = useRef<HTMLSpanElement>(null)
   const timeRef = useRef<HTMLSpanElement>(null)
   const posRef = useRef<HTMLSpanElement>(null)
@@ -85,8 +159,8 @@ export function Hud({ accent }: { accent: string }) {
       if (pulseRef.current) pulseRef.current.style.opacity = String(0.25 + telemetry.energy * 0.75)
       // V10: speed lines + boost flash scale with fxIntensity, 0 → invisible
       if (linesRef.current) {
-        const o = Math.max(0, (kph - 350) / 900) * fxRef.current
-        linesRef.current.style.opacity = o.toFixed(3)
+        const o = (Math.max(0, (kph - 260) / 650) + telemetry.beat * 0.08) * fxRef.current
+        linesRef.current.style.opacity = Math.min(0.9, o).toFixed(3)
       }
       if (flashRef.current) {
         flashRef.current.style.opacity = (telemetry.boostFlash * 0.5 * fxRef.current).toFixed(3)
@@ -164,9 +238,11 @@ export function Hud({ accent }: { accent: string }) {
           </div>
         </div>
 
-        {/* bottom: eq pulse | speed block */}
+        {/* bottom: map+eq | speed block */}
         <div className="flex items-end justify-between">
-          <div ref={pulseRef} className="mb-1 ml-1 flex items-end gap-1" aria-hidden>
+          <div className="flex flex-col gap-2">
+            {track && <Minimap track={track} accent={accent} />}
+            <div ref={pulseRef} className="ml-1 flex items-end gap-1" aria-hidden>
             {[3, 5, 8, 6, 4].map((h, i) => (
               <div
                 key={i}
@@ -174,6 +250,7 @@ export function Hud({ accent }: { accent: string }) {
                 style={{ height: h * 4, background: accent, animationDelay: `${i * 80}ms` }}
               />
             ))}
+            </div>
           </div>
 
           <div className="-skew-x-12 border-r-4 bg-black/50 px-5 py-2 text-right" style={{ borderColor: accent }}>

@@ -18,6 +18,12 @@ export interface RaceTelemetry {
   racers: number
   /** T35: >0 counting down, (-1,0] = GO flash window */
   countdown: number
+  /** T39: onset beat spike 1→0, decays fast */
+  beat: number
+  /** current section index under the player */
+  sectionIndex: number
+  /** T48: world x,z pairs — [0]=player, then NPCs */
+  racersXZ: Float32Array
 }
 
 export const telemetry: RaceTelemetry = {
@@ -32,4 +38,7 @@ export const telemetry: RaceTelemetry = {
   position: 1,
   racers: 1,
   countdown: 0,
+  beat: 0,
+  sectionIndex: 0,
+  racersXZ: new Float32Array(12),
 }

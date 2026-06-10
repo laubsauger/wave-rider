@@ -55,7 +55,7 @@ export function Race() {
         {/* C7: low tier drops the post chain entirely */}
         <Effects fxIntensity={quality === 'low' ? 0 : fxIntensity} />
       </GpuCanvas>
-      <Hud accent={track.theme.edge} />
+      <Hud accent={track.theme.edge} track={track} />
       <TouchControls />
       {paused && (
         <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black/70">

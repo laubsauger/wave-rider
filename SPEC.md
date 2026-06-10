@@ -48,6 +48,7 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V17: ship collisions: deterministic, energy transfer ⊥ create speed (Σv after ≤ Σv before + ε), both stay in walls.
 - V18: lean ∝ user steer input only. Track curvature ⊥ auto-lean ship. (amends V14)
 - V19: ∀ adjacent sections w/ Δbrightness ≥ 0.1 → distinct rail/pad/scenery palette (visual development).
+- V20: curvature speed-scaled: implied lateral accel k·avgSpeed² ≤ ~90 m/s² for p95 of samples → curves rideable @ design speed.
 
 ## §T tasks
 
@@ -75,19 +76,31 @@ T20|x|NPC racers: 5 ships, per-NPC skill (pace, lines, wobble), live position ra
 T21|x|audio-reactive pass: both rails + pads pulse, sky/fog beat flash, beat lights|V3,V10
 T22|x|speed feel: road stripe shader (TSL), center dash, scrolling glow lines|C11,C7
 T23|x|menu v2: centered composition, song cards, settings row, controls hint|C11
-T24|.|audio v2: detect drops, breakdowns, energy shifts → `features.events`|C5,V16
-T25|.|track gen v2: real elevation drama, crest jumps @ drops, glide sections @ breakdowns, width ↑|V16,V3
-T26|.|airtime physics: airborne over crests, gravity, landing impact, reduced air control|V16,V5
-T27|.|input feel: steer attack/release ramp, slower accel spool, harsher walls|B7,B8
-T28|.|lean from steer only|V18,B6
-T29|.|ship v2: arrow silhouette, detail greebles, clearcoat materials, NPC variants|C11
-T30|.|exhaust v2: TSL shader ribbon — white core → accent, length fade, noise flicker|C11
-T31|.|environment: grid floor, ridge silhouettes, per-section palettes on rails/pads/scenery, shadows (high tier)|V19,C11,C7
-T32|.|NPC collisions: player↔npc energy transfer, lateral shove, shake|V17,V15
-T33|.|speed fx: warp streaks @ high v, boost tunnel feel|C11,V10
-T34|.|menu v3: waveform card backgrounds, user song library (bpm/duration), spacing polish|I.ui
-T35|.|race countdown 3-2-1-GO: sim+music locked until GO|I.ui
-T36|.|feel pass 2: slim pod-racer ship, track width ↑↑, curvature drift ↑ (! counter-steer), visible yaw/lean ↑, jumps dialed gentler|C11,V18
+T24|x|audio v2: detect drops, breakdowns, energy shifts → `features.events`|C5,V16
+T25|x|track gen v2: real elevation drama, crest jumps @ drops, glide sections @ breakdowns, width ↑|V16,V3
+T26|x|airtime physics: airborne over crests, gravity, landing impact, reduced air control|V16,V5
+T27|x|input feel: steer attack/release ramp, slower accel spool, harsher walls|B7,B8
+T28|x|lean from steer only|V18,B6
+T29|x|ship v2: arrow silhouette, detail greebles, clearcoat materials, NPC variants|C11
+T30|x|exhaust v2: TSL shader ribbon — white core → accent, length fade, noise flicker|C11
+T31|x|environment: grid floor, ridge silhouettes, per-section palettes on rails/pads/scenery, shadows (high tier)|V19,C11,C7
+T32|x|NPC collisions: player↔npc energy transfer, lateral shove, shake|V17,V15
+T33|x|speed fx: warp streaks @ high v, boost tunnel feel|C11,V10
+T34|x|menu v3: waveform card backgrounds, user song library (bpm/duration), spacing polish|I.ui
+T35|x|race countdown 3-2-1-GO: sim+music locked until GO|I.ui
+T36|x|feel pass 2: slim pod-racer ship, track width ↑↑, curvature drift ↑ (! counter-steer), visible yaw/lean ↑, jumps dialed gentler|C11,V18
+T37|x|npc exhaust plumes, per-npc accent color|C11
+T38|x|track readability: curvature speed-scaled (V20), per-section elevation trends → crossings separate vertically|V20,V3
+T39|x|music coupling 2: onset beat spikes → rails/pads/grid/streaks; section palette → fog/sky/road stripes @ runtime|V19,V3
+T40|x|speed fx scale-up: streaks earlier+longer, speed lines earlier, beat-boosted|V10,C11
+T41|x|ship v3: 3 hull variants (dart/talon/manta), npc variant = i%3, more greebles|C11
+T42|x|track furniture: overhead beat-gates, curve chevrons, finish gate|C11,V19
+T43|x|tunnels: breakdown/glide sections → rib tunnels, beat-lit|V16,C11
+T44|x|post v2: bloom ↑, radial motion blur ∝ speed+boost (TSL)|V10,C7
+T45|x|feel v3: camera accel pull + fov surge, speed-scaled hover bob|C11
+T46|.|start: 2-column grid (no pileup), road double-sided (no under-track view @ launch)|V17
+T47|.|real steering: outward drift ∝ k·v² meaningful → ⊥ auto-ride, must steer curves|V18,B12
+T48|.|HUD minimap: top-down track path + live dots (player accent + npc colors)|V6,V13
 
 ## §B bugs
 
@@ -101,3 +114,6 @@ B6|2026-06-10|lean coupled to track curvature → ship leans w/o steer input, fe
 B7|2026-06-10|keyboard steer 0→1 instant @ 120Hz → single tap = wall slam|steer attack/release ramp in ShipState
 B8|2026-06-10|accel = avgSpeed*0.55 → near-instant top speed, no spool feel|accel curve (1-(v/vmax)^1.5), accel0 ↓
 B9|2026-06-10|event detect: pure percentile thr fails when quiet ≈ half of song (thr inside quiet cluster)|range-based thr (p15..p85 band)
+B10|2026-06-10|curvature ranges absolute → @ 150+ m/s lateral demand k·v² ≈ 300 m/s², unsteerable, wall-grind fest|V20
+B11|2026-06-10|analysis pipeline `await requestAnimationFrame` → background/occluded tab → rAF suspended → hang @ 5% forever|nextFrame races rAF vs 120ms timeout
+B12|2026-06-10|drift factor 0.006 absolute; after V20 k ↓ ~6× → outward drift ≈ 0.2 m/s → thrust-only auto-rides track|V20-aware drift: k·v²·0.5 (T47)

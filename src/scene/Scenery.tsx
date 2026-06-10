@@ -24,6 +24,9 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
   const glowMat = useRef<THREE.MeshBasicMaterial>(null)
   const archMat = useRef<THREE.MeshBasicMaterial>(null)
   const ringMat = useRef<THREE.MeshBasicMaterial>(null)
+  const tunnelMat = useRef<THREE.MeshStandardMaterial>(null)
+  const gateMat = useRef<THREE.MeshBasicMaterial>(null)
+  const chevronMat = useRef<THREE.MeshBasicMaterial>(null)
 
   const data = useMemo(() => {
     const rng = mulberry32((track.seed ^ 0x777aa1) >>> 0)
@@ -116,15 +119,97 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       }
     }
 
-    return { pylonMatrices, glowMatrices, glowColors, archMatrices, archColors, ringMatrices, ringColors }
+    // T43: rib tunnels through breakdown glides
+    const tunnelMatrices: THREE.Matrix4[] = []
+    const tunnelColors: THREE.Color[] = []
+    for (const seg of track.segments) {
+      if (seg.type !== 'glide') continue
+      for (let s = seg.start + 20; s < seg.end - 10; s += 28) {
+        if (tunnelMatrices.length >= 400) break
+        poseAt(frames, s, 0, 2.2, pose)
+        tangent.set(pose.tx, pose.ty, pose.tz)
+        up.set(pose.nx, pose.ny, pose.nz)
+        m.lookAt(new THREE.Vector3(0, 0, 0), tangent, up)
+        q.setFromRotationMatrix(m)
+        obj.quaternion.copy(q)
+        obj.position.set(pose.px, pose.py, pose.pz)
+        const r = track.width * 0.045
+        obj.scale.set(r, r, r)
+        obj.updateMatrix()
+        tunnelMatrices.push(obj.matrix.clone())
+        tunnelColors.push(c.set(paletteAt(track, s)).clone())
+      }
+    }
+
+    // T42: overhead beat-gates on straights, chevrons on curve outsides
+    const gateMatrices: THREE.Matrix4[] = []
+    const gateColors: THREE.Color[] = []
+    const chevronMatrices: THREE.Matrix4[] = []
+    const chevronColors: THREE.Color[] = []
+    for (const seg of track.segments) {
+      if (seg.type === 'straight') {
+        for (let s = seg.start + 120; s < seg.end - 40; s += 240) {
+          if (gateMatrices.length >= 200) break
+          poseAt(frames, s, 0, halfW * 0.6, pose)
+          tangent.set(pose.tx, pose.ty, pose.tz)
+          up.set(pose.nx, pose.ny, pose.nz)
+          m.lookAt(new THREE.Vector3(0, 0, 0), tangent, up)
+          q.setFromRotationMatrix(m)
+          obj.quaternion.copy(q)
+          obj.position.set(pose.px, pose.py, pose.pz)
+          obj.scale.set(track.width + 5, 0.45, 0.45)
+          obj.updateMatrix()
+          gateMatrices.push(obj.matrix.clone())
+          gateColors.push(c.set(paletteAt(track, s)).clone())
+        }
+      } else if (seg.type === 'curve' || seg.type === 'chicane') {
+        for (let s = seg.start + 30; s < seg.end - 20; s += 60) {
+          if (chevronMatrices.length >= 400) break
+          for (const side of [-1, 1]) {
+            poseAt(frames, s, side * (halfW + 1.6), 1.4, pose)
+            tangent.set(pose.tx, pose.ty, pose.tz)
+            up.set(pose.nx, pose.ny, pose.nz)
+            m.lookAt(new THREE.Vector3(0, 0, 0), tangent, up)
+            q.setFromRotationMatrix(m)
+            obj.quaternion.copy(q)
+            obj.position.set(pose.px, pose.py, pose.pz)
+            obj.rotateZ(side * 0.6)
+            obj.scale.set(0.35, 2.4, 0.35)
+            obj.updateMatrix()
+            chevronMatrices.push(obj.matrix.clone())
+            chevronColors.push(c.set(paletteAt(track, s)).clone())
+          }
+        }
+      }
+    }
+
+    return {
+      pylonMatrices,
+      glowMatrices,
+      glowColors,
+      archMatrices,
+      archColors,
+      ringMatrices,
+      ringColors,
+      tunnelMatrices,
+      tunnelColors,
+      gateMatrices,
+      gateColors,
+      chevronMatrices,
+      chevronColors,
+    }
   }, [track, frames])
 
   // beat-reactive glow (T21) — V10-safe: brightness only, no motion
   useFrame(() => {
     const e = telemetry.energy * track.theme.pulse
-    if (glowMat.current) glowMat.current.color.setScalar(0.9 + e * 2.6)
-    if (archMat.current) archMat.current.color.setScalar(1.2 + e * 3)
-    if (ringMat.current) ringMat.current.opacity = 0.22 + e * 0.5
+    const b = telemetry.beat * track.theme.pulse
+    if (glowMat.current) glowMat.current.color.setScalar(0.9 + e * 2 + b * 2.2)
+    if (archMat.current) archMat.current.color.setScalar(1.1 + e * 2.2 + b * 2.8)
+    if (ringMat.current) ringMat.current.opacity = 0.2 + e * 0.35 + b * 0.35
+    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.35 + e * 0.8 + b * 1.6
+    if (gateMat.current) gateMat.current.color.setScalar(0.8 + b * 3.2) // gates ARE the beat
+    if (chevronMat.current) chevronMat.current.color.setScalar(1 + e * 1.4 + b * 1.8)
   })
 
   return (
@@ -146,6 +231,18 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       <Instanced matrices={data.archMatrices} colors={data.archColors}>
         <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial ref={archMat} color="#ffffff" toneMapped={false} />
+      </Instanced>
+      <Instanced matrices={data.tunnelMatrices} colors={data.tunnelColors}>
+        <torusGeometry args={[14, 0.6, 6, 24]} />
+        <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive="#ffffff" emissiveIntensity={0.5} metalness={0.7} roughness={0.4} />
+      </Instanced>
+      <Instanced matrices={data.gateMatrices} colors={data.gateColors}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial ref={gateMat} color="#ffffff" toneMapped={false} />
+      </Instanced>
+      <Instanced matrices={data.chevronMatrices} colors={data.chevronColors}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial ref={chevronMat} color="#ffffff" toneMapped={false} />
       </Instanced>
       <Instanced matrices={data.ringMatrices} colors={data.ringColors}>
         <torusGeometry args={[11, 0.35, 8, 48]} />

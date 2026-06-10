@@ -93,6 +93,19 @@ describe('generateTrack (T3)', () => {
     expect(cold.segments.some((s) => s.type === 'chicane')).toBe(false)
   })
 
+  it('V20: curvature speed-scaled — p95 lateral demand rideable at design speed', async () => {
+    const { sampleTrack, curvatureAt } = await import('../track/sample')
+    const t = generateTrack(fakeFeatures({ intensity: 0.9, bpm: 175 })) // fastest case
+    const frames = sampleTrack(t, 3)
+    const demands: number[] = []
+    for (let i = 10; i < frames.count - 10; i += 3) {
+      demands.push(Math.abs(curvatureAt(frames, i)) * t.avgSpeed * t.avgSpeed)
+    }
+    demands.sort((a, b) => a - b)
+    const p95 = demands[Math.floor(demands.length * 0.95)]
+    expect(p95).toBeLessThanOrEqual(90)
+  })
+
   it('different songs → different tracks (seed sensitivity)', () => {
     const a = generateTrack(fakeFeatures())
     const b = generateTrack(fakeFeatures({ bpm: 128.1 }))

@@ -4,7 +4,14 @@ import * as THREE from 'three/webgpu'
 import { useGame } from '../game/store'
 import { telemetry } from '../game/telemetry'
 import { attachKeyboard, onGameKey, readShipInput, resetInput } from '../game/input'
-import { computeLean, initialShip, stepShip, type ShipInput, type StepEvents } from '../lib/physics/ship'
+import {
+  computeLean,
+  initialShip,
+  stepShip,
+  PHYSICS_DT,
+  type ShipInput,
+  type StepEvents,
+} from '../lib/physics/ship'
 import { accumulateSteps } from '../lib/physics/loop'
 import { sampleTrack, poseAt, curvatureAt, type FramePose, type TrackFrames } from '../lib/track/sample'
 import {
@@ -28,6 +35,9 @@ const tmpMatrix = new THREE.Matrix4()
 const tmpEye = new THREE.Vector3(0, 0, 0)
 const tmpDir = new THREE.Vector3()
 const tmpUp = new THREE.Vector3()
+const skyTint = new THREE.Color()
+const skyTarget = new THREE.Color()
+const fogTarget = new THREE.Color()
 
 const HOVER_HEIGHT = 0.9
 
@@ -61,6 +71,8 @@ export function RaceScene({
     () => ({
       base: new THREE.Color(track.theme.sky),
       flash: new THREE.Color(track.theme.sky).lerp(new THREE.Color(track.theme.glow), 0.32),
+      themeSky: new THREE.Color(track.theme.sky),
+      themeFog: new THREE.Color(track.theme.fog),
     }),
     [track.theme],
   )
@@ -83,6 +95,12 @@ export function RaceScene({
     airPitch: 0,
     /** T35: 3-2-1-GO; sim + music locked until ≤ 0 */
     countdown: 3.8,
+    /** T39: pointers walked monotonically per frame */
+    onsetIdx: 0,
+    segIdx: 0,
+    /** T45: smoothed longitudinal accel → camera pull/fov surge */
+    vPrev: 0,
+    pull: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -142,12 +160,21 @@ export function RaceScene({
     if (landEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + Math.min(0.45, landEvent * 0.012))
     s.shake.trauma = Math.max(0, s.shake.trauma - dt * 1.6)
 
-    // ship world transform — air height rides on top of hover (V16)
+    // T45: accel feel — camera pulls back under thrust, snaps in on scrub
     const ship = s.ship
+    if (steps > 0) {
+      const accel = (ship.v - s.vPrev) / (steps * PHYSICS_DT)
+      s.vPrev = ship.v
+      const target = Math.max(-0.6, Math.min(1.2, accel * 0.022))
+      s.pull += (target - s.pull) * Math.min(1, dt * 4)
+    }
+
+    // ship world transform — air height rides on top of hover (V16)
     poseAt(frames, ship.s, ship.d, HOVER_HEIGHT + ship.air, s.pose)
     const g = shipGroup.current
     if (g) {
-      const bob = Math.sin(ship.time * 7) * 0.05 + Math.sin(ship.time * 13.7) * 0.02
+      const bobAmp = 1 + ship.v / 350
+      const bob = (Math.sin(ship.time * 7) * 0.05 + Math.sin(ship.time * 13.7) * 0.02) * bobAmp
       g.position.set(
         s.pose.px + s.pose.nx * bob,
         s.pose.py + s.pose.ny * bob,
@@ -184,8 +211,31 @@ export function RaceScene({
     telemetry.boostFlash = boostEvent ? 1 : Math.max(0, telemetry.boostFlash - dt * 3.5)
     telemetry.position = racePosition(ship.s, s.npcs)
     telemetry.racers = s.npcs.length + 1
+    telemetry.racersXZ[0] = s.pose.px
+    telemetry.racersXZ[1] = s.pose.pz
 
-    // T21: sky breathes with the music
+    // T39: onset beat spikes — sharp 1→0 pulses on detected hits
+    let beat = Math.max(0, telemetry.beat - dt * 5)
+    while (s.onsetIdx < features.onsets.length && features.onsets[s.onsetIdx] <= songTime) {
+      s.onsetIdx++
+      beat = 1
+    }
+    telemetry.beat = beat
+
+    // T39: current section under the player → palette drift
+    const segs = track.segments
+    while (s.segIdx < segs.length - 1 && ship.s >= segs[s.segIdx].end) s.segIdx++
+    telemetry.sectionIndex = segs[s.segIdx]?.sectionIndex ?? 0
+
+    // T21/T39: sky breathes with the music AND drifts toward the section tint
+    const palette = track.sectionPalettes[telemetry.sectionIndex]
+    if (palette) {
+      skyTint.set(palette)
+      skyColors.base.lerp(skyTarget.copy(skyColors.themeSky).lerp(skyTint, 0.18), dt * 0.5)
+      if (scene.fog instanceof THREE.Fog) {
+        scene.fog.color.lerp(fogTarget.copy(skyColors.themeFog).lerp(skyTint, 0.22), dt * 0.5)
+      }
+    }
     if (scene.background instanceof THREE.Color) {
       scene.background.lerpColors(skyColors.base, skyColors.flash, telemetry.energy * track.theme.pulse)
     }
@@ -253,6 +303,7 @@ function updateCamera(
     pose: FramePose
     shake: ShakeState
     roll: number
+    pull: number
   },
   mode: 'chase' | 'cockpit',
   fxIntensity: number,
@@ -261,12 +312,14 @@ function updateCamera(
   const { ship, pose } = s
 
   if (mode === 'chase') {
-    // trail into the corner: camera swings opposite the steer (T36)
+    // trail into the corner: camera swings opposite the steer (T36);
+    // pulls back under acceleration (T45)
     const swing = -ship.steerSmooth * 2.2
+    const back = 8 + s.pull * 2.4
     camPos.set(
-      pose.px - pose.tx * 8 + pose.nx * 2.9 + pose.bx * swing,
-      pose.py - pose.ty * 8 + pose.ny * 2.9 + pose.by * swing,
-      pose.pz - pose.tz * 8 + pose.nz * 2.9 + pose.bz * swing,
+      pose.px - pose.tx * back + pose.nx * 2.9 + pose.bx * swing,
+      pose.py - pose.ty * back + pose.ny * 2.9 + pose.by * swing,
+      pose.pz - pose.tz * back + pose.nz * 2.9 + pose.bz * swing,
     )
     camera.position.lerp(camPos, 1 - Math.exp(-dt * 9))
     // hard tether: cam may lag for feel but never lose the ship at speed (B4)
@@ -298,7 +351,7 @@ function updateCamera(
 
   // speed FOV: subtle always, boost kick scaled by fx
   const speedNorm = Math.min(1, ship.v / 280)
-  const targetFov = 62 + speedNorm * 16 + (ship.boost > 0 ? 6 * fxIntensity : 0)
+  const targetFov = 62 + speedNorm * 18 + (ship.boost > 0 ? 6 * fxIntensity : 0) + s.pull * 7
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4)
   camera.updateProjectionMatrix()
 }
@@ -358,6 +411,11 @@ function NpcShips({
 }) {
   const refs = useRef<(THREE.Group | null)[]>([])
   const pose = useRef({} as FramePose)
+  // stable per-NPC ref objects so ExhaustTrails can follow each ship (T37)
+  const groupRefs = useMemo(
+    () => specs.map(() => ({ current: null as THREE.Group | null })),
+    [specs],
+  )
 
   useFrame(() => {
     const npcs = simRef.current.npcs
@@ -368,6 +426,8 @@ function NpcShips({
       poseAt(frames, Math.max(0, st.s), st.d, HOVER_HEIGHT, pose.current)
       const p = pose.current
       g.position.set(p.px, p.py, p.pz)
+      telemetry.racersXZ[(i + 1) * 2] = p.px
+      telemetry.racersXZ[(i + 1) * 2 + 1] = p.pz
       tmpDir.set(-p.tx, -p.ty, -p.tz)
       tmpUp.set(p.nx, p.ny, p.nz)
       tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)
@@ -383,17 +443,34 @@ function NpcShips({
 
   return (
     <>
-      {specs.map((spec, i) => (
-        <group key={spec.name} ref={(g) => void (refs.current[i] = g)}>
-          <ShipMesh
-            accent={spec.accent}
-            power={() => {
-              const st = simRef.current.npcs[i]
-              return st && !st.finished && st.v > 1 ? 0.55 : 0
-            }}
-          />
-        </group>
-      ))}
+      {specs.map((spec, i) => {
+        const npcPower = () => {
+          const st = simRef.current.npcs[i]
+          return st && !st.finished && st.v > 1 ? 0.55 : 0
+        }
+        return (
+          <group key={spec.name}>
+            <group
+              ref={(g) => {
+                refs.current[i] = g
+                groupRefs[i].current = g
+              }}
+            >
+              <ShipMesh accent={spec.accent} power={npcPower} variant={(i % 3) as 0 | 1 | 2} />
+            </group>
+            {/* T37: every racer trails its own colors */}
+            <ExhaustTrails
+              shipRef={groupRefs[i]}
+              offsets={[
+                [-0.58, -0.04, 1.5],
+                [0.58, -0.04, 1.5],
+              ]}
+              color={spec.accent}
+              intensity={npcPower}
+            />
+          </group>
+        )
+      })}
     </>
   )
 }

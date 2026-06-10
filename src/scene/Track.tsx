@@ -7,6 +7,8 @@ import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
 import { telemetry } from '../game/telemetry'
 
+const stripeTarget = new THREE.Color()
+
 function toGeometry(r: RibbonGeometry): THREE.BufferGeometry {
   const g = new THREE.BufferGeometry()
   g.setAttribute('position', new THREE.BufferAttribute(r.positions, 3))
@@ -61,13 +63,16 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   // T22: road surface = deep black + lateral glow stripes every 20m (speed
   // cue) + dashed center line. Stripe brightness rides the music (T21).
   const uEnergy = useMemo(() => uniform(0), [])
+  // T39: stripe color drifts toward the current section palette at runtime
+  const uStripeCol = useMemo(() => uniform(new THREE.Color(track.theme.glow)), [track.theme.glow])
   const roadMat = useMemo(() => {
     const m = new THREE.MeshStandardNodeMaterial({
       color: new THREE.Color(track.theme.road),
       metalness: 0.55,
       roughness: 0.38,
+      side: THREE.DoubleSide, // T46: no see-through from below at launch
     })
-    const glow = color(new THREE.Color(track.theme.glow))
+    const glow = uStripeCol
     const edge = color(new THREE.Color(track.theme.edge))
     const v = fract(uv().y)
     const stripe = smoothstep(0.93, 0.965, v).sub(smoothstep(0.965, 1.0, v))
@@ -82,14 +87,21 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     return m
   }, [track.theme, uEnergy])
 
-  // audio-reactive pulse (T21) — V10-safe: brightness only
-  useFrame(() => {
+  // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
+  // beat = sharp onset spikes layered on top of the energy floor.
+  useFrame((_, dt) => {
     const e = telemetry.energy * track.theme.pulse
-    uEnergy.value = e
-    uRail.value = 1.6 + e * 2.8
+    const b = telemetry.beat * track.theme.pulse
+    uEnergy.value = e + b * 0.8
+    uRail.value = 1.5 + e * 2.2 + b * 2.4
     if (padMat.current) {
-      const s = 2.0 + e * 2.2
+      const s = 1.9 + e * 1.8 + b * 2.2
       padMat.current.color.setRGB(s, s, s)
+    }
+    const sectionColor = track.sectionPalettes[telemetry.sectionIndex]
+    if (sectionColor) {
+      stripeTarget.set(sectionColor)
+      ;(uStripeCol.value as THREE.Color).lerp(stripeTarget, Math.min(1, dt * 0.8))
     }
   })
 
@@ -118,9 +130,25 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     return { matrices, colors }
   }, [geo.pads, track])
 
+  // T46: solid deck under the starting grid
+  const deck = useMemo(() => {
+    const p = new THREE.Vector3(frames.positions[0], frames.positions[1], frames.positions[2])
+    const t = new THREE.Vector3(frames.tangents[0], frames.tangents[1], frames.tangents[2])
+    const up = new THREE.Vector3(frames.normals[0], frames.normals[1], frames.normals[2])
+    const pos = p.clone().addScaledVector(t, -45).addScaledVector(up, -1.6)
+    const q = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(new THREE.Vector3(), t, up),
+    )
+    return { pos, q }
+  }, [frames])
+
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
+      <mesh position={deck.pos} quaternion={deck.q}>
+        <boxGeometry args={[track.width + 9, 2.6, 140]} />
+        <meshStandardMaterial color="#0a0d18" metalness={0.6} roughness={0.5} emissive={track.theme.glow} emissiveIntensity={0.1} />
+      </mesh>
       {[geo.railL, geo.railR].map((g, i) => (
         <mesh key={i} geometry={g} material={railMaterial} />
       ))}

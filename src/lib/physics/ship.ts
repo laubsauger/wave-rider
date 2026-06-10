@@ -143,8 +143,9 @@ export function stepShip(
   // lateral motion in track space: own steering ± curvature drift
   const i = Math.round(state.s / frames.ds)
   const k = curvatureAt(frames, i)
-  // T36: stronger curvature drift — corners shove you outward, you steer back
-  const lateralV = (Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.006) * airGrip
+  // T47/B12: outward drift is half the true centripetal demand k·v² —
+  // thrust alone can NOT ride a curve, you steer or you grind
+  const lateralV = (Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.5) * airGrip
   state.d += lateralV * dt
 
   // V16 airtime: when the road falls away faster than gravity pulls, fly

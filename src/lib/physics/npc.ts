@@ -53,9 +53,14 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
 }
 
 export function initialNpc(index: number): NpcState {
-  // staggered grid start behind the line
-  return { s: -6 - index * 7, d: (index % 2 === 0 ? -1 : 1) * 2.5, v: 0, time: 0, finished: false }
+  // T46: 2-column grid, 10m row spacing — no spawn-pileup (HIT_DS is 5.5)
+  const row = Math.floor(index / 2)
+  const col = index % 2
+  return { s: -12 - row * 10, d: col === 0 ? -4.2 : 4.2, v: 0, time: 0, finished: false }
 }
+
+/** npc accent colors, exported for the HUD minimap (T48) */
+export const NPC_ACCENTS = ACCENTS
 
 export function stepNpc(
   state: NpcState,

@@ -10,7 +10,16 @@ import { generateTrack } from '../lib/track/generate'
 import { audioContext } from '../lib/audio/playback'
 import { computeWaveform, fmtDuration } from '../lib/audio/waveform'
 
-const nextFrame = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
+// B11: rAF never fires in occluded/background tabs — racing a timeout keeps
+// the analysis pipeline moving even when the user tabs away
+const nextFrame = () =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, 120)
+    requestAnimationFrame(() => {
+      clearTimeout(timer)
+      resolve()
+    })
+  })
 
 export async function startBuiltinRace(spec: SongSpec): Promise<void> {
   const game = useGame.getState()

@@ -32,7 +32,7 @@ export function GridFloor({ track }: { track: TrackData }) {
   }, [track.theme.glow, uPulse])
 
   useFrame(({ camera }) => {
-    uPulse.value = 0.25 + telemetry.energy * track.theme.pulse * 0.45
+    uPulse.value = 0.22 + (telemetry.energy * 0.4 + telemetry.beat * 0.5) * track.theme.pulse
     if (meshRef.current) meshRef.current.position.set(camera.position.x, -70, camera.position.z)
   })
 
@@ -126,8 +126,9 @@ export function WarpStreaks({
 
     const v = speed()
     const vmax = track.avgSpeed * 1.45 + 60
-    const strength = Math.max(0, (v / vmax - 0.55) / 0.45) * fxIntensity
-    if (matRef.current) matRef.current.opacity = Math.min(0.55, strength * 0.55)
+    // T40: kicks in earlier, beat-boosted, harder at the top end
+    const strength = (Math.max(0, (v / vmax - 0.45) / 0.55) + telemetry.beat * 0.15) * fxIntensity
+    if (matRef.current) matRef.current.opacity = Math.min(0.75, strength * 0.7)
     mesh.visible = strength > 0.02
     if (!mesh.visible) return
 
@@ -142,7 +143,7 @@ export function WarpStreaks({
       const z = ((sh.z0 + travel.current) % STREAK_RANGE) - STREAK_RANGE / 2
       obj.position.set(Math.cos(sh.angle) * sh.radius, Math.sin(sh.angle) * sh.radius, z)
       obj.rotation.set(0, 0, 0)
-      obj.scale.set(0.06, 0.06, sh.len * (0.6 + strength))
+      obj.scale.set(0.06, 0.06, sh.len * (0.6 + strength * 2.2))
       obj.updateMatrix()
       mesh.setMatrixAt(i, obj.matrix)
     }
