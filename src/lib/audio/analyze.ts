@@ -18,6 +18,17 @@ export interface AudioSection {
   brightness: number
 }
 
+export type AudioEventType = 'drop' | 'breakdown'
+
+export interface AudioEvent {
+  type: AudioEventType
+  /** seconds */
+  start: number
+  end: number
+  /** 0..1 how hard the moment hits */
+  strength: number
+}
+
 export interface AudioFeatures {
   duration: number
   sampleRate: number
@@ -31,6 +42,8 @@ export interface AudioFeatures {
   /** onset times in seconds (spectral flux peaks) */
   onsets: number[]
   sections: AudioSection[]
+  /** structural moments: breakdowns (low-energy valleys) and drops (surges) */
+  events: AudioEvent[]
   mood: Mood
   /** overall 0..1 intensity, drives theme + difficulty */
   intensity: number
@@ -89,13 +102,85 @@ export function analyzeAudio(pcm: Float32Array, sampleRate: number): AudioFeatur
   const onsets = pickOnsets(flux, frameInterval)
   const bpm = estimateBpm(flux, frameInterval)
   const sections = segment(energy, centroid, frameInterval, duration)
+  const events = detectEvents(energy, frameInterval)
 
   const meanEnergy = mean(energy)
   const meanCentroid = mean(centroid)
   const intensity = clamp01(0.55 * meanEnergy + 0.25 * meanCentroid + 0.2 * clamp01((bpm - 70) / 110))
   const mood = classifyMood(bpm, meanEnergy, meanCentroid)
 
-  return { duration, sampleRate, bpm, energy, centroid, frameInterval, onsets, sections, mood, intensity }
+  return { duration, sampleRate, bpm, energy, centroid, frameInterval, onsets, sections, events, mood, intensity }
+}
+
+/**
+ * T24: structural events from the smoothed energy curve.
+ * breakdown = sustained run below the 30th percentile (≥ 5s).
+ * drop      = fast climb (≤ 2.5s) from below-median to above the 80th
+ *             percentile — classic build→slam. Strength = climb size.
+ */
+function detectEvents(energy: Float32Array, frameInterval: number): AudioEvent[] {
+  const win = Math.max(1, Math.round(1.5 / frameInterval))
+  const sm = new Float32Array(energy.length)
+  let acc = 0
+  for (let i = 0; i < energy.length; i++) {
+    acc += energy[i]
+    if (i >= win) acc -= energy[i - win]
+    sm[i] = acc / Math.min(i + 1, win)
+  }
+
+  const sorted = Array.from(sm).sort((a, b) => a - b)
+  const pct = (p: number) => sorted[Math.floor(p * (sorted.length - 1))]
+  const p30 = pct(0.3)
+  const p50 = pct(0.5)
+  const p80 = pct(0.8)
+
+  const events: AudioEvent[] = []
+
+  // breakdowns
+  const minBreak = Math.round(5 / frameInterval)
+  let runStart = -1
+  for (let i = 0; i <= sm.length; i++) {
+    const low = i < sm.length && sm[i] < p30
+    if (low && runStart < 0) runStart = i
+    if (!low && runStart >= 0) {
+      if (i - runStart >= minBreak) {
+        events.push({
+          type: 'breakdown',
+          start: runStart * frameInterval,
+          end: i * frameInterval,
+          strength: Math.min(1, (p50 - avgRange(sm, runStart, i)) / Math.max(1e-6, p50)),
+        })
+      }
+      runStart = -1
+    }
+  }
+
+  // drops
+  const climbWin = Math.round(2.5 / frameInterval)
+  const cooldown = Math.round(8 / frameInterval)
+  let lastDrop = -cooldown
+  for (let i = climbWin; i < sm.length; i++) {
+    if (i - lastDrop < cooldown) continue
+    if (sm[i] > p80 && sm[i - climbWin] < p50) {
+      const t = i * frameInterval
+      events.push({
+        type: 'drop',
+        start: t,
+        end: t + 1,
+        strength: Math.min(1, (sm[i] - sm[i - climbWin]) / Math.max(1e-6, p80 - p30)),
+      })
+      lastDrop = i
+    }
+  }
+
+  events.sort((a, b) => a.start - b.start)
+  return events
+}
+
+function avgRange(a: Float32Array, i0: number, i1: number): number {
+  let s = 0
+  for (let i = i0; i < i1; i++) s += a[i]
+  return s / Math.max(1, i1 - i0)
 }
 
 function normalize(a: Float32Array): void {

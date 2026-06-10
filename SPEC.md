@@ -44,6 +44,10 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V13: race position = 1 + |{racer: racer.s > player.s}|, updates live, shown in HUD.
 - V14: ship banks INTO corner: steer/curve right → right side dips. Lean sign documented in `computeLean`.
 - V15: NPC sim deterministic: seeded from track.seed + index, same fixed timestep as player (V5).
+- V16: ∃ drop event in song → ∃ crest+descent in track → ship @ speed gains airtime (≥0.25s), lands clean (no clip).
+- V17: ship collisions: deterministic, energy transfer ⊥ create speed (Σv after ≤ Σv before + ε), both stay in walls.
+- V18: lean ∝ user steer input only. Track curvature ⊥ auto-lean ship. (amends V14)
+- V19: ∀ adjacent sections w/ Δbrightness ≥ 0.1 → distinct rail/pad/scenery palette (visual development).
 
 ## §T tasks
 
@@ -71,6 +75,17 @@ T20|x|NPC racers: 5 ships, per-NPC skill (pace, lines, wobble), live position ra
 T21|x|audio-reactive pass: both rails + pads pulse, sky/fog beat flash, beat lights|V3,V10
 T22|x|speed feel: road stripe shader (TSL), center dash, scrolling glow lines|C11,C7
 T23|x|menu v2: centered composition, song cards, settings row, controls hint|C11
+T24|.|audio v2: detect drops, breakdowns, energy shifts → `features.events`|C5,V16
+T25|.|track gen v2: real elevation drama, crest jumps @ drops, glide sections @ breakdowns, width ↑|V16,V3
+T26|.|airtime physics: airborne over crests, gravity, landing impact, reduced air control|V16,V5
+T27|.|input feel: steer attack/release ramp, slower accel spool, harsher walls|B7,B8
+T28|.|lean from steer only|V18,B6
+T29|.|ship v2: arrow silhouette, detail greebles, clearcoat materials, NPC variants|C11
+T30|.|exhaust v2: TSL shader ribbon — white core → accent, length fade, noise flicker|C11
+T31|.|environment: grid floor, ridge silhouettes, per-section palettes on rails/pads/scenery, shadows (high tier)|V19,C11,C7
+T32|.|NPC collisions: player↔npc energy transfer, lateral shove, shake|V17,V15
+T33|.|speed fx: warp streaks @ high v, boost tunnel feel|C11,V10
+T34|.|menu v3: waveform card backgrounds, user song library (bpm/duration), spacing polish|I.ui
 
 ## §B bugs
 
@@ -80,3 +95,6 @@ B2|2026-06-10|wall clamp applied speed multiplier per physics step @ 120Hz → g
 B3|2026-06-10|boost accel flat +90 m/s², only drag opposed → chained pads → 1827 kph runaway|V12
 B4|2026-06-10|chase cam `lerp(dt*5.5)` unbounded lag → @ high v ship ~90m ahead, off-screen|hard tether: cam ≤ 5m from desired pos
 B5|2026-06-10|ship roll sign inverted after `rotateY(π)` flip → leans OUT of corners|V14
+B6|2026-06-10|lean coupled to track curvature → ship leans w/o steer input, feels on-rails|V18
+B7|2026-06-10|keyboard steer 0→1 instant @ 120Hz → single tap = wall slam|steer attack/release ramp in ShipState
+B8|2026-06-10|accel = avgSpeed*0.55 → near-instant top speed, no spool feel|accel curve (1-(v/vmax)^1.5), accel0 ↓
