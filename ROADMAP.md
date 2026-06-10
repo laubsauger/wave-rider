@@ -18,3 +18,6 @@ Current (spec'd): point-to-point — track length ≅ song duration, finish @ so
 - R4: ghost replays (deterministic tracks → shareable ghosts per audio hash).
 - R5: time-trial leaderboards keyed by audio fingerprint.
 - R6: WebGL2 fallback ⊥ planned — WebGPU only stays.
+
+- R7: full vertical loops (quaternion course walk — heading/pitch walk gimbals @ ±90°).
+- R8: GLTF-grade ship hulls: panel-line geometry, greeble pass, per-team liveries.

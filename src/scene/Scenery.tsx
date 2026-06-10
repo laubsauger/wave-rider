@@ -26,6 +26,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
   const ringMat = useRef<THREE.MeshBasicMaterial>(null)
   const tunnelMat = useRef<THREE.MeshStandardMaterial>(null)
   const gateMat = useRef<THREE.MeshBasicMaterial>(null)
+  const gateMesh = useRef<THREE.InstancedMesh | null>(null)
   const chevronMat = useRef<THREE.MeshBasicMaterial>(null)
 
   const data = useMemo(() => {
@@ -144,6 +145,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     // T42: overhead beat-gates on straights, chevrons on curve outsides
     const gateMatrices: THREE.Matrix4[] = []
     const gateColors: THREE.Color[] = []
+    const gateS: number[] = []
     const chevronMatrices: THREE.Matrix4[] = []
     const chevronColors: THREE.Color[] = []
     for (const seg of track.segments) {
@@ -161,6 +163,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           obj.updateMatrix()
           gateMatrices.push(obj.matrix.clone())
           gateColors.push(c.set(paletteAt(track, s)).clone())
+          gateS.push(s)
         }
       } else if (seg.type === 'curve' || seg.type === 'chicane') {
         for (let s = seg.start + 30; s < seg.end - 20; s += 60) {
@@ -195,21 +198,51 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       tunnelColors,
       gateMatrices,
       gateColors,
+      gateS,
       chevronMatrices,
       chevronColors,
     }
   }, [track, frames])
 
   // beat-reactive glow (T21) — V10-safe: brightness only, no motion
-  useFrame(() => {
+  // T58: gate-pass detection state
+  const lastPlayerS = useRef(0)
+  const gateFlash = useRef(0)
+
+  useFrame((_, dt) => {
+    // T57: each channel owns its instruments — energy = sustained glow,
+    // beat = percussive flashes (gates/pads), centroid = high-end sparkle
     const e = telemetry.energy * track.theme.pulse
     const b = telemetry.beat * track.theme.pulse
-    if (glowMat.current) glowMat.current.color.setScalar(0.9 + e * 2 + b * 2.2)
-    if (archMat.current) archMat.current.color.setScalar(1.1 + e * 2.2 + b * 2.8)
-    if (ringMat.current) ringMat.current.opacity = 0.2 + e * 0.35 + b * 0.35
-    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.35 + e * 0.8 + b * 1.6
-    if (gateMat.current) gateMat.current.color.setScalar(0.8 + b * 3.2) // gates ARE the beat
-    if (chevronMat.current) chevronMat.current.color.setScalar(1 + e * 1.4 + b * 1.8)
+    const c = telemetry.centroid * track.theme.pulse
+    if (glowMat.current) glowMat.current.color.setScalar(0.9 + e * 2.8)
+    if (archMat.current) archMat.current.color.setScalar(1.1 + e * 2.4)
+    if (ringMat.current) ringMat.current.opacity = 0.2 + e * 0.55
+    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.35 + e * 1.6
+    if (chevronMat.current) chevronMat.current.color.setScalar(0.8 + c * 2.6)
+
+    // T58: threading a gate → big flash + HUD kick
+    const playerS = telemetry.progress * track.length
+    if (data.gateS.some((gs) => gs > lastPlayerS.current && gs <= playerS)) {
+      gateFlash.current = 1
+      telemetry.boostFlash = Math.max(telemetry.boostFlash, 0.6)
+    }
+    lastPlayerS.current = playerS
+    gateFlash.current = Math.max(0, gateFlash.current - dt * 2.5)
+    // T64: beat wave radiates from the player — near gates flash hard in
+    // their OWN palette color, far gates idle. No uniform white blink.
+    if (gateMat.current) gateMat.current.color.setScalar(1)
+    const gm = gateMesh.current
+    if (gm) {
+      for (let gi = 0; gi < data.gateS.length; gi++) {
+        const dist = Math.abs(data.gateS[gi] - playerS)
+        const prox = Math.max(0, 1 - dist / 500)
+        const lit = 0.7 + b * 3 * prox * prox + gateFlash.current * 2.5 * prox
+        waveColor.copy(data.gateColors[gi]).multiplyScalar(lit)
+        gm.setColorAt(gi, waveColor)
+      }
+      if (gm.instanceColor) gm.instanceColor.needsUpdate = true
+    }
   })
 
   return (
@@ -236,7 +269,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         <torusGeometry args={[14, 0.6, 6, 24]} />
         <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive="#ffffff" emissiveIntensity={0.5} metalness={0.7} roughness={0.4} />
       </Instanced>
-      <Instanced matrices={data.gateMatrices} colors={data.gateColors}>
+      <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh}>
         <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial ref={gateMat} color="#ffffff" toneMapped={false} />
       </Instanced>
@@ -261,19 +294,24 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
   )
 }
 
+const waveColor = new THREE.Color()
+
 function Instanced({
   matrices,
   colors,
   children,
+  meshRef,
 }: {
   matrices: THREE.Matrix4[]
   colors?: THREE.Color[]
   children: React.ReactNode
+  meshRef?: React.MutableRefObject<THREE.InstancedMesh | null>
 }) {
   const count = matrices.length
   return (
     <instancedMesh
       ref={(mesh) => {
+        if (meshRef) meshRef.current = mesh
         if (mesh) {
           for (let i = 0; i < count; i++) mesh.setMatrixAt(i, matrices[i])
           if (colors) for (let i = 0; i < Math.min(count, colors.length); i++) mesh.setColorAt(i, colors[i])

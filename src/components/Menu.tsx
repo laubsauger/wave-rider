@@ -54,17 +54,37 @@ function BundledCard({ song }: { song: BundledSong }) {
   )
 }
 
-function SpinningShip() {
-  const ref = useRef<THREE.Group>(null)
+/** T54: three hull variants staggered in the hangar, slow drift */
+const SHOWCASE: { pos: [number, number, number]; scale: number; accent: string; variant: 0 | 1 | 2; phase: number }[] = [
+  { pos: [3.6, 1.0, -2.2], scale: 0.58, accent: '#2ff3ff', variant: 0, phase: 0 },
+  { pos: [5.2, -0.3, -4.2], scale: 0.5, accent: '#ff2fd6', variant: 1, phase: 2.1 },
+  { pos: [4.4, -1.7, -3.2], scale: 0.42, accent: '#b4ff39', variant: 2, phase: 4.2 },
+]
+
+function ShowcaseShips() {
+  const refs = useRef<(THREE.Group | null)[]>([])
   useFrame(({ clock }) => {
-    if (!ref.current) return
-    ref.current.rotation.y = clock.elapsedTime * 0.6
-    ref.current.position.y = Math.sin(clock.elapsedTime * 1.4) * 0.12
+    SHOWCASE.forEach((s, i) => {
+      const g = refs.current[i]
+      if (!g) return
+      g.rotation.y = clock.elapsedTime * 0.45 + s.phase
+      g.position.y = s.pos[1] + Math.sin(clock.elapsedTime * 1.2 + s.phase) * 0.1
+    })
   })
   return (
-    <group ref={ref} rotation={[0.12, 0, 0]} scale={0.7} position={[3.6, 1.6, -2]}>
-      <ShipMesh />
-    </group>
+    <>
+      {SHOWCASE.map((s, i) => (
+        <group
+          key={i}
+          ref={(g) => void (refs.current[i] = g)}
+          rotation={[0.14, 0, 0]}
+          scale={s.scale}
+          position={s.pos}
+        >
+          <ShipMesh accent={s.accent} variant={s.variant} />
+        </group>
+      ))}
+    </>
   )
 }
 
@@ -90,10 +110,13 @@ export function Menu() {
     <div className="relative h-full">
       <GpuCanvas camera={{ position: [0, 1.2, 5], fov: 50 }}>
         <color attach="background" args={['#05060f']} />
-        <ambientLight intensity={0.25} />
-        <directionalLight position={[4, 6, 3]} intensity={2.2} color="#bfd8ff" />
-        <pointLight position={[-4, -2, 2]} intensity={8} color="#ff2fd6" />
-        <SpinningShip />
+        {/* T54: key + rim + fill hangar lighting */}
+        <ambientLight intensity={0.35} />
+        <directionalLight position={[5, 7, 4]} intensity={3} color="#dfeaff" />
+        <directionalLight position={[-6, 2, -4]} intensity={1.6} color="#2ff3ff" />
+        <pointLight position={[-3, -2, 2]} intensity={14} color="#ff2fd6" />
+        <pointLight position={[6, 3, -3]} intensity={10} color="#2ff3ff" />
+        <ShowcaseShips />
       </GpuCanvas>
 
       <div className="hud-safe absolute inset-0 flex items-center justify-center overflow-y-auto">

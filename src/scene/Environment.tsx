@@ -32,7 +32,8 @@ export function GridFloor({ track }: { track: TrackData }) {
   }, [track.theme.glow, uPulse])
 
   useFrame(({ camera }) => {
-    uPulse.value = 0.22 + (telemetry.energy * 0.4 + telemetry.beat * 0.5) * track.theme.pulse
+    // T57: the floor shimmers with the high end, not the beat
+    uPulse.value = 0.2 + (telemetry.centroid * 0.55 + telemetry.energy * 0.15) * track.theme.pulse
     if (meshRef.current) meshRef.current.position.set(camera.position.x, -70, camera.position.z)
   })
 

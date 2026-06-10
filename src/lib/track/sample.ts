@@ -38,13 +38,22 @@ export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
   const n = new Vector3()
   const b = new Vector3()
 
+  const rolls = track.rolls
   for (let i = 0; i < count; i++) {
     const u = i / (count - 1)
     curve.getPointAt(u, p)
     curve.getTangentAt(u, t)
-    // project world-up out of tangent → track-up; banking applied visually later
+    // project world-up out of tangent → track-up
     n.copy(UP).addScaledVector(t, -UP.dot(t)).normalize()
     b.crossVectors(t, n).normalize()
+    // T60: corkscrew — twist the frame around the tangent by the walked roll
+    const ri = u * (rolls.length - 1)
+    const r0 = Math.floor(ri)
+    const roll = rolls[r0] + (rolls[Math.min(rolls.length - 1, r0 + 1)] - rolls[r0]) * (ri - r0)
+    if (roll !== 0) {
+      n.applyAxisAngle(t, roll)
+      b.crossVectors(t, n).normalize()
+    }
 
     positions.set([p.x, p.y, p.z], i * 3)
     tangents.set([t.x, t.y, t.z], i * 3)

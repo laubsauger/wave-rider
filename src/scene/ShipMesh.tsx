@@ -47,6 +47,26 @@ export function ShipMesh({
   const nacelleX = variant === 2 ? 0.85 : 0.58
   const finScale: [number, number, number] =
     variant === 1 ? [0.05, 0.9, 0.4] : variant === 2 ? [0.05, 0.001, 0.001] : [0.05, 0.65, 0.5]
+
+  // T59: faceted lathe hull — real silhouette: needle nose, cockpit bulge,
+  // tapered tail. 8 radial segs + flat shading = crisp low-poly panels.
+  const hullGeo = useMemo(() => {
+    const profile = [
+      new THREE.Vector2(0.015, -2.45),
+      new THREE.Vector2(0.1, -1.75),
+      new THREE.Vector2(0.24, -0.95),
+      new THREE.Vector2(0.38, -0.15),
+      new THREE.Vector2(0.41, 0.45),
+      new THREE.Vector2(0.3, 1.1),
+      new THREE.Vector2(0.13, 1.45),
+      new THREE.Vector2(0.001, 1.5),
+    ]
+    const g = new THREE.LatheGeometry(profile, 8)
+    g.rotateX(Math.PI / 2)
+    g.scale(1.15, 0.55, 1)
+    g.computeVertexNormals()
+    return g
+  }, [])
   const hull = useMemo(
     () => ({ color: '#aeb9d6', metalness: 0.92, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.12, flatShading: true }),
     [],
@@ -71,15 +91,43 @@ export function ShipMesh({
 
   return (
     <group castShadow>
-      {/* fuselage — long narrow diamond cross-section */}
-      <mesh castShadow scale={[0.36, 0.24, 2.5]} rotation={[0, 0, Math.PI / 4]}>
-        <cylinderGeometry args={[0.42, 0.56, 1, 4, 1]} />
+      {/* faceted hull, nose -Z (T59) */}
+      <mesh castShadow geometry={hullGeo}>
         <meshPhysicalMaterial {...hull} />
       </mesh>
-      {/* needle nose — most of the ship's length */}
-      <mesh castShadow position={[0, -0.01, -2.6]} rotation={[-Math.PI / 2, Math.PI / 4, 0]} scale={[0.27, 3.2, 0.15]}>
-        <coneGeometry args={[0.5, 1, 4]} />
-        <meshPhysicalMaterial {...hull} />
+      {/* layered armor plates */}
+      <mesh castShadow position={[0, 0.13, 0.2]} rotation={[0.06, 0, 0]} scale={[0.5, 0.05, 1.0]}>
+        <boxGeometry />
+        <meshPhysicalMaterial {...hull} color="#6b7790" />
+      </mesh>
+      <mesh castShadow position={[0, 0.1, -0.95]} rotation={[-0.08, 0, 0]} scale={[0.36, 0.045, 0.8]}>
+        <boxGeometry />
+        <meshPhysicalMaterial {...hull} color="#6b7790" />
+      </mesh>
+      {/* hull decal stripes */}
+      {[-1, 1].map((side) => (
+        <mesh key={side} position={[side * 0.3, 0.05, -0.4]} rotation={[0, side * -0.06, 0]} scale={[0.02, 0.04, 2.2]}>
+          <boxGeometry />
+          <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={1.3} toneMapped={false} />
+        </mesh>
+      ))}
+      {/* antenna */}
+      <mesh position={[0, 0.42, 1.1]} rotation={[0.35, 0, 0]} scale={[0.015, 0.5, 0.015]}>
+        <cylinderGeometry args={[1, 1, 1, 4]} />
+        <meshStandardMaterial color="#222a3c" emissive={accent} emissiveIntensity={0.8} toneMapped={false} />
+      </mesh>
+      {/* underglow */}
+      <mesh position={[0, -0.22, -0.3]} rotation={[-Math.PI / 2, 0, 0]} scale={[1.1, 3.4, 1]}>
+        <planeGeometry />
+        <meshBasicMaterial
+          color={accent}
+          transparent
+          opacity={0.16}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
       </mesh>
       {/* canopy */}
       <mesh position={[0, 0.17, -0.55]} scale={[0.2, 0.11, 0.8]}>

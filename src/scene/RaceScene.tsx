@@ -101,6 +101,10 @@ export function RaceScene({
     /** T45: smoothed longitudinal accel → camera pull/fov surge */
     vPrev: 0,
     pull: 0,
+    /** T52: per-racer collision impulse cooldowns, [0]=player */
+    cooldowns: new Float32Array(6),
+    /** T63: slow-filtered steer for camera pivots */
+    camSteer: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -145,8 +149,11 @@ export function RaceScene({
     for (let i = 0; i < steps; i++) {
       stepShip(s.ship, s.input, track, frames, s.events)
       for (let ni = 0; ni < s.npcs.length; ni++) stepNpc(s.npcs[ni], npcSpecs[ni], track, frames)
-      // T32: bump resolution — player + all NPCs in one deterministic pass
-      const bump = resolveCollisions([s.ship, ...s.npcs], track)
+      // T32/T52: bump resolution — impulse once per contact, cooldown-gated
+      for (let ci = 0; ci < s.cooldowns.length; ci++) {
+        s.cooldowns[ci] = Math.max(0, s.cooldowns[ci] - PHYSICS_DT)
+      }
+      const bump = resolveCollisions([s.ship, ...s.npcs], track, s.cooldowns)
       if (bump > 0) wallEvent = Math.max(wallEvent, bump * 0.6)
       if (s.events.wallHit) wallEvent = Math.max(wallEvent, s.events.wallImpact)
       if (s.events.boostFired) boostEvent = true
@@ -168,6 +175,11 @@ export function RaceScene({
       const target = Math.max(-0.6, Math.min(1.2, accel * 0.022))
       s.pull += (target - s.pull) * Math.min(1, dt * 4)
     }
+    // T63: camera pivots only on strong/slow steering — cubic response kills
+    // taps, speed scale calms it at pace, slow filter smooths the rest
+    const sIn = ship.steerSmooth
+    const speedCalm = 0.45 + 0.55 * (1 - Math.min(1, ship.v / 220))
+    s.camSteer += (sIn * sIn * sIn * speedCalm - s.camSteer) * Math.min(1, dt * 2.2)
 
     // ship world transform — air height rides on top of hover (V16)
     poseAt(frames, ship.s, ship.d, HOVER_HEIGHT + ship.air, s.pose)
@@ -191,7 +203,8 @@ export function RaceScene({
       // airborne: nose follows vertical velocity
       const targetPitch = ship.airborne ? Math.max(-0.32, Math.min(0.4, -ship.vy * 0.012)) : 0
       s.airPitch += (targetPitch - s.airPitch) * Math.min(1, dt * 6)
-      g.rotateY(ship.yaw * 1.0 + Math.PI)
+      // T51/T56: nose-in carve — yaw NEGATED after the π model flip (B15)
+      g.rotateY(Math.PI - ship.yaw * 1.2)
       g.rotateZ(-s.roll)
       g.rotateX(s.airPitch)
     }
@@ -207,6 +220,7 @@ export function RaceScene({
     telemetry.songTime = songTime
     const fi = Math.min(features.energy.length - 1, Math.floor(songTime / features.frameInterval))
     telemetry.energy = features.energy[fi] ?? 0
+    telemetry.centroid = features.centroid[fi] ?? 0
     telemetry.wallFlash = wallEvent > 0 ? 1 : Math.max(0, telemetry.wallFlash - dt * 3)
     telemetry.boostFlash = boostEvent ? 1 : Math.max(0, telemetry.boostFlash - dt * 3.5)
     telemetry.position = racePosition(ship.s, s.npcs)
@@ -305,6 +319,7 @@ function updateCamera(
     shake: ShakeState
     roll: number
     pull: number
+    camSteer: number
   },
   mode: 'chase' | 'cockpit',
   fxIntensity: number,
@@ -313,9 +328,9 @@ function updateCamera(
   const { ship, pose } = s
 
   if (mode === 'chase') {
-    // trail into the corner: camera swings opposite the steer (T36);
+    // trail into the corner: camera swings opposite the steer (T36/T63);
     // pulls back under acceleration (T45)
-    const swing = -ship.steerSmooth * 2.2
+    const swing = -s.camSteer * 2.4
     const back = 8 + s.pull * 2.4
     camPos.set(
       pose.px - pose.tx * back + pose.nx * 2.9 + pose.bx * swing,
@@ -326,7 +341,13 @@ function updateCamera(
     // hard tether: cam may lag for feel but never lose the ship at speed (B4)
     const lag = camera.position.distanceTo(camPos)
     if (lag > 3.2) camera.position.lerp(camPos, 1 - 3.2 / lag)
-    camTarget.set(pose.px + pose.tx * 12, pose.py + pose.ty * 12, pose.pz + pose.tz * 12)
+    // T51/T63: look INTO the corner — damped, not twitchy
+    const lookIn = s.camSteer * 6
+    camTarget.set(
+      pose.px + pose.tx * 12 + pose.bx * lookIn,
+      pose.py + pose.ty * 12 + pose.by * lookIn,
+      pose.pz + pose.tz * 12 + pose.bz * lookIn,
+    )
   } else {
     camPos.set(pose.px + pose.tx * 0.4 + pose.nx * 0.55, pose.py + pose.ty * 0.4 + pose.ny * 0.55, pose.pz + pose.tz * 0.4 + pose.nz * 0.55)
     camera.position.copy(camPos)
@@ -346,13 +367,13 @@ function updateCamera(
   // the ship's rendered bank.
   camUp.set(pose.nx, pose.ny, pose.nz)
   camFwd.set(pose.tx, pose.ty, pose.tz)
-  camUp.applyAxisAngle(camFwd, -s.roll * (mode === 'cockpit' ? 0.9 : 0.4))
+  camUp.applyAxisAngle(camFwd, -s.roll * (mode === 'cockpit' ? 0.9 : 0.55))
   camera.up.copy(camUp)
   camera.lookAt(camTarget)
 
   // speed FOV: subtle always, boost kick scaled by fx
   const speedNorm = Math.min(1, ship.v / 280)
-  const targetFov = 62 + speedNorm * 18 + (ship.boost > 0 ? 6 * fxIntensity : 0) + s.pull * 7
+  const targetFov = 62 + speedNorm * 24 + (ship.boost > 0 ? 8 * fxIntensity : 0) + s.pull * 7
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4)
   camera.updateProjectionMatrix()
 }

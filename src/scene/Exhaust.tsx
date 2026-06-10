@@ -67,6 +67,12 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
           positions: new Float32Array(POINTS * 2 * 3),
           uvs,
           indices: idx,
+          // T50: fixed-rate emission state — no frame-paced stutter
+          acc: 0,
+          lastX: 0,
+          lastY: 0,
+          lastZ: 0,
+          primed: false,
         }
       }),
     [offsets],
@@ -82,7 +88,9 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     [],
   )
 
-  useFrame(({ camera, clock }) => {
+  const EMIT_DT = 1 / 90
+
+  useFrame(({ camera, clock }, dt) => {
     const ship = shipRef.current
     if (!ship) return
     const power = intensity()
@@ -93,13 +101,39 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
       const mesh = meshRefs.current[ti]
       if (!mesh) return
 
-      trail.history.copyWithin(3, 0, (POINTS - 1) * 3)
       tmp.p.set(...offsets[ti])
       ship.localToWorld(tmp.p)
-      trail.history[0] = tmp.p.x
-      trail.history[1] = tmp.p.y
-      trail.history[2] = tmp.p.z
-      if (trail.filled < POINTS) trail.filled++
+      if (!trail.primed) {
+        trail.lastX = tmp.p.x
+        trail.lastY = tmp.p.y
+        trail.lastZ = tmp.p.z
+        trail.primed = true
+      }
+
+      // T50: emit at a fixed 90Hz, interpolating along this frame's motion —
+      // history spacing stays even regardless of frame pacing
+      trail.acc += Math.min(0.1, dt)
+      let emits = Math.floor(trail.acc / EMIT_DT)
+      if (emits > 0) {
+        trail.acc -= emits * EMIT_DT
+        emits = Math.min(emits, POINTS)
+        for (let e = 1; e <= emits; e++) {
+          const f = e / emits
+          trail.history.copyWithin(3, 0, (POINTS - 1) * 3)
+          trail.history[0] = trail.lastX + (tmp.p.x - trail.lastX) * f
+          trail.history[1] = trail.lastY + (tmp.p.y - trail.lastY) * f
+          trail.history[2] = trail.lastZ + (tmp.p.z - trail.lastZ) * f
+          if (trail.filled < POINTS) trail.filled++
+        }
+        trail.lastX = tmp.p.x
+        trail.lastY = tmp.p.y
+        trail.lastZ = tmp.p.z
+      } else {
+        // keep the head glued to the engine between emits
+        trail.history[0] = tmp.p.x
+        trail.history[1] = tmp.p.y
+        trail.history[2] = tmp.p.z
+      }
 
       const n = trail.filled
       for (let i = 0; i < POINTS; i++) {

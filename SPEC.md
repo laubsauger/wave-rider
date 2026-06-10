@@ -102,12 +102,22 @@ T46|x|start: 2-column grid (no pileup), road double-sided (no under-track view @
 T47|x|real steering: outward drift ∝ k·v² meaningful → ⊥ auto-ride, must steer curves|V18,B12
 T48|x|HUD minimap: top-down track path + live dots (player accent + npc colors)|V6,V13
 T49|x|minimap v2: bigger, oblique 2.5D projection, ground-shadow ↔ path gap = altitude, elevation tint|V6
-T50|.|exhaust smoothing: fixed-dt multi-emit + interpolation, ⊥ frame-paced stutter|C11
-T51|.|carve feel: nose-in yaw ↑ (front points around corner), roll ↓ (no twist), camera look-into-corner + roll ↑|V18
-T52|.|collisions v2: impulse once per contact (cooldown), gradual separation, rear slows / front pushed|V17,B13
-T53|.|engine braking: off-throttle drag ↑ → coast stop ~seconds not minutes|B14
-T54|.|menu showcase: 3 staggered ship variants, key+rim+fill lighting|C11
-T55|.|start grid spacing ↑ (rows 14m, cols ±5m)|V17
+T50|x|exhaust smoothing: fixed-dt multi-emit + interpolation, ⊥ frame-paced stutter|C11
+T51|x|carve feel: nose-in yaw ↑ (front points around corner), roll ↓ (no twist), camera look-into-corner + roll ↑|V18
+T52|x|collisions v2: impulse once per contact (cooldown), gradual separation, rear slows / front pushed|V17,B13
+T53|x|engine braking: off-throttle drag ↑ → coast stop ~seconds not minutes|B14
+T54|x|menu showcase: 3 staggered ship variants, key+rim+fill lighting|C11
+T55|x|start grid spacing ↑ (rows 14m, cols ±5m)|V17
+T56|x|fix nose yaw sign (inverted), gain ↓, carve assist: steering w/ curve cuts drift 35%|V18,B15
+T57|x|audio channel separation: beat→gates+pads, energy→rails/sky/rings, centroid→grid/chevrons/stars|V3,V19
+T58|x|gate pass feedback: flash + HUD kick when player threads a gate|C11
+T59|x|ship v4: lathed faceted fuselage, armor plates, antenna, underglow, decal stripes|C11
+T60|x|corkscrews: track roll frame transport, barrel-roll sections @ onset-dense high energy|V1,C11
+T61|x|fov surge ↑ @ top speed|C11
+T62|.|full loops + GLTF-grade hulls → next session (quaternion course walk; ROADMAP)|—
+T63|.|camera steering damping: cubic response, slow-filtered, speed-scaled — pivots on strong/slow only|C11
+T64|.|gate wave: per-gate colors restored, beat flash radiates from player (proximity falloff), ⊥ uniform white blink|V19,C11
+T65|.|traction sim: lateral velocity state w/ grip convergence, airbrakes bite; banked corners (roll ∝ k); bank → grip ↑|V18,V20
 
 ## §B bugs
 
@@ -126,3 +136,4 @@ B11|2026-06-10|analysis pipeline `await requestAnimationFrame` → background/oc
 B12|2026-06-10|drift factor 0.006 absolute; after V20 k ↓ ~6× → outward drift ≈ 0.2 m/s → thrust-only auto-rides track|V20-aware drift: k·v²·0.5 (T47)
 B13|2026-06-10|collision resolved EVERY step while overlapping (velocity swap + 1.3m teleport) → jerk/glitch loop|impulse once per contact + cooldown + gradual separation
 B14|2026-06-10|drag 0.05·v only → coast τ=20s, halt ≈ 2min|engine braking: off-throttle drag +0.28·v
+B15|2026-06-10|visual yaw applied + after rotateY(π) model flip → nose turns OPPOSITE steer|negate yaw in render (T56)

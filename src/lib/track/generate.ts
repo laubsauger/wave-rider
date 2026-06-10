@@ -8,7 +8,7 @@
 import { hashFeatures, mulberry32, rngRange, type Rng } from '../prng'
 import type { AudioFeatures, AudioSection, Mood } from '../audio/analyze'
 
-export type SegmentType = 'straight' | 'curve' | 'chicane' | 'hill' | 'jump' | 'glide'
+export type SegmentType = 'straight' | 'curve' | 'chicane' | 'hill' | 'jump' | 'glide' | 'corkscrew'
 
 export interface TrackSegment {
   type: SegmentType
@@ -61,6 +61,8 @@ export interface TrackData {
   sectionEnergies: number[]
   /** V19: per-section accent colors (hue-shifted theme.edge) for visual development */
   sectionPalettes: string[]
+  /** T60: track roll angle (rad) per control point — corkscrew frame twist */
+  rolls: number[]
 }
 
 const CTRL_SPACING = 30 // meters between spline control points
@@ -80,7 +82,7 @@ export function generateTrack(features: AudioFeatures): TrackData {
   const length = avgSpeed * features.duration
   const width = 26 - features.intensity * 6 // intense music → narrower, scarier
 
-  const { points, segments } = layoutCourse(features, length, rng, avgSpeed)
+  const { points, segments, rolls } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
   const theme = pickTheme(features.mood, features.intensity)
 
@@ -97,6 +99,7 @@ export function generateTrack(features: AudioFeatures): TrackData {
     duration: features.duration,
     sectionEnergies: features.sections.map((s) => s.energy),
     sectionPalettes: sectionPalettes(theme.edge, features.sections),
+    rolls,
   }
 }
 
@@ -161,6 +164,7 @@ interface Cursor {
   y: number
   heading: number
   pitch: number
+  roll: number
 }
 
 function layoutCourse(
@@ -168,11 +172,13 @@ function layoutCourse(
   totalLength: number,
   rng: Rng,
   avgSpeed: number,
-): { points: TrackPoint[]; segments: TrackSegment[] } {
+): { points: TrackPoint[]; segments: TrackSegment[]; rolls: number[] } {
   const points: TrackPoint[] = []
   const segments: TrackSegment[] = []
-  const cur: Cursor = { x: 0, y: 0, z: 0, heading: 0, pitch: 0 }
+  const rolls: number[] = []
+  const cur: Cursor = { x: 0, y: 0, z: 0, heading: 0, pitch: 0, roll: 0 }
   points.push({ x: 0, y: 0, z: 0 })
+  rolls.push(0)
 
   // T25: map song events into track space at design pace
   const drops = features.events
@@ -202,7 +208,8 @@ function layoutCourse(
 
     while (remaining > 1) {
       let seg: SegmentPlan
-      const drop = drops.find((d) => !d.used && s >= d.s - 260 && s <= d.s + 60)
+      // window wide enough that a 560m segment can't step over it (T60)
+      const drop = drops.find((d) => !d.used && s >= d.s - 320 && s <= d.s + 280)
       if (drop && remaining > 120) {
         drop.used = true
         // crest then cliff — the song slams, the floor disappears (V16)
@@ -221,14 +228,14 @@ function layoutCourse(
         seg.slope += slopeBias
       }
       const segLen = Math.min(remaining, seg.length)
-      walkSegment(cur, points, seg, segLen)
+      walkSegment(cur, points, rolls, seg, segLen)
       segments.push({ type: seg.type, start: s, end: s + segLen, sectionIndex: si })
       s += segLen
       remaining -= segLen
     }
   }
 
-  return { points, segments }
+  return { points, segments, rolls }
 }
 
 interface SegmentPlan {
@@ -251,6 +258,10 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): Segme
   const roll = rng()
 
   if (e > 0.6) {
+    // T60: barrel-roll the road itself when the music hammers
+    if (onsetDensity > 1.6 && roll < 0.16) {
+      return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
+    }
     if (onsetDensity > 2.5 && roll < 0.45) {
       return {
         type: 'chicane',
@@ -293,11 +304,24 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): Segme
   }
 }
 
-function walkSegment(cur: Cursor, points: TrackPoint[], seg: SegmentPlan, length: number): void {
+function walkSegment(
+  cur: Cursor,
+  points: TrackPoint[],
+  rolls: number[],
+  seg: SegmentPlan,
+  length: number,
+): void {
   const steps = Math.max(1, Math.round(length / CTRL_SPACING))
   const ds = length / steps
   const isChicane = seg.type === 'chicane'
   const isJump = seg.type === 'jump'
+  // T60: corkscrew = exactly one full 2π twist over the segment, ends upright
+  const rollStep = seg.type === 'corkscrew' ? (Math.PI * 2) / steps : 0
+  // T65: banked corners — roll into the curve like a velodrome
+  const bankTarget =
+    seg.type === 'curve' || seg.type === 'chicane'
+      ? Math.max(-0.42, Math.min(0.42, -seg.curvature * 170))
+      : 0
 
   for (let i = 0; i < steps; i++) {
     let k = seg.curvature
@@ -324,7 +348,17 @@ function walkSegment(cur: Cursor, points: TrackPoint[], seg: SegmentPlan, length
       cur.y = -130
       cur.pitch = Math.max(0, cur.pitch)
     }
+    if (rollStep !== 0) {
+      cur.roll += rollStep
+    } else {
+      // ease toward bank (or back to upright), preserving full corkscrew turns
+      const base = Math.round(cur.roll / (Math.PI * 2)) * Math.PI * 2
+      let bank = isChicane && i >= steps / 2 ? -bankTarget : bankTarget
+      if (seg.type !== 'curve' && seg.type !== 'chicane') bank = 0
+      cur.roll += (base + bank - cur.roll) * 0.22
+    }
     points.push({ x: cur.x, y: cur.y, z: cur.z })
+    rolls.push(cur.roll)
   }
   // after a jump, level out so the landing is catchable
   if (isJump) cur.pitch *= 0.3

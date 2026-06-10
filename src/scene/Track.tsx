@@ -90,12 +90,13 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
   // beat = sharp onset spikes layered on top of the energy floor.
   useFrame((_, dt) => {
+    // T57: rails+stripes track ENERGY (loudness), pads flash on BEAT only
     const e = telemetry.energy * track.theme.pulse
     const b = telemetry.beat * track.theme.pulse
-    uEnergy.value = e + b * 0.8
-    uRail.value = 1.5 + e * 2.2 + b * 2.4
+    uEnergy.value = e
+    uRail.value = 1.5 + e * 3
     if (padMat.current) {
-      const s = 1.9 + e * 1.8 + b * 2.2
+      const s = 1.8 + b * 3.2
       padMat.current.color.setRGB(s, s, s)
     }
     const sectionColor = track.sectionPalettes[telemetry.sectionIndex]

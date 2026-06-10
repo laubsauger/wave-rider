@@ -20,6 +20,8 @@ export interface RaceTelemetry {
   countdown: number
   /** T39: onset beat spike 1→0, decays fast */
   beat: number
+  /** T57: spectral brightness 0..1 — hats/highs proxy */
+  centroid: number
   /** current section index under the player */
   sectionIndex: number
   /** T48/T49: world x,y,z triplets — [0]=player, then NPCs */
@@ -39,6 +41,7 @@ export const telemetry: RaceTelemetry = {
   racers: 1,
   countdown: 0,
   beat: 0,
+  centroid: 0,
   sectionIndex: 0,
   racersXZ: new Float32Array(18),
 }

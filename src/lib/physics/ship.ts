@@ -47,6 +47,8 @@ export interface ShipState {
   vy: number
   /** extra height above hover while airborne, m */
   air: number
+  /** T65: gripped lateral velocity state — slides converge, not snap */
+  latVel: number
 }
 
 export interface StepEvents {
@@ -79,6 +81,7 @@ export function initialShip(): ShipState {
     airborne: false,
     vy: 0,
     air: 0,
+    latVel: 0,
   }
 }
 
@@ -145,16 +148,36 @@ export function stepShip(
   const i = Math.round(state.s / frames.ds)
   const k = curvatureAt(frames, i)
   // T47/B12: outward drift is half the true centripetal demand k·v² —
-  // thrust alone can NOT ride a curve, you steer or you grind
-  const lateralV = (Math.sin(state.yaw) * state.v - k * state.v * state.v * 0.5) * airGrip
+  // thrust alone can NOT ride a curve, you steer or you grind.
+  // T56 carve assist: steering WITH the curve cuts drift 35% — you feel
+  // the ship hook around the corner.
+  const carveAlign = Math.max(0, Math.min(1, state.steerSmooth * Math.sign(k)))
+  // T65: banked track grips — frame tilt (upY < 1) cuts outward drift
+  const upYHere = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
+  const bankGrip = Math.max(0.3, 1 - (1 - Math.min(1, Math.abs(upYHere))) * 3)
+  const drift = k * state.v * state.v * 0.5 * (1 - 0.35 * carveAlign) * bankGrip
+  // T65 traction: lateral velocity converges toward demand at a grip rate —
+  // the ship slides then bites. Airbrakes add bite.
+  const tractionRate = 5 + braking * 6 + carveAlign * 2
+  const latTarget = (Math.sin(state.yaw) * state.v - drift) * airGrip
+  state.latVel += (latTarget - state.latVel) * Math.min(1, tractionRate * dt)
+  const lateralV = state.latVel
   state.d += lateralV * dt
 
   // V16 airtime: when the road falls away faster than gravity pulls, fly
   const slopeHere = slopeAt(frames, i)
+  // T60: inside corkscrew twists (track-up tilted off world-up) airtime is
+  // disabled — the field holds you to the deck
+  const upY = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
+  if (state.airborne && upY < 0.45) {
+    state.airborne = false
+    state.air = 0
+    state.vy = 0
+  }
   if (!state.airborne) {
     const slopeAhead = slopeAt(frames, i + 2)
     const requiredDvy = state.v * (slopeAhead - slopeHere)
-    if (requiredDvy < -GRAVITY * dt * 3 && state.v > 30) {
+    if (requiredDvy < -GRAVITY * dt * 3 && state.v > 30 && upY > 0.45) {
       state.airborne = true
       state.vy = state.v * slopeHere
       state.air = 0
