@@ -24,12 +24,12 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
-import { beep, goChord, startEngine, type EngineSound } from '../lib/audio/sfx'
+import { beep, goChord } from '../lib/audio/sfx'
 import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
-import { GridFloor, Ridges, SceneEnvironment } from './Environment'
+import { GridFloor, Ridges, SceneEnvironment, WarpStreaks } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import { Sparks } from './Sparks'
@@ -172,8 +172,6 @@ export function RaceScene({
     /** T88: epoch ms when both sides agreed to launch; 0 = not yet */
     raceStartAt: 0,
     readySent: false,
-    /** T89 */
-    engine: null as EngineSound | null,
     lastCountInt: 9,
     /** R9e: one-shot landing impact pulse — Sparks consumes + clears */
     landPulse: 0,
@@ -260,8 +258,6 @@ export function RaceScene({
       if (hb) clearInterval(hb)
       s.song?.stop()
       s.song = null
-      s.engine?.stop()
-      s.engine = null
       if (isMultiplayer && handleMsg && network.onMessage === handleMsg) {
         network.onMessage = () => {}
       }
@@ -284,7 +280,7 @@ export function RaceScene({
       const prev = s.countdown
       s.countdown -= dt
       telemetry.countdown = s.countdown
-      // T89: digit beeps + GO chord + engine ignition
+      // T89: digit beeps + GO chord
       const ci = Math.ceil(s.countdown)
       if (ci !== s.lastCountInt && ci > 0 && ci <= 3) {
         s.lastCountInt = ci
@@ -292,11 +288,15 @@ export function RaceScene({
       }
       if (prev > 0 && s.countdown <= 0) {
         goChord()
-        if (!s.engine) s.engine = startEngine()
         if (songBuffer && !s.song) s.song = playSong(songBuffer)
       }
     }
-    s.engine?.update(s.ship.v, s.input.thrust, s.ship.boost > 0 ? 1 : 0)
+    // T113: the MUSIC is the engine — idles at half volume, swells with
+    // throttle, tops out with speed headroom (synth engine loop retired)
+    if (s.song) {
+      const vNorm = Math.min(1, s.ship.v / (track.avgSpeed * 1.62))
+      s.song.setIntensity(s.input.thrust * 0.55 + vNorm * 0.45 + (s.ship.boost > 0 ? 0.15 : 0))
+    }
 
     readShipInput(s.input)
     const steps = (isWaiting || s.countdown > 0) ? 0 : accumulateSteps(s.accumulator, dt)
@@ -485,8 +485,6 @@ export function RaceScene({
     if (finishedEvent || songDone) {
       s.started = false
       s.song?.stop(1.5)
-      s.engine?.stop()
-      s.engine = null
 
       if (s.ghostRecorder) {
         setGhostData(s.ghostRecorder.finish())
@@ -526,6 +524,8 @@ export function RaceScene({
       <Scenery track={track} frames={frames} />
       <GridFloor track={track} frames={frames} />
       <Ridges track={track} frames={frames} />
+      {/* T111: subtle warp streaks at the top end */}
+      <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
         <ShipMesh
           accent={isMultiplayer && !isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}

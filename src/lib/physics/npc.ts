@@ -104,10 +104,14 @@ export interface Racer {
   s: number
   d: number
   v: number
+  /** height above the deck while airborne — grounded racers omit it */
+  air?: number
 }
 
 const HIT_DS = 5.5
 const HIT_DD = 2.8
+/** T112: vertical clearance — more than this apart in height = no contact */
+const HIT_DH = 3
 
 /**
  * T32/V17: pairwise bump resolution. Momentum-style speed exchange (sum of
@@ -127,6 +131,8 @@ export function resolveCollisions(
       const a = racers[i]
       const b = racers[j]
       if (Math.abs(a.s - b.s) >= HIT_DS || Math.abs(a.d - b.d) >= HIT_DD) continue
+      // T112: flying over someone is not a collision
+      if (Math.abs((a.air ?? 0) - (b.air ?? 0)) >= HIT_DH) continue
 
       // B13: momentum impulse fires ONCE per contact — rear ship brakes,
       // front ship gets shunted forward. Cooldown stops the jerk loop.
@@ -142,9 +148,11 @@ export function resolveCollisions(
             front.v *= 0.7
             if (i === 0 || j === 0) playerImpact += 40
           } else {
-            rear.v = Math.max(0, rear.v - dv * 0.55)
-            front.v += dv * 0.45
-            if (i === 0 || j === 0) playerImpact += dv * 0.3 + 2
+            // T112: softened — bumps nudge, they don't yank (V17: sum of
+            // speeds still never increases)
+            rear.v = Math.max(0, rear.v - dv * 0.42)
+            front.v += dv * 0.34
+            if (i === 0 || j === 0) playerImpact += dv * 0.22 + 1.2
           }
         }
         if (cooldowns) {
@@ -153,10 +161,10 @@ export function resolveCollisions(
         }
       }
 
-      // gradual separation every step — no teleporting (B13)
+      // gradual separation every step — no teleporting (B13); T112 gentler
       const dir = a.d !== b.d ? Math.sign(a.d - b.d) : a.s >= b.s ? 1 : -1
-      a.d = clamp(a.d + dir * 0.25, -limit, limit)
-      b.d = clamp(b.d - dir * 0.25, -limit, limit)
+      a.d = clamp(a.d + dir * 0.17, -limit, limit)
+      b.d = clamp(b.d - dir * 0.17, -limit, limit)
       if (Math.abs(a.s - b.s) < 2.5) {
         if (a.s >= b.s) a.s += 0.3
         else b.s += 0.3

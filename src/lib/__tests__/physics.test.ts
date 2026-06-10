@@ -85,9 +85,11 @@ describe('ship physics (T5, V5)', () => {
   it('ship stays inside walls forever', () => {
     const ship = initialShip()
     const ev = noEvents()
-    const limit = track.width / 2
     for (let i = 0; i < 20000; i++) {
       stepShip(ship, { steer: 1, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+      // T77: walls follow the LOCAL width (speedway 1.6×, wallride 1.15×…)
+      const fi = Math.min(frames.count - 1, Math.max(0, Math.round(ship.s / frames.ds)))
+      const limit = (track.width * frames.widths[fi]) / 2
       expect(Math.abs(ship.d)).toBeLessThanOrEqual(limit)
     }
   })

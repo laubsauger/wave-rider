@@ -39,6 +39,8 @@ export interface SongHandle {
   time: () => number
   stop: (fadeSeconds?: number) => void
   onEnded: (fn: () => void) => void
+  /** T113: music IS the engine — 0 = half volume idle, 1 = full send */
+  setIntensity: (v: number) => void
 }
 
 export function playSong(buffer: AudioBuffer): SongHandle {
@@ -47,7 +49,7 @@ export function playSong(buffer: AudioBuffer): SongHandle {
   const src = ac.createBufferSource()
   src.buffer = buffer
   const gain = ac.createGain()
-  gain.gain.value = 0.9
+  gain.gain.value = 0.45 // T113: idles at half, throttle opens it up
   src.connect(gain).connect(masterBus())
   const startedAt = ac.currentTime
   src.start()
@@ -62,6 +64,10 @@ export function playSong(buffer: AudioBuffer): SongHandle {
     },
     onEnded: (fn) => {
       src.onended = fn
+    },
+    setIntensity: (v) => {
+      const clamped = Math.min(1, Math.max(0, v))
+      gain.gain.setTargetAtTime(0.45 + clamped * 0.5, ac.currentTime, 0.15)
     },
   }
 }

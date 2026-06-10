@@ -237,7 +237,8 @@ function layoutCourse(
     const onsetDensity = onsetsPerSecond(features, sec)
     // T38: each section trends up or down — vertical separation where the
     // course crosses itself, and the skyline keeps changing
-    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.014 + (sec.energy - 0.5) * 0.022
+    // T114: amplitude ↑ — the course should climb and dive, not simmer
+    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.02 + (sec.energy - 0.5) * 0.032
     let remaining = secLen
 
     while (remaining > 1) {
@@ -311,8 +312,8 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   // ridges where falling off is on the table
   const special = rng()
   // R9b: full vertical loop when the music slams hardest — radius scales
-  // with design speed so the circle reads at pace
-  if (e > 0.7 && onsetDensity > 1.4 && special >= 0.27 && special < 0.325) {
+  // with design speed so the circle reads at pace (T114: loosened)
+  if (e > 0.62 && onsetDensity > 1.0 && special >= 0.31 && special < 0.365) {
     const radius = 42 + avgSpeed * 0.1
     return {
       type: 'loop',
@@ -333,8 +334,8 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       walls: true,
     }
   }
-  if (e > 0.62 && onsetDensity > 1.8 && special >= 0.17 && special < 0.27) {
-    // T92: ride the wall — sustained ~60° bank with matching curve
+  if (e > 0.55 && onsetDensity > 1.2 && special >= 0.17 && special < 0.31) {
+    // T92: ride the wall — sustained ~60° bank with matching curve (T114: loosened)
     const dir = rng() < 0.5 ? -1 : 1
     return {
       type: 'wallride',
@@ -357,8 +358,8 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   }
 
   if (e > 0.6) {
-    // T60: barrel-roll the road itself when the music hammers
-    if (onsetDensity > 1.2 && roll < 0.22) {
+    // T60: barrel-roll the road itself when the music hammers (T114: loosened)
+    if (onsetDensity > 0.9 && roll < 0.3) {
       return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
     }
     if (onsetDensity > 2.5 && roll < 0.45) {
@@ -390,7 +391,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       }
     }
     if (roll < 0.75) {
-      return { type: 'hill', length: rngRange(rng, 150, 260), curvature: 0, slope: rngRange(rng, 0.05, 0.12) * (rng() < 0.5 ? -1 : 1) }
+      return { type: 'hill', length: rngRange(rng, 150, 260), curvature: 0, slope: rngRange(rng, 0.06, 0.17) * (rng() < 0.5 ? -1 : 1) }
     }
     return { type: 'straight', length: rngRange(rng, 180, 320), curvature: 0, slope: 0 }
   }

@@ -11,13 +11,13 @@ import { mulberry32, rngRange } from '../../lib/prng'
  * looks like every other dart.
  */
 
-/** conservative solid half-span of the v6 planform at length z (nose -2.7 → tail 1.46) */
+/** conservative solid half-span of the v6 swept planform (nose -2.7 → tail 1.46) */
 function spanAt(z: number, w: number): number {
   if (z < -2.6 || z > 1.42) return 0
-  if (z < -1.1) return 0.34 * w * ((z + 2.7) / 1.6)
-  if (z < 0.55) return (0.34 + (1.0 - 0.34) * ((z + 1.1) / 1.65)) * w * 0.92
-  if (z < 0.85) return (0.72 - (0.72 - 0.36) * ((z - 0.55) / 0.3)) * w * 0.92
-  return 0.24 * w
+  if (z < -1.2) return 0.28 * w * ((z + 2.7) / 1.5)
+  if (z < 1.0) return (0.28 + (0.92 - 0.28) * ((z + 1.2) / 2.2)) * w * 0.88
+  if (z < 1.2) return (0.58 - (0.58 - 0.24) * ((z - 1.0) / 0.2)) * w * 0.88
+  return 0.2 * w
 }
 
 function box(

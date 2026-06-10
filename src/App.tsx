@@ -11,6 +11,12 @@ import { MultiplayerLobby } from './components/MultiplayerLobby'
 import { TrackSetup } from './components/TrackSetup'
 import { GhostLobby } from './components/GhostLobby'
 import { deserializeGhost } from './lib/network/ghost'
+import { GpuCanvas } from './scene/GpuCanvas'
+import { MenuBackdrop } from './scene/MenuBackdrop'
+
+/** T110: screens that get the living backdrop behind their DOM (menu mounts
+ * its own canvas with the ship showcase) */
+const BACKDROP_SCREENS = new Set(['track-setup', 'multiplayer-lobby', 'ghost-lobby', 'analyzing', 'results'])
 
 export default function App() {
   const screen = useGame((s) => s.screen)
@@ -55,6 +61,13 @@ export default function App() {
         </div>
       )}
       {screen === 'unsupported' && <Unsupported />}
+      {BACKDROP_SCREENS.has(screen) && (
+        <div className="absolute inset-0" aria-hidden>
+          <GpuCanvas camera={{ position: [0, 1.2, 5], fov: 50 }}>
+            <MenuBackdrop />
+          </GpuCanvas>
+        </div>
+      )}
       {screen === 'menu' && <Menu />}
       {screen === 'multiplayer-lobby' && <MultiplayerLobby initialJoinId={new URLSearchParams(window.location.search).get('join') || undefined} />}
       {screen === 'track-setup' && <TrackSetup />}

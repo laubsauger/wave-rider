@@ -199,12 +199,13 @@ export function Ridges({ track, frames }: { track: TrackData; frames: TrackFrame
   )
 }
 
-const STREAKS = 64
-const STREAK_RANGE = 180
+const STREAKS = 36
+const STREAK_RANGE = 200
 
 /**
- * T33: warp streaks — a tube of thin light shards around the ship that
- * stream past at high speed. Pure speed communication, V10-scaled.
+ * T33 → T111: warp streaks v2 — sparser, thinner, later onset, gentler
+ * opacity. A whisper of hyperspace at the top end, not a particle storm.
+ * Pure speed communication, V10-scaled.
  */
 export function WarpStreaks({
   shipRef,
@@ -241,10 +242,10 @@ export function WarpStreaks({
     if (!ship || !mesh || !group) return
 
     const v = speed()
-    const vmax = track.avgSpeed * 1.45 + 60
-    // T40: kicks in earlier, beat-boosted, harder at the top end
-    const strength = (Math.max(0, (v / vmax - 0.45) / 0.55) + telemetry.beat * 0.15) * fxIntensity
-    if (matRef.current) matRef.current.opacity = Math.min(0.75, strength * 0.7)
+    const vmax = track.avgSpeed * 1.62 + 75
+    // T111: later onset, subtle ceiling — present at pace, loud never
+    const strength = (Math.max(0, (v / vmax - 0.6) / 0.4) + telemetry.beat * 0.08) * fxIntensity
+    if (matRef.current) matRef.current.opacity = Math.min(0.34, strength * 0.4)
     mesh.visible = strength > 0.02
     if (!mesh.visible) return
 
@@ -259,7 +260,7 @@ export function WarpStreaks({
       const z = ((sh.z0 + travel.current) % STREAK_RANGE) - STREAK_RANGE / 2
       obj.position.set(Math.cos(sh.angle) * sh.radius, Math.sin(sh.angle) * sh.radius, z)
       obj.rotation.set(0, 0, 0)
-      obj.scale.set(0.06, 0.06, sh.len * (0.6 + strength * 2.2))
+      obj.scale.set(0.032, 0.032, sh.len * (0.5 + strength * 2.6))
       obj.updateMatrix()
       mesh.setMatrixAt(i, obj.matrix)
     }

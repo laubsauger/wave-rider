@@ -91,7 +91,7 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   const shareUrl = peerId ? `${window.location.origin}${window.location.pathname}?join=${peerId}` : ''
 
   return (
-    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center bg-black/90 p-8 text-white">
+    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center bg-black/35 p-8 text-white">
       <h1 className="text-4xl font-bold tracking-[0.2em] text-(--color-neon)">MULTIPLAYER LOBBY</h1>
       
       <div className="mt-8 flex w-full max-w-lg flex-col gap-6 border border-white/20 bg-white/5 p-6">

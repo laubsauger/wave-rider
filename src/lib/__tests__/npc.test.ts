@@ -128,6 +128,18 @@ describe('collisions (T32, V17)', () => {
     expect(racers[1].v).toBeGreaterThan(120)
   })
 
+  it('T112: airborne ship passes clean over a grounded one', () => {
+    const racers = [
+      { s: 100, d: 0, v: 200, air: 6 }, // flying high
+      { s: 101, d: 0.3, v: 120 },
+    ]
+    const impact = resolveCollisions(racers, track)
+    expect(impact).toBe(0)
+    expect(racers[0].v).toBe(200)
+    expect(racers[1].v).toBe(120)
+    expect(racers[0].d).toBe(0) // no shove either
+  })
+
   it('T79: closing speed > 55 m/s → wreck, both lose big', () => {
     const racers = [
       { s: 100, d: 0, v: 200 },

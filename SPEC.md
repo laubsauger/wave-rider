@@ -163,6 +163,11 @@ T106|x|post v4: grain seed fix (B25 static streaks) + amplitude ↓, chromatic a
 T107|x|terrain floor: low-res grid ribbon follows track path + elevation (y−85), ⊥ flat plane @ fixed height through world|C11
 T108|x|start apron matches glass road — ⊥ pale spawn slab|C11
 T109|x|ship v6: wing tips narrowed (chonk ↓), tail fins OUT, cockpit cam @ canopy front + hull hidden in cockpit (⊥ view obstruction)|C11,V7
+T110|x|screen backdrops: star/grid scene behind track-setup, lobbies, analyzing — ⊥ full-black menus anywhere|C11
+T111|x|warp streaks v2: RESTORED + polished (thinner, sparser, subtler, later onset) — T104 removal was wrong read of feedback (user meant grain)|C11,V10
+T112|x|collision vertical gate: airborne ship passes OVER grounded (Δair > ship height ⊥ contact); impulse softened (clunky)|V17
+T113|x|engine sound = music: song gain 0.5 floor → 1.0 w/ throttle + speed headroom; synth engine loop OUT|C11,V9
+T114|x|track drama ↑: elevation amplitude ↑, wallride/corkscrew/loop spawn windows loosened — banked turns + inversions actually show up|V3,V16,V20
 
 ## §B bugs
 

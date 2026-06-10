@@ -13,18 +13,19 @@ function planformGeometry(widthScale: number, tipSweep: number): THREE.ExtrudeGe
   const w = widthScale
   const shape = new THREE.Shape()
   // symmetric delta planform, y = along ship (− nose), x = span
-  // T109: tips pulled in (was 1.28w — read chonky)
+  // T109v2: hard rearward sweep — long raked leading edge from the nose all
+  // the way back, tips land beside the engine pod. Dart, not falcon.
   shape.moveTo(0, -2.7) // nose tip
-  shape.lineTo(0.34 * w, -1.1)
-  shape.lineTo(1.0 * w, 0.55 + tipSweep) // right wing tip
-  shape.lineTo(0.72 * w, 0.92 + tipSweep)
-  shape.lineTo(0.36 * w, 0.85)
-  shape.lineTo(0.22 * w, 1.46) // engine pod trailing edge — pinched tail
-  shape.lineTo(-0.22 * w, 1.46)
-  shape.lineTo(-0.36 * w, 0.85)
-  shape.lineTo(-0.72 * w, 0.92 + tipSweep)
-  shape.lineTo(-1.0 * w, 0.55 + tipSweep) // left wing tip
-  shape.lineTo(-0.34 * w, -1.1)
+  shape.lineTo(0.28 * w, -1.2)
+  shape.lineTo(0.92 * w, 1.02 + tipSweep) // right wing tip — far aft
+  shape.lineTo(0.58 * w, 1.2 + tipSweep)
+  shape.lineTo(0.3 * w, 1.0)
+  shape.lineTo(0.2 * w, 1.46) // engine pod trailing edge — pinched tail
+  shape.lineTo(-0.2 * w, 1.46)
+  shape.lineTo(-0.3 * w, 1.0)
+  shape.lineTo(-0.58 * w, 1.2 + tipSweep)
+  shape.lineTo(-0.92 * w, 1.02 + tipSweep) // left wing tip
+  shape.lineTo(-0.28 * w, -1.2)
   shape.closePath()
   const geo = new THREE.ExtrudeGeometry(shape, {
     depth: 0.18,
@@ -144,9 +145,9 @@ export function ShipMesh({
           <meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
         </mesh>
       ))}
-      {/* wingtip accent edges */}
+      {/* wingtip accent edges — follow the hard sweep */}
       {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * 1.16, 0.2, 0.78]} rotation={[0, side * -0.45, 0]} scale={[0.05, 0.1, 0.6]}>
+        <mesh key={side} position={[side * 0.78, 0.2, 0.92]} rotation={[0, side * -0.28, 0]} scale={[0.05, 0.1, 0.7]}>
           <boxGeometry />
           <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={2.4} toneMapped={false} />
         </mesh>
