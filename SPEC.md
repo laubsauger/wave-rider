@@ -141,6 +141,8 @@ T85|x|progress waveform: 96 bars, h ↑, perceptual pow(0.45) curve — quiet st
 T86|x|host survives peer drop: conn close → back to 'hosting', join id stays valid|B21
 T87|x|join failures surfaced in lobby (peer-unavailable → stale-link message)|B21
 T88|x|MP start handshake: joiner scene announces lobby_ready (300ms), host arbitrates race_start, both launch ±300ms; download/analyze status both ways|B22
+T89|x|SFX: countdown digit beeps + GO chord, synth engine loop (pitch∝v, filter∝thrust, boost growl) — zero assets|C11
+T90|x|boost pads → triple chevron arrows (extruded, flat, section palette) — ⊥ cheap box|C11,V19
 
 ## §B bugs
 
