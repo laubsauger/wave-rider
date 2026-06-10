@@ -88,9 +88,11 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
     return m
   }, [track.theme.glow, uPulse])
 
-  useFrame(() => {
-    // T57: the floor shimmers with the high end, not the beat
-    uPulse.value = 0.2 + (telemetry.centroid * 0.55 + telemetry.energy * 0.15) * track.theme.pulse
+  useFrame((_, dt) => {
+    // T118: the floor does NOT flicker — slow drift toward the section's
+    // energy level only. Selective reactivity: rails/pads own the beat.
+    const target = 0.16 + telemetry.energy * 0.2 * track.theme.pulse
+    uPulse.value += (target - uPulse.value) * Math.min(1, dt * 0.6)
   })
 
   return <mesh geometry={geometry} material={material} frustumCulled={false} />

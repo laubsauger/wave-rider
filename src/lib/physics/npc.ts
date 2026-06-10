@@ -3,6 +3,7 @@
  * stepped at the same fixed dt as the player. No Math.random (V8).
  */
 import { mulberry32, rngRange } from '../prng'
+import { contrastShift } from '../accent'
 import type { TrackData } from '../track/generate'
 import { curvatureAt, type TrackFrames } from '../track/sample'
 import { PHYSICS_DT } from './ship'
@@ -40,7 +41,8 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
   for (let i = 0; i < n; i++) {
     specs.push({
       name: NAMES[i],
-      accent: ACCENTS[i],
+      // T116: an NPC wearing the world's color disappears — hue-shift it
+      accent: contrastShift(ACCENTS[i], track.theme.edge),
       pace: BASE_PACE[i] + rngRange(rng, -0.03, 0.03),
       lanePref: rngRange(rng, -0.7, 0.7),
       wobbleFreq: rngRange(rng, 0.25, 0.7),

@@ -320,8 +320,14 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         <torusGeometry args={[14, 0.6, 6, 24]} />
         <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive={track.theme.glow} emissiveIntensity={0.35} metalness={0.7} roughness={0.4} />
       </Instanced>
+      {/* T121: dark casing wraps the gate — emissive is an inset bar, not
+          the whole slab */}
+      <Instanced matrices={data.gateMatrices}>
+        <boxGeometry args={[1.004, 1.6, 1.6]} />
+        <meshStandardMaterial color="#0c0f1c" metalness={0.7} roughness={0.45} emissive={track.theme.glow} emissiveIntensity={0.05} />
+      </Instanced>
       <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh}>
-        <boxGeometry args={[1, 1, 1]} />
+        <boxGeometry args={[0.99, 0.62, 0.62]} />
         <meshBasicMaterial ref={gateMat} color="#ffffff" toneMapped={false} />
       </Instanced>
       <Instanced matrices={data.chevronMatrices} colors={data.chevronColors}>
@@ -359,8 +365,13 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           />
         )}
       </Instanced>
+      {/* T121: rings get a dark housing, glow runs as an inset channel */}
+      <Instanced matrices={data.ringMatrices}>
+        <torusGeometry args={[11, 0.5, 6, 36]} />
+        <meshStandardMaterial color="#0a0d18" metalness={0.7} roughness={0.4} emissive={track.theme.glow} emissiveIntensity={0.05} />
+      </Instanced>
       <Instanced matrices={data.ringMatrices} colors={data.ringColors}>
-        <torusGeometry args={[11, 0.35, 8, 48]} />
+        <torusGeometry args={[11, 0.2, 8, 48]} />
         <meshBasicMaterial
           ref={ringMat}
           color="#ffffff"

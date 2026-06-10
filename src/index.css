@@ -42,3 +42,13 @@ canvas { display: block; touch-action: none; }
   0%, 100% { filter: drop-shadow(0 0 6px currentColor); }
   50% { filter: drop-shadow(0 0 16px currentColor); }
 }
+
+/* T117: smoked-glass panel behind UI wrappers (menu, results, lobbies) */
+.glass-panel {
+  background: rgba(5, 8, 16, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.45);
+}

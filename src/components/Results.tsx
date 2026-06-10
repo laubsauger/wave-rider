@@ -26,7 +26,8 @@ export function Results() {
   const accent = track.theme.edge
 
   return (
-    <div className="hud-safe flex h-full flex-col items-center justify-center gap-8">
+    <div className="hud-safe relative flex h-full flex-col items-center justify-center p-6">
+      <div className="glass-panel flex w-full max-w-xl flex-col items-center gap-8 px-8 py-10">
       <p className="text-xs tracking-[0.5em] text-white/40">{result.songTitle}</p>
       <h2 className="text-4xl font-bold tracking-[0.4em]" style={{ color: accent, textShadow: `0 0 24px ${accent}` }}>
         FINISH
@@ -107,6 +108,7 @@ export function Results() {
           {copied ? 'LINK COPIED!' : 'COPY GHOST LINK'}
         </button>
       )}
+      </div>
     </div>
   )
 }

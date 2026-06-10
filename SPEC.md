@@ -168,6 +168,19 @@ T111|x|warp streaks v2: RESTORED + polished (thinner, sparser, subtler, later on
 T112|x|collision vertical gate: airborne ship passes OVER grounded (Δair > ship height ⊥ contact); impulse softened (clunky)|V17
 T113|x|engine sound = music: song gain 0.5 floor → 1.0 w/ throttle + speed headroom; synth engine loop OUT|C11,V9
 T114|x|track drama ↑: elevation amplitude ↑, wallride/corkscrew/loop spawn windows loosened — banked turns + inversions actually show up|V3,V16,V20
+T115|x|fall/crash respawn = SETBACK: reset to fall-off point −40m (⊥ keep progress gained while plunging)|V5
+T116|x|player accent ≠ theme base color — contrast pick from palette, NPC accent too close → hue-shifted|C11,V13
+T117|x|UI glass: smoked-glass panel behind menu + results wrappers; B26 fix: backdrop canvas swallowed results clicks (pointer-events)|C11,I.ui
+T118|x|selective glow: start apron matte (⊥ green slab v2), road glass opacity ↓, world grid ⊥ beat flicker (slow section-energy only)|C11,V10
+T119|x|music-engine ceiling: full volume @ full throttle + ~250 kph (⊥ vmax-relative starvation)|V9,C11
+T120|x|ship polish: outer tail lights re-grown, exhaust ribbon head tapered + aligned w/ flame cones (⊥ disconnected rectangle)|C11
+T121|x|furniture elegance: beat-gates + holo rings get dark casings w/ inset emissive — ⊥ 100% raw emissive slabs|C11,V19
+T122|x|sponsor boards @ start: 3 floating holo displays (L/R/center) w/ logo + SPONSORED BY, bob + fade-out once passed — ad monetization sketch|C11
+T123|.|walls v2: ⊥ flat slab — gradient glass (dense base → clear top), lit top edge in section palette, faint scanlines|C11,V19
+T124|.|waveform horizon: far skyline ring = smoothed audio energy bars around the world, drifts w/ song|C11,V3
+T125|.|ship finish v2: shinier hull (roughness ↓, env reflections visible, diffuse env cast ↓); quad tail lights — big outers|C11
+T126|.|sponsor boards v2: larger, outers pushed wider + tilted inward, fly-in @ READY → lift-off @ GO, soft holo wobble ⊥ strobe; start apron slimmed to road width|C11
+T127|.|exhaust unified: cone flames OUT — trail head IS the flame (anchored @ nozzle, hot white head, full width) → one effect that turns with the ship ⊥ detached ribbon|C11
 
 ## §B bugs
 
@@ -196,3 +209,4 @@ B22|2026-06-10|host startRace() immediately after sending bytes → counts down 
 B23|2026-06-10|post outputNode vec4 s-curve warped alpha → WebGPU pipeline died SILENT: black world, 0 console errors, DOM HUD fine (T104/R9c)|V21
 B24|2026-06-10|telemetry.countdown init 0 sits INSIDE GO window (-1,0] → HUD flashed GO on mount before sim wrote 3.8; stale post-race value re-flashed on next mount|init 9 + RaceScene mount reset + READY state >3
 B25|2026-06-10|grain hash(seed).toUint() quantizes — seed multipliers below pixel pitch → neighbor px collapse to same hash → horizontal static streaks crawling frame|seed mults ≫ resolution (≈39k/21k) + amplitude ↓ (T106)
+B26|2026-06-10|T110 backdrop div is POSITIONED → paints over static-flow Results screen → all post-race buttons unclickable|pointer-events-none on backdrop wrapper (T117)

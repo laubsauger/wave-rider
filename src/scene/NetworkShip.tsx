@@ -83,7 +83,7 @@ export function NetworkShip({ source, frames, accent, isGhost }: NetShipProps) {
       </group>
       <ExhaustTrails
         shipRef={groupRef}
-        offsets={[[-0.32, 0.22, 1.6], [0.32, 0.22, 1.6]]}
+        offsets={[[-0.26, 0.22, 2.1], [0.26, 0.22, 2.1]]}
         color={accent}
         intensity={power}
       />

@@ -51,6 +51,8 @@ export interface ShipState {
   latVel: number
   /** T78: fell off a rail-less ridge — plunging until respawn */
   falling: boolean
+  /** T115: arc position where the fall began — respawn sets back from here */
+  fallS: number
 }
 
 export interface StepEvents {
@@ -87,6 +89,7 @@ export function initialShip(): ShipState {
     air: 0,
     latVel: 0,
     falling: false,
+    fallS: 0,
   }
 }
 
@@ -181,7 +184,7 @@ export function stepShip(
   if (state.falling) {
     state.vy -= GRAVITY * dt
     state.air += state.vy * dt
-    state.s += state.v * dt * 0.6
+    // T115: no progress while plunging — s frozen at the fall point
     state.time += dt
     if (state.air < -14) {
       state.falling = false
@@ -189,12 +192,15 @@ export function stepShip(
       state.vy = 0
       state.d = 0
       state.v *= 0.4
+      // T115: setback — respawn behind where you went over the edge
+      state.s = Math.max(0, state.fallS - 40)
       events.respawned = true
     }
     return
   }
   if (!hasWall && Math.abs(state.d) > limitHere + 1.2 && !state.airborne) {
     state.falling = true
+    state.fallS = state.s
     state.vy = -2
     return
   }

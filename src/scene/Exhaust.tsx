@@ -42,11 +42,15 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
       float(1.05).add(uPower.mul(0.45)),
     )
     const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.12).add(0.88)
+    // T120: soft head — the ribbon eases IN behind the flame cones instead
+    // of starting as a hard-edged rectangle
+    const headFade = smoothstep(0.0, 0.1, v).mul(0.55).add(0.45)
     m.opacityNode = cross
       .pow(1.6)
       .mul(sub(1, v).pow(2.6))
       .mul(uPower.min(1.5))
       .mul(flicker)
+      .mul(headFade)
     return m
   }, [accent, uPower, uTime])
 
@@ -152,7 +156,9 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
         else tmp.side.set(0, 1, 0)
 
         const age = i / POINTS
-        const w = 0.2 * (1 - age * 0.7) * (0.3 + Math.min(1.5, power) * 0.65)
+        // T120: head tapers in from a point so it meets the flame cone tip
+        const headTaper = Math.min(1, 0.25 + i / 4)
+        const w = 0.2 * (1 - age * 0.7) * (0.3 + Math.min(1.5, power) * 0.65) * headTaper
         trail.positions.set(
           [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
           i * 6,

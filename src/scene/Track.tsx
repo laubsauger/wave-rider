@@ -99,6 +99,10 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       roughness: 0.12,
       side: THREE.DoubleSide, // T46: no see-through from below at launch
       transparent: true,
+      // T118/T122-verify: glancing-angle env reflection painted the whole
+      // start straight in theme color (the "green/red slab") — keep a hint
+      // of sheen, kill the mirror
+      envMapIntensity: 0.18,
     })
     m.opacityNode = uOpacity
     const glow = uStripeCol
@@ -132,8 +136,8 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const goFlash = cd <= 0 && cd > -1 ? 1 + cd : 0
     if (gantryMat.current) gantryMat.current.emissiveIntensity = 2.6 + goFlash * 12
     if (stripMat.current) stripMat.current.emissiveIntensity = 0.9 + goFlash * 9
-    // T105: glass firms up when the music pushes, thins in breakdowns
-    uOpacity.value = 0.62 + secE * 0.22 + e * 0.12
+    // T105/T118: glassier — firms up when the music pushes, thins in breakdowns
+    uOpacity.value = 0.44 + secE * 0.26 + e * 0.12
     const sectionColor = track.sectionPalettes[telemetry.sectionIndex]
     if (sectionColor) {
       stripeTarget.set(sectionColor)
@@ -229,11 +233,11 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
-      {/* T73/T108: start apron — same black glass family as the road, low
-          roughness so it goes dark instead of catching the env wash */}
+      {/* T73/T108/T118: start apron — MATTE near-black. The glossy version
+          mirrored the env map at glancing angles → bright green slab. */}
       <mesh position={deck.pos} quaternion={deck.q}>
         <boxGeometry args={[track.width + 10, 2.7, 240]} />
-        <meshPhysicalMaterial color="#04060a" metalness={0.85} roughness={0.12} />
+        <meshStandardMaterial color="#030409" metalness={0.1} roughness={0.95} envMapIntensity={0.05} />
       </mesh>
       {/* start gantry over the line */}
       {[-1, 1].map((side) => (

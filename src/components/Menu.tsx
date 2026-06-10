@@ -204,7 +204,7 @@ export function Menu() {
       </GpuCanvas>
 
       <div className="hud-safe absolute inset-0 flex items-center justify-center overflow-y-auto">
-        <div className="flex w-full max-w-2xl flex-col gap-5 px-6 py-8">
+        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8">
           <div className="text-center">
             <h1
               className="text-6xl font-bold tracking-[0.35em] text-(--color-neon)"

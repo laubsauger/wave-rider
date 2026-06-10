@@ -61,8 +61,10 @@ export default function App() {
         </div>
       )}
       {screen === 'unsupported' && <Unsupported />}
+      {/* B26: backdrop is positioned → paints OVER static-flow screens
+          (Results) and ate their clicks. Never interactive. */}
       {BACKDROP_SCREENS.has(screen) && (
-        <div className="absolute inset-0" aria-hidden>
+        <div className="pointer-events-none absolute inset-0" aria-hidden>
           <GpuCanvas camera={{ position: [0, 1.2, 5], fov: 50 }}>
             <MenuBackdrop />
           </GpuCanvas>

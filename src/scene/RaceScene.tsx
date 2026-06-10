@@ -33,8 +33,10 @@ import { GridFloor, Ridges, SceneEnvironment, WarpStreaks } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import { Sparks } from './Sparks'
+import { SponsorBoards } from './SponsorBoards'
 import { NetworkShip } from './NetworkShip'
 import type { TrackData } from '../lib/track/generate'
+import { pickShipAccent } from '../lib/accent'
 
 function getOpponentColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255
@@ -121,6 +123,8 @@ export function RaceScene({
     () => sampleTrack(track, quality === 'low' ? 6 : quality === 'medium' ? 4 : 3),
     [track, quality],
   )
+  // T116: player wears a contrast color, never the world's own
+  const playerAccent = useMemo(() => pickShipAccent(track.theme.edge, track.theme.glow), [track.theme])
   const scene = useThree((s) => s.scene)
   const skyColors = useMemo(
     () => ({
@@ -291,10 +295,11 @@ export function RaceScene({
         if (songBuffer && !s.song) s.song = playSong(songBuffer)
       }
     }
-    // T113: the MUSIC is the engine — idles at half volume, swells with
-    // throttle, tops out with speed headroom (synth engine loop retired)
+    // T113/T119: the MUSIC is the engine — idles at half volume, swells with
+    // throttle, and hits FULL by ~250 kph under power (⊥ vmax-relative
+    // starvation; vmax is rarely touched)
     if (s.song) {
-      const vNorm = Math.min(1, s.ship.v / (track.avgSpeed * 1.62))
+      const vNorm = Math.min(1, s.ship.v / 70) // 70 m/s ≈ 252 kph
       s.song.setIntensity(s.input.thrust * 0.55 + vNorm * 0.45 + (s.ship.boost > 0 ? 0.15 : 0))
     }
 
@@ -521,6 +526,8 @@ export function RaceScene({
       {quality !== 'low' && <SceneEnvironment track={track} />}
       <ShadowRig shipRef={shipGroup} enabled={quality === 'high'} />
       <Track track={track} frames={frames} />
+      {/* T122: floating sponsor displays around the start straight */}
+      <SponsorBoards track={track} frames={frames} />
       <Scenery track={track} frames={frames} />
       <GridFloor track={track} frames={frames} />
       <Ridges track={track} frames={frames} />
@@ -528,7 +535,7 @@ export function RaceScene({
       <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
         <ShipMesh
-          accent={isMultiplayer && !isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
+          accent={isMultiplayer && !isHost ? getOpponentColor(playerAccent) : playerAccent}
           power={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
         />
       </group>
@@ -547,10 +554,10 @@ export function RaceScene({
       <ExhaustTrails
         shipRef={shipGroup}
         offsets={[
-          [-0.32, 0.22, 1.6],
-          [0.32, 0.22, 1.6],
+          [-0.26, 0.22, 2.1],
+          [0.26, 0.22, 2.1],
         ]}
-        color={isMultiplayer && !isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
+        color={isMultiplayer && !isHost ? getOpponentColor(playerAccent) : playerAccent}
         intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
       />
       {/* R9e: grind/airbrake sparks + landing dust */}
@@ -574,7 +581,7 @@ export function RaceScene({
         <NetworkShip
           source={() => sim.current.opponent}
           frames={frames}
-          accent={isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
+          accent={isHost ? getOpponentColor(playerAccent) : playerAccent}
         />
       )}
       {ghostPlayback && (
@@ -771,8 +778,8 @@ function NpcShips({
             <ExhaustTrails
               shipRef={groupRefs[i]}
               offsets={[
-                [-0.32, 0.22, 1.6],
-                [0.32, 0.22, 1.6],
+                [-0.26, 0.22, 2.1],
+                [0.26, 0.22, 2.1],
               ]}
               color={spec.accent}
               intensity={npcPower}

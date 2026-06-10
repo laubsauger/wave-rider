@@ -126,21 +126,22 @@ export function ShipMesh({
         <sphereGeometry args={[1, 8, 6]} />
         <meshPhysicalMaterial color="#060d20" metalness={0.2} roughness={0.05} clearcoat={1} emissive={accent} emissiveIntensity={0.35} transparent={transparent} opacity={opacity ?? 1} />
       </mesh>
-      {/* engine block — narrow pod sunk into the pinched tail */}
-      <mesh castShadow position={[0, 0.22, 1.3]} scale={[0.58, 0.24, 0.46]}>
+      {/* engine block — pod sunk into the pinched tail (T120: re-widened so
+          the outer lights get their size back) */}
+      <mesh castShadow position={[0, 0.22, 1.3]} scale={[0.74, 0.24, 0.46]}>
         <boxGeometry />
         <meshPhysicalMaterial color="#1b2233" {...hull} />
       </mesh>
-      {/* twin horizontal glow slots */}
-      {[-0.32, 0.32].map((x) => (
-        <mesh key={x} position={[x, 0.22, 1.56]} scale={[0.26, 0.1, 0.04]}>
+      {/* twin horizontal glow slots — T120: grown back */}
+      {[-0.26, 0.26].map((x) => (
+        <mesh key={x} position={[x, 0.22, 1.56]} scale={[0.34, 0.13, 0.05]}>
           <boxGeometry />
           <meshStandardMaterial ref={x < 0 ? engineMat : undefined} color="#000" emissive={accent} emissiveIntensity={2} toneMapped={false} />
         </mesh>
       ))}
-      {/* flames — tighter plumes off the narrow pod */}
-      {[-0.32, 0.32].map((x, i) => (
-        <mesh key={x} ref={i === 0 ? flameL : flameR} position={[x, 0.22, 1.5]} rotation={[Math.PI / 2, 0, 0]} scale={[1.4, 1, 0.45]}>
+      {/* flames — plumes off the pod */}
+      {[-0.26, 0.26].map((x, i) => (
+        <mesh key={x} ref={i === 0 ? flameL : flameR} position={[x, 0.22, 1.5]} rotation={[Math.PI / 2, 0, 0]} scale={[1.6, 1, 0.45]}>
           <coneGeometry args={[0.12, 1, 8, 1, true]} />
           <meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
         </mesh>
