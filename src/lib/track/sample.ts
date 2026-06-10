@@ -18,6 +18,10 @@ export interface TrackFrames {
   binormals: Float32Array
   /** total arc length */
   length: number
+  /** T77: per-sample width multiplier (smoothed) */
+  widths: Float32Array
+  /** T78: per-sample wall presence 1|0 */
+  walls: Float32Array
 }
 
 const UP = new Vector3(0, 1, 0)
@@ -29,6 +33,8 @@ export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
   const count = Math.max(2, Math.ceil(length / ds) + 1)
 
   const positions = new Float32Array(count * 3)
+  const widths = new Float32Array(count)
+  const walls = new Float32Array(count)
   const tangents = new Float32Array(count * 3)
   const normals = new Float32Array(count * 3)
   const binormals = new Float32Array(count * 3)
@@ -61,7 +67,19 @@ export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
     binormals.set([b.x, b.y, b.z], i * 3)
   }
 
-  return { ds: length / (count - 1), count, positions, tangents, normals, binormals, length }
+  // T77/T78: width + wall flags per sample, eased so transitions taper
+  const dsOut = length / (count - 1)
+  let segIdx = 0
+  for (let i = 0; i < count; i++) {
+    const sArc = i * dsOut
+    while (segIdx < track.segments.length - 1 && sArc >= track.segments[segIdx].end) segIdx++
+    widths[i] = track.segments[segIdx]?.widthScale ?? 1
+    walls[i] = (track.segments[segIdx]?.walls ?? true) ? 1 : 0
+  }
+  for (let i = 1; i < count; i++) widths[i] = widths[i - 1] + (widths[i] - widths[i - 1]) * 0.12
+  for (let i = count - 2; i >= 0; i--) widths[i] = widths[i + 1] + (widths[i] - widths[i + 1]) * 0.12
+
+  return { ds: dsOut, count, positions, tangents, normals, binormals, length, widths, walls }
 }
 
 /** Signed horizontal curvature (rad/m) at sample i — steers physics drift + camera lean. */

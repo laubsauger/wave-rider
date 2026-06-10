@@ -15,12 +15,12 @@ function planformGeometry(widthScale: number, tipSweep: number): THREE.ExtrudeGe
   shape.moveTo(0, -2.7) // nose tip
   shape.lineTo(0.34 * w, -1.1)
   shape.lineTo(1.28 * w, 0.55 + tipSweep) // right wing tip
-  shape.lineTo(1.05 * w, 1.05 + tipSweep)
-  shape.lineTo(0.5 * w, 0.95)
-  shape.lineTo(0.46 * w, 1.45) // engine pod trailing edge
-  shape.lineTo(-0.46 * w, 1.45)
-  shape.lineTo(-0.5 * w, 0.95)
-  shape.lineTo(-1.05 * w, 1.05 + tipSweep)
+  shape.lineTo(0.88 * w, 0.92 + tipSweep)
+  shape.lineTo(0.42 * w, 0.85)
+  shape.lineTo(0.36 * w, 1.42) // engine pod trailing edge — slimmer tail
+  shape.lineTo(-0.36 * w, 1.42)
+  shape.lineTo(-0.42 * w, 0.85)
+  shape.lineTo(-0.88 * w, 0.92 + tipSweep)
   shape.lineTo(-1.28 * w, 0.55 + tipSweep) // left wing tip
   shape.lineTo(-0.34 * w, -1.1)
   shape.closePath()

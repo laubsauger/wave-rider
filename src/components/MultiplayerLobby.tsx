@@ -8,6 +8,14 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   const [p2pState, setP2pState] = useState<P2PState>(network.state)
   const [peerId, setPeerId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [oppStatus, setOppStatus] = useState<string | null>(null)
+
+  useEffect(() => {
+    network.onError = setError
+    return () => {
+      network.onError = () => {}
+    }
+  }, [])
 
   useEffect(() => {
     const handleState = (s: P2PState) => {
@@ -21,6 +29,12 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
         } else {
           const userSong = state.userSongs.find((song) => song.title === title)
           if (userSong) {
+            // T88: tiny status lands before the heavy bytes — joiner sees a
+            // download indicator instead of "waiting for host"
+            network.send({
+              type: 'status',
+              text: `HOST SENDING TRACK (${(userSong.bytes.byteLength / 1e6).toFixed(1)} MB)…`,
+            })
             network.send({ type: 'lobby_song_custom', title: userSong.title, bytes: userSong.bytes })
           } else {
             setError('Could not find track bytes to send!')
@@ -51,6 +65,10 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   }, [initialJoinId])
 
   const handleNetworkMessage = async (msg: NetworkMessage) => {
+    if (msg.type === 'status') {
+      setOppStatus(msg.text)
+      return
+    }
     if (msg.type === 'lobby_song_builtin') {
       const song = BUNDLED_SONGS.find(s => s.id === msg.songId)
       if (song) {
@@ -58,6 +76,7 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
         await startBundledRace(song.url, song.title)
       }
     } else if (msg.type === 'lobby_song_custom') {
+      network.send({ type: 'status', text: 'OPPONENT ANALYZING TRACK…' })
       const file = new File([msg.bytes], msg.title, { type: 'audio/mpeg' })
       useGame.getState().setMultiplayer(true, false)
       await startFileRace(file)
@@ -105,7 +124,7 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
         {p2pState === 'connected' && !network.isHost && (
           <div className="text-center">
             <p className="text-sm tracking-widest text-[#b4ff39]">CONNECTED TO HOST</p>
-            <p className="mt-4 animate-pulse text-xs text-white/50">WAITING FOR HOST TO SELECT TRACK...</p>
+            <p className="mt-4 animate-pulse text-xs text-white/50">{oppStatus ?? 'WAITING FOR HOST TO SELECT TRACK...'}</p>
           </div>
         )}
 

@@ -120,11 +120,21 @@ describe('collisions (T32, V17)', () => {
 
   it('faster ship slows, slower ship speeds up (energy transfer)', () => {
     const racers = [
+      { s: 100, d: 0, v: 150 },
+      { s: 102, d: 0.5, v: 120 },
+    ]
+    resolveCollisions(racers, track)
+    expect(racers[0].v).toBeLessThan(150)
+    expect(racers[1].v).toBeGreaterThan(120)
+  })
+
+  it('T79: closing speed > 55 m/s → wreck, both lose big', () => {
+    const racers = [
       { s: 100, d: 0, v: 200 },
       { s: 102, d: 0.5, v: 100 },
     ]
     resolveCollisions(racers, track)
-    expect(racers[0].v).toBeLessThan(200)
-    expect(racers[1].v).toBeGreaterThan(100)
+    expect(racers[0].v).toBeLessThanOrEqual(45)
+    expect(racers[1].v).toBeLessThanOrEqual(100)
   })
 })

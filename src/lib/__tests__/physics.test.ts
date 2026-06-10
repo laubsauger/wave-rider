@@ -34,6 +34,7 @@ const noEvents = (): StepEvents => ({
   takeoff: false,
   landed: false,
   landImpact: 0,
+  respawned: false,
 })
 
 function scriptedInput(step: number): ShipInput {

@@ -127,7 +127,20 @@ T71|x|steer fight ↓ (drift 0.5→0.38); bank sign FLIPPED (was anti-camber, B1
 T72|x|boost burst: expanding shockwave ring @ pad hit + speedo pop|C11,V10
 T73|x|start zone v2: gantry arch @ line, deck restyled (⊥ weird band)|C11
 T74|x|fix NaN boundingSphere spam: exhaust skips bounding computation (frustumCulled off)|B18
-T75|.|track-setup screen wiring (solo/multi/ghost on user scaffold) → next session|—
+T75|x|track-setup screen wired by user scaffold (solo/multi); ghost option pending|—
+T76|x|MP actually visible: NetworkShip reads live source() per frame + dead-reckoning; POS/minimap rank vs opponent|V13,B19
+T77|x|track parts variety: speedway (1.6× wide, boost rows) + ridge (0.6×, no rails) segments, width-aware mesh/physics|V3,V20
+T78|x|falloff: rail-less edges → plunge + respawn @ centerline (v×0.4)|V5
+T79|x|wreck crashes: closing speed >55 m/s → both slammed, shockwave + max shake|V17
+T80|x|read: exhaust 38pts longer/brighter, slimmer tail planform|C11
+T81|x|start apron 240m flush deck (⊥ cutoff band)|C11
+T82|x|now-playing strip: 14-bar live spectrum (energy body, centroid lobe, beat kick) + title + time/total|V6,T57
+T83|x|LCARS speed/boost: text-8xl black, big rounded pills, rounded-pill block|C11,V6
+T84|x|MP heartbeat → setInterval (survives occluded tab), ⊥ WAITING deadlock|B20
+T85|x|progress waveform: 96 bars, h ↑, perceptual pow(0.45) curve — quiet structure readable|V6
+T86|x|host survives peer drop: conn close → back to 'hosting', join id stays valid|B21
+T87|x|join failures surfaced in lobby (peer-unavailable → stale-link message)|B21
+T88|x|MP start handshake: joiner scene announces lobby_ready (300ms), host arbitrates race_start, both launch ±300ms; download/analyze status both ways|B22
 
 ## §B bugs
 
@@ -149,3 +162,7 @@ B14|2026-06-10|drag 0.05·v only → coast τ=20s, halt ≈ 2min|engine braking:
 B15|2026-06-10|visual yaw applied + after rotateY(π) model flip → nose turns OPPOSITE steer|negate yaw in render (T56)
 B17|2026-06-10|bank roll sign: rotate(n,t,+θ) tilts up toward +binormal → -k*170 banked AGAINST corners|+k*170 (T71)
 B18|2026-06-10|exhaust computeBoundingSphere each frame on degenerate first-frames → NaN radius console spam|skip: frustumCulled=false needs no sphere
+B19|2026-06-10|NetworkShip mount gated on `sim.current.opponent` read @ render (null until effect, no re-render) → opponent NEVER visible; props froze @ mount|source() closure read per frame (T76)
+B20|2026-06-10|MP handshake heartbeat in useFrame → backgrounded tab (joiner downloading song) sends nothing → both stuck WAITING|setInterval heartbeat 300ms (T84)
+B21|2026-06-10|conn close/error → full disconnect() destroys HOST peer too → join id dead, rejoin insta-fails|dropConn(): host keeps peer, re-enters 'hosting' (T86)
+B22|2026-06-10|host startRace() immediately after sending bytes → counts down alone while joiner still transfers+analyzes; flip-on-first-packet ≠ sync|ready handshake + host-arbitrated start (T88)

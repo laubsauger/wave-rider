@@ -24,6 +24,8 @@ export interface RaceTelemetry {
   centroid: number
   /** current section index under the player */
   sectionIndex: number
+  /** T88: opponent's last reported status line (downloading/analyzing) */
+  oppStatus: string
   /** T48/T49: world x,y,z triplets — [0]=player, then NPCs */
   racersXZ: Float32Array
   /** P2P synchronization state */
@@ -45,6 +47,7 @@ export const telemetry: RaceTelemetry = {
   beat: 0,
   centroid: 0,
   sectionIndex: 0,
+  oppStatus: '',
   racersXZ: new Float32Array(18),
   syncState: 'ready',
 }

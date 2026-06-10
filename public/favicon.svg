@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="28" fill="#05060f" />
+  <defs>
+    <filter id="glow-cyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <filter id="glow-magenta" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+  <g transform="translate(0, 2)">
+    <path d="M 30 92 L 64 36 L 98 92" fill="none" stroke="#2ff3ff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-cyan)" />
+    <path d="M 48 92 L 64 64 L 80 92" fill="none" stroke="#ff2fd6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow-magenta)" />
+  </g>
+</svg>

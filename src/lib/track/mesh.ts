@@ -12,22 +12,22 @@ export interface RibbonGeometry {
   indices: Uint32Array
 }
 
-/** Road surface: two verts per frame at ±halfWidth. */
+/** Road surface: two verts per frame at ±halfWidth·widthScale (T77). */
 export function buildRoad(track: TrackData, frames: TrackFrames): RibbonGeometry {
-  return buildStrip(frames, -track.width / 2, track.width / 2, 0, 0)
+  return buildStrip(frames, -track.width / 2, track.width / 2, 0, 0, false)
 }
 
-/** Edge rail: thin bright strip just outside the road, slightly raised. */
+/** Edge rail: thin bright strip just outside the road; collapses on rail-less ridges (T78). */
 export function buildRail(track: TrackData, frames: TrackFrames, side: -1 | 1): RibbonGeometry {
   const inner = (track.width / 2) * side
   const outer = (track.width / 2 + 0.6) * side
-  return buildStrip(frames, Math.min(inner, outer), Math.max(inner, outer), 0.25, 0.25)
+  return buildStrip(frames, Math.min(inner, outer), Math.max(inner, outer), 0.25, 0.25, true)
 }
 
-/** Wall: vertical strip at the road edge. */
+/** Wall: vertical strip at the road edge; absent where walls=false (T78). */
 export function buildWall(track: TrackData, frames: TrackFrames, side: -1 | 1): RibbonGeometry {
   const d = (track.width / 2 + 0.7) * side
-  return buildStrip(frames, d, d, 0, 1.6)
+  return buildStrip(frames, d, d, 0, 1.6, true)
 }
 
 function buildStrip(
@@ -36,6 +36,7 @@ function buildStrip(
   dRight: number,
   hLeft: number,
   hRight: number,
+  needsWalls: boolean,
 ): RibbonGeometry {
   const n = frames.count
   const positions = new Float32Array(n * 2 * 3)
@@ -44,6 +45,12 @@ function buildStrip(
   const indices = new Uint32Array((n - 1) * 6)
 
   for (let i = 0; i < n; i++) {
+    const ws = frames.widths[i]
+    const collapsed = needsWalls && frames.walls[i] < 0.5
+    const dl = dLeft * ws * (collapsed ? 0.0001 : 1)
+    const dr = dRight * ws * (collapsed ? 0.0001 : 1)
+    const hl = collapsed ? 0 : hLeft
+    const hr = collapsed ? 0 : hRight
     const px = frames.positions[i * 3]
     const py = frames.positions[i * 3 + 1]
     const pz = frames.positions[i * 3 + 2]
@@ -56,12 +63,12 @@ function buildStrip(
 
     positions.set(
       [
-        px + bx * dLeft + nx * hLeft,
-        py + by * dLeft + ny * hLeft,
-        pz + bz * dLeft + nz * hLeft,
-        px + bx * dRight + nx * hRight,
-        py + by * dRight + ny * hRight,
-        pz + bz * dRight + nz * hRight,
+        px + bx * dl + nx * hl,
+        py + by * dl + ny * hl,
+        pz + bz * dl + nz * hl,
+        px + bx * dr + nx * hr,
+        py + by * dr + ny * hr,
+        pz + bz * dr + nz * hr,
       ],
       i * 6,
     )

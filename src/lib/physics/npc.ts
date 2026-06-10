@@ -78,7 +78,7 @@ export function stepNpc(
   const targetV = track.avgSpeed * spec.pace * cornerFactor
   state.v += (targetV - state.v) * Math.min(1, dt * 0.9)
 
-  const halfW = track.width / 2 - 1.6
+  const halfW = (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, i))]) / 2 - 1.6
   const targetD =
     spec.lanePref * halfW * 0.55 + Math.sin(state.time * spec.wobbleFreq * Math.PI * 2 + spec.phase) * spec.wobbleAmp
   state.d += (targetD - state.d) * Math.min(1, dt * 1.6)
@@ -136,9 +136,16 @@ export function resolveCollisions(
         const front = rear === a ? b : a
         if (rear.v > front.v) {
           const dv = rear.v - front.v
-          rear.v = Math.max(0, rear.v - dv * 0.55)
-          front.v += dv * 0.45
-          if (i === 0 || j === 0) playerImpact += dv * 0.3 + 2
+          if (dv > 55) {
+            // T79: high-velocity slam — both ships wreck hard
+            rear.v *= 0.2
+            front.v *= 0.7
+            if (i === 0 || j === 0) playerImpact += 40
+          } else {
+            rear.v = Math.max(0, rear.v - dv * 0.55)
+            front.v += dv * 0.45
+            if (i === 0 || j === 0) playerImpact += dv * 0.3 + 2
+          }
         }
         if (cooldowns) {
           cooldowns[i] = 0.4

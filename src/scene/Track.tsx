@@ -5,6 +5,26 @@ import { attribute, color, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
+
+/** T90: boost pad = three stacked chevrons pointing down-track, lying flat */
+function chevronPadGeometry(): THREE.ExtrudeGeometry {
+  const shapes: THREE.Shape[] = []
+  for (let c = 0; c < 3; c++) {
+    const y0 = c * 2.1 - 2.1 // arrows point -y → -z after rotation
+    const sh = new THREE.Shape()
+    sh.moveTo(-1.9, y0 + 1.1)
+    sh.lineTo(0, y0 - 0.4)
+    sh.lineTo(1.9, y0 + 1.1)
+    sh.lineTo(1.9, y0 + 2.0)
+    sh.lineTo(0, y0 + 0.5)
+    sh.lineTo(-1.9, y0 + 2.0)
+    sh.closePath()
+    shapes.push(sh)
+  }
+  const g = new THREE.ExtrudeGeometry(shapes, { depth: 0.1, bevelEnabled: false })
+  g.rotateX(-Math.PI / 2)
+  return g
+}
 import { telemetry } from '../game/telemetry'
 
 const stripeTarget = new THREE.Color()
@@ -34,6 +54,7 @@ function railSectionColors(track: TrackData, frames: TrackFrames): Float32Array 
 
 export function Track({ track, frames }: { track: TrackData; frames: TrackFrames }) {
   const padMesh = useRef<THREE.InstancedMesh>(null)
+  const padGeo = useMemo(() => chevronPadGeometry(), [])
   const padMat = useRef<THREE.MeshBasicMaterial>(null)
 
   const geo = useMemo(() => {
@@ -136,7 +157,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const p = new THREE.Vector3(frames.positions[0], frames.positions[1], frames.positions[2])
     const t = new THREE.Vector3(frames.tangents[0], frames.tangents[1], frames.tangents[2])
     const up = new THREE.Vector3(frames.normals[0], frames.normals[1], frames.normals[2])
-    const pos = p.clone().addScaledVector(t, -45).addScaledVector(up, -1.6)
+    const pos = p.clone().addScaledVector(t, -70).addScaledVector(up, -1.42)
     const q = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().lookAt(new THREE.Vector3(), t, up),
     )
@@ -149,7 +170,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
       {/* T73: start apron — dark deck, no glow band */}
       <mesh position={deck.pos} quaternion={deck.q}>
-        <boxGeometry args={[track.width + 9, 2.6, 150]} />
+        <boxGeometry args={[track.width + 10, 2.7, 240]} />
         <meshStandardMaterial color="#05070d" metalness={0.4} roughness={0.8} />
       </mesh>
       {/* start gantry over the line */}
@@ -201,9 +222,9 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
           }
         }}
         args={[undefined, undefined, Math.max(1, padData.matrices.length)]}
+        geometry={padGeo}
       >
-        <boxGeometry args={[4.4, 0.12, 14]} />
-        <meshBasicMaterial ref={padMat} color="#ffffff" toneMapped={false} />
+        <meshBasicMaterial ref={padMat} color="#ffffff" toneMapped={false} side={THREE.DoubleSide} />
       </instancedMesh>
     </group>
   )

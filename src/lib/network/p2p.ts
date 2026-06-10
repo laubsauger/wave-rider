@@ -18,6 +18,7 @@ export type NetworkMessage =
   | { type: 'race_start', startTime: number }
   | { type: 'state_update', state: OpponentState }
   | { type: 'race_finish', timeMs: number }
+  | { type: 'status', text: string }
 
 export class NetworkManager {
   peer: Peer | null = null
@@ -28,6 +29,8 @@ export class NetworkManager {
   
   onStateChange: (state: P2PState) => void = () => {}
   onMessage: (msg: NetworkMessage) => void = () => {}
+  /** T87: human-readable connection failures for the lobby UI */
+  onError: (msg: string) => void = () => {}
 
   async host(): Promise<string> {
     this.isHost = true
@@ -56,6 +59,11 @@ export class NetworkManager {
     })
     this.peer.on('error', (err) => {
       console.error('Peer error', err)
+      const friendly =
+        (err as { type?: string }).type === 'peer-unavailable'
+          ? 'HOST NOT FOUND — the link is stale (host ids change on every page load). Ask the host for a fresh link.'
+          : `Connection failed: ${String((err as Error).message ?? err)}`
+      this.onError(friendly)
       this.disconnect()
     })
   }
@@ -69,10 +77,10 @@ export class NetworkManager {
       this.onMessage(data as NetworkMessage)
     })
     this.conn.on('close', () => {
-      this.disconnect()
+      this.dropConn()
     })
     this.conn.on('error', () => {
-      this.disconnect()
+      this.dropConn()
     })
   }
 
@@ -84,6 +92,17 @@ export class NetworkManager {
   send(msg: NetworkMessage) {
     if (this.conn && this.state === 'connected') {
       this.conn.send(msg)
+    }
+  }
+
+  /** B21: a dropped connection must NOT destroy a host's peer — the join id
+   * stays valid so the other side can reconnect. Joiners fully reset. */
+  private dropConn() {
+    this.conn = null
+    if (this.isHost && this.peer && !this.peer.destroyed) {
+      this.updateState('hosting')
+    } else {
+      this.disconnect()
     }
   }
 

@@ -8,7 +8,16 @@
 import { hashFeatures, mulberry32, rngRange, type Rng } from '../prng'
 import type { AudioFeatures, AudioSection, Mood } from '../audio/analyze'
 
-export type SegmentType = 'straight' | 'curve' | 'chicane' | 'hill' | 'jump' | 'glide' | 'corkscrew'
+export type SegmentType =
+  | 'straight'
+  | 'curve'
+  | 'chicane'
+  | 'hill'
+  | 'jump'
+  | 'glide'
+  | 'corkscrew'
+  | 'speedway'
+  | 'ridge'
 
 export interface TrackSegment {
   type: SegmentType
@@ -16,6 +25,10 @@ export interface TrackSegment {
   start: number
   end: number
   sectionIndex: number
+  /** T77: width multiplier — speedway 1.6, ridge 0.6, else 1 */
+  widthScale: number
+  /** T78: false → no rails/walls, you can fall off */
+  walls: boolean
 }
 
 export interface BoostPad {
@@ -84,6 +97,15 @@ export function generateTrack(features: AudioFeatures): TrackData {
 
   const { points, segments, rolls } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
+  // T77: speedways carry dense boost rows
+  for (const seg of segments) {
+    if (seg.type !== 'speedway') continue
+    let li = 0
+    for (let bs = seg.start + 50; bs < seg.end - 50; bs += 70) {
+      boosts.push({ s: bs, lane: ((li++ % 3) - 1) * 0.6 })
+    }
+  }
+  boosts.sort((a, b) => a.s - b.s)
   const theme = pickTheme(features.mood, features.intensity)
 
   return {
@@ -229,7 +251,14 @@ function layoutCourse(
       }
       const segLen = Math.min(remaining, seg.length)
       walkSegment(cur, points, rolls, seg, segLen)
-      segments.push({ type: seg.type, start: s, end: s + segLen, sectionIndex: si })
+      segments.push({
+        type: seg.type,
+        start: s,
+        end: s + segLen,
+        sectionIndex: si,
+        widthScale: seg.widthScale ?? 1,
+        walls: seg.walls ?? true,
+      })
       s += segLen
       remaining -= segLen
     }
@@ -245,6 +274,8 @@ interface SegmentPlan {
   curvature: number
   /** vertical slope, m per m */
   slope: number
+  widthScale?: number
+  walls?: boolean
 }
 
 /**
@@ -256,6 +287,29 @@ interface SegmentPlan {
 function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): SegmentPlan {
   const e = sec.energy
   const roll = rng()
+  // T77/T78: special track parts — wide boost speedways, narrow rail-less
+  // ridges where falling off is on the table
+  const special = rng()
+  if (e > 0.5 && special < 0.09) {
+    return {
+      type: 'speedway',
+      length: rngRange(rng, 340, 500),
+      curvature: 0,
+      slope: rngRange(rng, -0.01, 0.01),
+      widthScale: 1.6,
+      walls: true,
+    }
+  }
+  if (e > 0.3 && special >= 0.09 && special < 0.17) {
+    return {
+      type: 'ridge',
+      length: rngRange(rng, 220, 340),
+      curvature: rngRange(rng, 0.001, 0.0028) * (rng() < 0.5 ? -1 : 1),
+      slope: rngRange(rng, -0.01, 0.02),
+      widthScale: 0.6,
+      walls: false,
+    }
+  }
 
   if (e > 0.6) {
     // T60: barrel-roll the road itself when the music hammers

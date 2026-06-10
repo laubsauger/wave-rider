@@ -24,6 +24,7 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
+import { beep, goChord, startEngine, type EngineSound } from '../lib/audio/sfx'
 import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
@@ -84,6 +85,7 @@ const tmpEye = new THREE.Vector3(0, 0, 0)
 const tmpDir = new THREE.Vector3()
 const tmpUp = new THREE.Vector3()
 const skyTint = new THREE.Color()
+const oppPose = {} as FramePose
 const skyTarget = new THREE.Color()
 const fogTarget = new THREE.Color()
 
@@ -166,6 +168,12 @@ export function RaceScene({
     lastNetSend: 0,
     syncState: 'running' as 'waiting' | 'syncing' | 'running',
     syncStartTime: 0,
+    /** T88: epoch ms when both sides agreed to launch; 0 = not yet */
+    raceStartAt: 0,
+    readySent: false,
+    /** T89 */
+    engine: null as EngineSound | null,
+    lastCountInt: 9,
   })
 
   // input + camera toggle + song lifecycle
@@ -201,10 +209,19 @@ export function RaceScene({
       handleMsg = (msg: NetworkMessage) => {
         if (msg.type === 'state_update') {
           sim.current.opponent = msg.state
-          if (sim.current.syncState === 'waiting') {
-            sim.current.syncState = 'running'
-            telemetry.syncState = 'ready'
-            sim.current.syncStartTime = Date.now() + 500
+        } else if (msg.type === 'status') {
+          telemetry.oppStatus = msg.text
+        } else if (msg.type === 'lobby_ready') {
+          // T88: host arbitrates the start once the joiner's scene is live
+          if (isHost && sim.current.raceStartAt === 0) {
+            sim.current.raceStartAt = Date.now() + 1500
+            network.send({ type: 'race_start', startTime: 0 })
+          }
+        } else if (msg.type === 'race_start') {
+          if (!isHost && sim.current.raceStartAt === 0) {
+            // host launches 1500ms after deciding; we got the message ~RTT/2
+            // later, so aim slightly earlier — within ~±300ms is fine for v1
+            sim.current.raceStartAt = Date.now() + 1100
           }
         } else if (msg.type === 'race_finish') {
           useGame.getState().setOpponentFinish(msg.timeMs)
@@ -213,11 +230,32 @@ export function RaceScene({
       network.onMessage = handleMsg
     }
 
+    // B20: heartbeat must survive occluded tabs — useFrame stops when the
+    // tab is backgrounded (e.g. joiner still decoding the song), which
+    // deadlocked both sides at WAITING. setInterval keeps firing (~1Hz min).
+    let hb: ReturnType<typeof setInterval> | null = null
+    if (isMultiplayer) {
+      hb = setInterval(() => {
+        const ship = sim.current.ship
+        network.send({
+          type: 'state_update',
+          state: { s: ship.s, d: ship.d, v: ship.v, yaw: ship.yaw, finished: ship.finished },
+        })
+        // T88: announce scene-ready until launch is agreed
+        if (sim.current.raceStartAt === 0) {
+          network.send({ type: 'lobby_ready' })
+        }
+      }, 300)
+    }
+
     return () => {
       detachKb()
       detachKeys()
+      if (hb) clearInterval(hb)
       s.song?.stop()
       s.song = null
+      s.engine?.stop()
+      s.engine = null
       if (isMultiplayer && handleMsg && network.onMessage === handleMsg) {
         network.onMessage = () => {}
       }
@@ -230,11 +268,9 @@ export function RaceScene({
 
     let isWaiting = false
     if (isMultiplayer) {
-      if (s.syncState === 'waiting') {
-        isWaiting = true
-      } else if (s.syncState === 'running' && s.syncStartTime > Date.now()) {
-        isWaiting = true
-      }
+      // T88: locked until the agreed launch moment
+      isWaiting = s.raceStartAt === 0 || Date.now() < s.raceStartAt
+      telemetry.syncState = isWaiting ? 'waiting' : 'ready'
     }
 
     // T35 countdown: hold the grid, fire the song at GO
@@ -242,10 +278,19 @@ export function RaceScene({
       const prev = s.countdown
       s.countdown -= dt
       telemetry.countdown = s.countdown
-      if (prev > 0 && s.countdown <= 0 && songBuffer && !s.song) {
-        s.song = playSong(songBuffer)
+      // T89: digit beeps + GO chord + engine ignition
+      const ci = Math.ceil(s.countdown)
+      if (ci !== s.lastCountInt && ci > 0 && ci <= 3) {
+        s.lastCountInt = ci
+        beep(550, 0.14, 0.22)
+      }
+      if (prev > 0 && s.countdown <= 0) {
+        goChord()
+        if (!s.engine) s.engine = startEngine()
+        if (songBuffer && !s.song) s.song = playSong(songBuffer)
       }
     }
+    s.engine?.update(s.ship.v, s.input.thrust, s.ship.boost > 0 ? 1 : 0)
 
     readShipInput(s.input)
     const steps = (isWaiting || s.countdown > 0) ? 0 : accumulateSteps(s.accumulator, dt)
@@ -262,9 +307,17 @@ export function RaceScene({
       }
       const bump = resolveCollisions([s.ship, ...s.npcs], track, s.cooldowns)
       if (bump > 0) wallEvent = Math.max(wallEvent, bump * 0.6)
+      // T79: wreck-level slam → shockwave ring + max trauma
+      if (bump >= 35 && burstRef.current && shipGroup.current) {
+        s.burstT = 0
+        burstRef.current.position.copy(shipGroup.current.position)
+        burstRef.current.quaternion.copy(shipGroup.current.quaternion)
+        s.shake.trauma = 1
+      }
       if (s.events.wallHit) wallEvent = Math.max(wallEvent, s.events.wallImpact)
       if (s.events.boostFired) boostEvent = true
       if (s.events.landed) landEvent = Math.max(landEvent, s.events.landImpact)
+      if (s.events.respawned) wallEvent = Math.max(wallEvent, 30)
       if (s.events.finished) finishedEvent = true
     }
 
@@ -368,11 +421,27 @@ export function RaceScene({
     telemetry.centroid = features.centroid[fi] ?? 0
     telemetry.wallFlash = wallEvent > 0 ? 1 : Math.max(0, telemetry.wallFlash - dt * 3)
     telemetry.boostFlash = boostEvent ? 1 : Math.max(0, telemetry.boostFlash - dt * 3.5)
-    telemetry.position = racePosition(ship.s, s.npcs)
-    telemetry.racers = s.npcs.length + 1
+    // B19: MP position plumbing — rank against the live opponent, not npcs
+    if (isMultiplayer && s.opponent) {
+      telemetry.position = s.opponent.s > ship.s ? 2 : 1
+      telemetry.racers = 2
+    } else if (ghostPlayback) {
+      telemetry.position = s.ghostReplayPos.s > ship.s ? 2 : 1
+      telemetry.racers = 2
+    } else {
+      telemetry.position = racePosition(ship.s, s.npcs)
+      telemetry.racers = s.npcs.length + 1
+    }
     telemetry.racersXZ[0] = s.pose.px
     telemetry.racersXZ[1] = s.pose.py
     telemetry.racersXZ[2] = s.pose.pz
+    if ((isMultiplayer && s.opponent) || ghostPlayback) {
+      const o = isMultiplayer ? s.opponent! : s.ghostReplayPos
+      poseAt(frames, Math.max(0, o.s), o.d, HOVER_HEIGHT, oppPose)
+      telemetry.racersXZ[3] = oppPose.px
+      telemetry.racersXZ[4] = oppPose.py
+      telemetry.racersXZ[5] = oppPose.pz
+    }
 
     // T39: onset beat spikes — sharp 1→0 pulses on detected hits
     let beat = Math.max(0, telemetry.beat - dt * 5)
@@ -405,7 +474,9 @@ export function RaceScene({
     if (finishedEvent || songDone) {
       s.started = false
       s.song?.stop(1.5)
-      
+      s.engine?.stop()
+      s.engine = null
+
       if (s.ghostRecorder) {
         setGhostData(s.ghostRecorder.finish())
       }
@@ -419,7 +490,14 @@ export function RaceScene({
         boostsHit: ship.boostsHit,
         wallHits: ship.wallHits,
         songTitle,
-        place: racePosition(ship.s - 0.001, s.npcs), // Not exactly accurate for multiplayer but ok
+        place:
+          isMultiplayer && s.opponent
+            ? s.opponent.s > ship.s && !ship.finished
+              ? 2
+              : s.opponent.finished && ship.finished
+                ? 2
+                : 1
+            : racePosition(ship.s - 0.001, s.npcs),
         totalRacers: isMultiplayer ? 2 : (ghostPlayback ? 2 : s.npcs.length + 1),
       })
     }
@@ -464,27 +542,20 @@ export function RaceScene({
         intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
       />
       {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
-      {isMultiplayer && sim.current.opponent && (
-        <NetworkShip 
-          s={sim.current.opponent.s} 
-          d={sim.current.opponent.d} 
-          v={sim.current.opponent.v} 
-          yaw={sim.current.opponent.yaw} 
-          frames={frames} 
+      {/* B19: mounted unconditionally — reads live state per frame */}
+      {isMultiplayer && (
+        <NetworkShip
+          source={() => sim.current.opponent}
+          frames={frames}
           accent={isHost ? getOpponentColor(track.theme.edge) : track.theme.edge}
-          finished={sim.current.opponent.finished}
         />
       )}
       {ghostPlayback && (
-        <NetworkShip 
-          s={sim.current.ghostReplayPos.s} 
-          d={sim.current.ghostReplayPos.d} 
-          v={sim.current.ghostReplayPos.v} 
-          yaw={sim.current.ghostReplayPos.yaw} 
-          frames={frames} 
+        <NetworkShip
+          source={() => ({ ...sim.current.ghostReplayPos, finished: sim.current.ship.finished })}
+          frames={frames}
           accent="#2ff3ff"
-          finished={sim.current.ship.finished}
-          isGhost={true}
+          isGhost
         />
       )}
       <Starfield color={track.theme.glow} count={quality === 'low' ? 400 : 1500} />

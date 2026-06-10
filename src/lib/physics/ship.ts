@@ -49,6 +49,8 @@ export interface ShipState {
   air: number
   /** T65: gripped lateral velocity state — slides converge, not snap */
   latVel: number
+  /** T78: fell off a rail-less ridge — plunging until respawn */
+  falling: boolean
 }
 
 export interface StepEvents {
@@ -59,6 +61,8 @@ export interface StepEvents {
   finished: boolean
   takeoff: boolean
   landed: boolean
+  /** T78: fell off and got reset to centerline */
+  respawned: boolean
   /** vertical speed at touchdown */
   landImpact: number
 }
@@ -82,6 +86,7 @@ export function initialShip(): ShipState {
     vy: 0,
     air: 0,
     latVel: 0,
+    falling: false,
   }
 }
 
@@ -111,6 +116,7 @@ export function stepShip(
   events.takeoff = false
   events.landed = false
   events.landImpact = 0
+  events.respawned = false
 
   if (state.finished) return
   const dt = PHYSICS_DT
@@ -164,6 +170,30 @@ export function stepShip(
   const lateralV = state.latVel
   state.d += lateralV * dt
 
+  // T78: off the edge of a rail-less ridge → plunge, then respawn
+  const hasWall = frames.walls[Math.min(frames.count - 1, Math.max(0, i))] > 0.5
+  const limitHere = (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, i))]) / 2 - SHIP_HALF_WIDTH
+  if (state.falling) {
+    state.vy -= GRAVITY * dt
+    state.air += state.vy * dt
+    state.s += state.v * dt * 0.6
+    state.time += dt
+    if (state.air < -14) {
+      state.falling = false
+      state.air = 0
+      state.vy = 0
+      state.d = 0
+      state.v *= 0.4
+      events.respawned = true
+    }
+    return
+  }
+  if (!hasWall && Math.abs(state.d) > limitHere + 1.2 && !state.airborne) {
+    state.falling = true
+    state.vy = -2
+    return
+  }
+
   // V16 airtime: when the road falls away faster than gravity pulls, fly
   const slopeHere = slopeAt(frames, i)
   // T60: inside corkscrew twists (track-up tilted off world-up) airtime is
@@ -195,9 +225,10 @@ export function stepShip(
     }
   }
 
-  // walls: hard impact penalty on contact, friction while grinding
-  const limit = track.width / 2 - SHIP_HALF_WIDTH
-  if (Math.abs(state.d) > limit) {
+  // walls: hard impact penalty on contact, friction while grinding.
+  // T77: limit follows the local width; T78: no clamp where walls are absent
+  const limit = limitHere
+  if (hasWall && Math.abs(state.d) > limit) {
     const impact = Math.abs(lateralV)
     state.d = clamp(state.d, -limit, limit)
     if (!state.onWall) {

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { attribute, color, float, mix, sin, smoothstep, sub, uniform } from 'three/tsl'
 
-const POINTS = 26
+const POINTS = 38
 
 interface TrailProps {
   /** ref to the ship group; engine offsets are in its local space */
@@ -43,7 +43,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     m.opacityNode = cross
       .pow(1.6)
       .mul(sub(1, v).pow(2.6))
-      .mul(uPower.min(1.2))
+      .mul(uPower.min(1.5))
       .mul(flicker)
     return m
   }, [accent, uPower, uTime])
@@ -150,7 +150,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
         else tmp.side.set(0, 1, 0)
 
         const age = i / POINTS
-        const w = 0.15 * (1 - age * 0.75) * (0.3 + Math.min(1.4, power) * 0.6)
+        const w = 0.2 * (1 - age * 0.7) * (0.3 + Math.min(1.5, power) * 0.65)
         trail.positions.set(
           [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
           i * 6,
