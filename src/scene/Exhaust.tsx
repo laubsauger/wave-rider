@@ -38,19 +38,18 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     // T101: hot core is NARROW and fades with age — accent owns the trail,
     // white only kisses the first meters (was blooming everything to white)
     const core = smoothstep(0.78, 0.99, cross).mul(sub(1, v).pow(2))
-    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.6)).mul(
-      float(1.05).add(uPower.mul(0.45)),
+    // T127: the head IS the flame — white-hot burst right at the nozzle,
+    // power-scaled, melting into the accent trail
+    const flameHead = sub(1, v).pow(8).mul(uPower.mul(0.9))
+    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.6).add(flameHead).min(1)).mul(
+      float(1.05).add(uPower.mul(0.45)).add(flameHead.mul(0.8)),
     )
     const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.12).add(0.88)
-    // T120: soft head — the ribbon eases IN behind the flame cones instead
-    // of starting as a hard-edged rectangle
-    const headFade = smoothstep(0.0, 0.1, v).mul(0.55).add(0.45)
     m.opacityNode = cross
       .pow(1.6)
       .mul(sub(1, v).pow(2.6))
       .mul(uPower.min(1.5))
       .mul(flicker)
-      .mul(headFade)
     return m
   }, [accent, uPower, uTime])
 
@@ -156,9 +155,9 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
         else tmp.side.set(0, 1, 0)
 
         const age = i / POINTS
-        // T120: head tapers in from a point so it meets the flame cone tip
-        const headTaper = Math.min(1, 0.25 + i / 4)
-        const w = 0.2 * (1 - age * 0.7) * (0.3 + Math.min(1.5, power) * 0.65) * headTaper
+        // T127: head at FULL width — it's the flame now, widest at the
+        // nozzle, tapering down the trail
+        const w = 0.22 * (1 - age * 0.72) * (0.3 + Math.min(1.5, power) * 0.65)
         trail.positions.set(
           [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
           i * 6,

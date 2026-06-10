@@ -56,8 +56,6 @@ export function ShipMesh({
   transparent?: boolean
 }) {
   const engineMat = useRef<THREE.MeshStandardMaterial>(null)
-  const flameL = useRef<THREE.Mesh>(null)
-  const flameR = useRef<THREE.Mesh>(null)
   const wispL = useRef<THREE.Mesh>(null)
   const wispR = useRef<THREE.Mesh>(null)
 
@@ -70,8 +68,11 @@ export function ShipMesh({
   // R9a: panel lines + plates + greebles + livery, merged to 2 draw calls
   const hullDetail = useMemo(() => buildHullDetail(variant), [variant])
 
+  // T125: shiny — low roughness so env reflections actually read, env
+  // intensity tuned so the hull mirrors highlights without soaking up the
+  // theme color as diffuse cast
   const hull = useMemo(
-    () => ({ metalness: 0.9, roughness: 0.24, clearcoat: 1, clearcoatRoughness: 0.15, flatShading: true, opacity: opacity ?? 1, transparent: transparent ?? false }),
+    () => ({ metalness: 0.92, roughness: 0.1, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 0.85, flatShading: true, opacity: opacity ?? 1, transparent: transparent ?? false }),
     [opacity, transparent],
   )
 
@@ -84,14 +85,6 @@ export function ShipMesh({
     const wispO = Math.max(0, (p - 0.7) * 1.6) * (0.55 + Math.sin(clock.elapsedTime * 23) * 0.45)
     for (const wm of [wispL.current, wispR.current]) {
       if (wm) (wm.material as THREE.MeshBasicMaterial).opacity = Math.min(0.5, wispO)
-    }
-    const len = Math.max(0.001, 0.25 + p * 2.3 + Math.sin(clock.elapsedTime * 47) * 0.12 * p)
-    for (const f of [flameL.current, flameR.current]) {
-      if (f) {
-        f.scale.y = len
-        f.position.z = 1.48 + len * 0.5
-        f.visible = p > 0.02
-      }
     }
   })
 
@@ -126,26 +119,25 @@ export function ShipMesh({
         <sphereGeometry args={[1, 8, 6]} />
         <meshPhysicalMaterial color="#060d20" metalness={0.2} roughness={0.05} clearcoat={1} emissive={accent} emissiveIntensity={0.35} transparent={transparent} opacity={opacity ?? 1} />
       </mesh>
-      {/* engine block — pod sunk into the pinched tail (T120: re-widened so
-          the outer lights get their size back) */}
-      <mesh castShadow position={[0, 0.22, 1.3]} scale={[0.74, 0.24, 0.46]}>
+      {/* engine block — pod sunk into the pinched tail */}
+      <mesh castShadow position={[0, 0.22, 1.3]} scale={[0.86, 0.24, 0.46]}>
         <boxGeometry />
         <meshPhysicalMaterial color="#1b2233" {...hull} />
       </mesh>
-      {/* twin horizontal glow slots — T120: grown back */}
-      {[-0.26, 0.26].map((x) => (
-        <mesh key={x} position={[x, 0.22, 1.56]} scale={[0.34, 0.13, 0.05]}>
+      {/* T125: QUAD tail lights — big outers, small inners */}
+      {[-0.3, 0.3].map((x) => (
+        <mesh key={`o${x}`} position={[x, 0.22, 1.56]} scale={[0.38, 0.16, 0.05]}>
           <boxGeometry />
           <meshStandardMaterial ref={x < 0 ? engineMat : undefined} color="#000" emissive={accent} emissiveIntensity={2} toneMapped={false} />
         </mesh>
       ))}
-      {/* flames — plumes off the pod */}
-      {[-0.26, 0.26].map((x, i) => (
-        <mesh key={x} ref={i === 0 ? flameL : flameR} position={[x, 0.22, 1.5]} rotation={[Math.PI / 2, 0, 0]} scale={[1.6, 1, 0.45]}>
-          <coneGeometry args={[0.12, 1, 8, 1, true]} />
-          <meshBasicMaterial color={accent} transparent opacity={0.85} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
+      {[-0.09, 0.09].map((x) => (
+        <mesh key={`i${x}`} position={[x, 0.22, 1.56]} scale={[0.11, 0.1, 0.05]}>
+          <boxGeometry />
+          <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={1.6} toneMapped={false} />
         </mesh>
       ))}
+      {/* T127: cone flames removed — the exhaust TRAIL is the flame now */}
       {/* wingtip accent edges — follow the hard sweep */}
       {[-1, 1].map((side) => (
         <mesh key={side} position={[side * 0.78, 0.2, 0.92]} rotation={[0, side * -0.28, 0]} scale={[0.05, 0.1, 0.7]}>

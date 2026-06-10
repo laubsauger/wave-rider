@@ -6,20 +6,20 @@ import { poseAt, type FramePose, type TrackFrames } from '../lib/track/sample'
 import { telemetry } from '../game/telemetry'
 
 /**
- * T122: sponsor boards — three floating holo displays around the start
- * straight (left, right, center overhead) carrying a SPONSORED BY card.
- * Ad-monetization sketch: bob gently, flicker like projections, fade out
- * once the pack has passed them.
+ * T122/T126: sponsor boards — three floating holo displays around the start
+ * straight. Fly DOWN into place during READY/countdown, lift off after GO.
+ * Soft holo wobble (slow noise, a ghosted blur layer) — no strobing.
  */
 
-const BOARD_W = 11
-const BOARD_H = 6.5
+const BOARD_W = 13.5
+const BOARD_H = 8
 
 interface BoardSpec {
   s: number
   d: number
   h: number
-  /** phase offset so the three don't bob in sync */
+  /** inward tilt (rad, around board up) — 0 for the center board */
+  tilt: number
   phase: number
 }
 
@@ -27,6 +27,8 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
   const [tex, setTex] = useState<THREE.CanvasTexture | null>(null)
   const groupRefs = useRef<(THREE.Group | null)[]>([])
   const matRefs = useRef<(THREE.MeshBasicMaterial | null)[]>([])
+  const ghostRefs = useRef<(THREE.MeshBasicMaterial | null)[]>([])
+  const anim = useRef({ lift: 0 })
 
   // compose the card: caption + logo on a dark holo panel
   useEffect(() => {
@@ -39,17 +41,14 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
       const ctx = canvas.getContext('2d')!
       ctx.fillStyle = 'rgba(5, 9, 20, 0.96)'
       ctx.fillRect(0, 0, 1024, 640)
-      // thin frame line
       ctx.strokeStyle = 'rgba(255,255,255,0.22)'
       ctx.lineWidth = 4
       ctx.strokeRect(14, 14, 996, 612)
-      // caption
       ctx.fillStyle = 'rgba(255,255,255,0.55)'
       ctx.font = '600 38px system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.letterSpacing = '14px'
       ctx.fillText('SPONSORED BY', 512, 96)
-      // logo fit into the lower area, aspect preserved
       const maxW = 820
       const maxH = 430
       const k = Math.min(maxW / img.width, maxH / img.height)
@@ -68,13 +67,14 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
   const boards = useMemo(() => {
     const halfW = track.width / 2
     const specs: BoardSpec[] = [
-      { s: 55, d: -(halfW + 10), h: 5, phase: 0 },
-      { s: 55, d: halfW + 10, h: 5, phase: 2.1 },
-      { s: 100, d: 0, h: 13, phase: 4.2 },
+      { s: 55, d: -(halfW + 16), h: 6, tilt: -0.34, phase: 0 },
+      { s: 55, d: halfW + 16, h: 6, tilt: 0.34, phase: 2.1 },
+      { s: 100, d: 0, h: 14, tilt: 0, phase: 4.2 },
     ]
     const pose = {} as FramePose
     const m = new THREE.Matrix4()
     const q = new THREE.Quaternion()
+    const tiltQ = new THREE.Quaternion()
     return specs.map((spec) => {
       poseAt(frames, spec.s, spec.d, spec.h, pose)
       // face BACK toward the grid: lookAt sets +Z = eye−target, and the
@@ -85,34 +85,47 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
         new THREE.Vector3(pose.nx, pose.ny, pose.nz),
       )
       q.setFromRotationMatrix(m)
+      // T126: side boards angle in toward the racing line
+      tiltQ.setFromAxisAngle(new THREE.Vector3(pose.nx, pose.ny, pose.nz), spec.tilt)
       return {
         ...spec,
         position: new THREE.Vector3(pose.px, pose.py, pose.pz),
-        quaternion: q.clone(),
+        quaternion: tiltQ.clone().multiply(q),
         up: new THREE.Vector3(pose.nx, pose.ny, pose.nz),
       }
     })
   }, [track, frames])
 
-  useFrame(({ clock }) => {
+  useFrame(({ clock }, dt) => {
     const playerS = telemetry.progress * track.length
+    const cd = telemetry.countdown
+    const t = clock.elapsedTime
+
+    // T126 timeline: high above before READY, fly down through countdown,
+    // lift off once the race is running
+    let drop = 0
+    if (cd > 3.4) drop = 60 // parked high during READY
+    else if (cd > 0.6) drop = ((cd - 0.6) / 2.8) ** 2 * 60 // easing down
+    if (cd <= 0) anim.current.lift = Math.min(6, anim.current.lift + dt)
+    const lift = anim.current.lift
+    const rise = lift * lift * 4
+    const liftFade = Math.max(0, 1 - lift / 4)
+
     for (let i = 0; i < boards.length; i++) {
       const g = groupRefs.current[i]
-      const mat = matRefs.current[i]
       const b = boards[i]
       if (!g) continue
-      // gentle hover bob
-      const bob = Math.sin(clock.elapsedTime * 0.9 + b.phase) * 0.5
-      g.position.set(
-        b.position.x + b.up.x * bob,
-        b.position.y + b.up.y * bob,
-        b.position.z + b.up.z * bob,
-      )
-      // holo flicker + fade once the player is past
+      const bob = Math.sin(t * 0.9 + b.phase) * 0.5
+      const y = bob + drop + rise
+      g.position.set(b.position.x + b.up.x * y, b.position.y + b.up.y * y, b.position.z + b.up.z * y)
+      // soft holo wobble — slow beat-free shimmer, never a strobe
+      const wobble = 0.93 + Math.sin(t * 1.1 + b.phase) * 0.04 + Math.sin(t * 2.3 + b.phase * 2) * 0.03
       const past = Math.max(0, playerS - b.s + 15)
-      const fade = Math.max(0, 1 - past / 45)
-      const flicker = 0.92 + Math.sin(clock.elapsedTime * 17 + b.phase * 3) * 0.08
-      if (mat) mat.opacity = fade * flicker
+      const fade = Math.max(0, 1 - past / 45) * liftFade
+      const mat = matRefs.current[i]
+      if (mat) mat.opacity = fade * wobble
+      const ghost = ghostRefs.current[i]
+      if (ghost) ghost.opacity = fade * 0.16 * wobble
       g.visible = fade > 0.01
     }
   })
@@ -123,10 +136,22 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
     <group>
       {boards.map((b, i) => (
         <group key={i} ref={(g) => void (groupRefs.current[i] = g)} position={b.position} quaternion={b.quaternion}>
-          {/* dark casing (T121 language: emissive sits inset, not raw) */}
-          <mesh position={[0, 0, -0.22]}>
-            <boxGeometry args={[BOARD_W + 0.7, BOARD_H + 0.7, 0.35]} />
+          {/* dark casing — emissive sits inset, not raw (T121 language) */}
+          <mesh position={[0, 0, -0.24]}>
+            <boxGeometry args={[BOARD_W + 0.8, BOARD_H + 0.8, 0.4]} />
             <meshStandardMaterial color="#0c0f1c" metalness={0.7} roughness={0.45} />
+          </mesh>
+          {/* T126: ghosted blur layer behind the screen — cheap holo blur */}
+          <mesh position={[0.12, -0.1, -0.06]} scale={[1.05, 1.05, 1]}>
+            <planeGeometry args={[BOARD_W, BOARD_H]} />
+            <meshBasicMaterial
+              ref={(m) => void (ghostRefs.current[i] = m)}
+              map={tex}
+              transparent
+              opacity={0.16}
+              depthWrite={false}
+              toneMapped={false}
+            />
           </mesh>
           {/* screen */}
           <mesh>
@@ -138,7 +163,7 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
               toneMapped={false}
             />
           </mesh>
-          {/* underglow strip — reads as projector emitters */}
+          {/* emitter strip */}
           <mesh position={[0, -BOARD_H / 2 - 0.5, 0]}>
             <boxGeometry args={[BOARD_W * 0.6, 0.12, 0.12]} />
             <meshBasicMaterial color={track.theme.glow} toneMapped={false} />

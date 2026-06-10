@@ -210,3 +210,4 @@ B23|2026-06-10|post outputNode vec4 s-curve warped alpha → WebGPU pipeline die
 B24|2026-06-10|telemetry.countdown init 0 sits INSIDE GO window (-1,0] → HUD flashed GO on mount before sim wrote 3.8; stale post-race value re-flashed on next mount|init 9 + RaceScene mount reset + READY state >3
 B25|2026-06-10|grain hash(seed).toUint() quantizes — seed multipliers below pixel pitch → neighbor px collapse to same hash → horizontal static streaks crawling frame|seed mults ≫ resolution (≈39k/21k) + amplitude ↓ (T106)
 B26|2026-06-10|T110 backdrop div is POSITIONED → paints over static-flow Results screen → all post-race buttons unclickable|pointer-events-none on backdrop wrapper (T117)
+B27|2026-06-10|node materials w/o own envMap IGNORE material.envMapIntensity (scene.environmentIntensity wins) → road env mirror "slab" survived two fix attempts|kill mirror via roughness on node materials; per-material env intensity needs material.envMap set

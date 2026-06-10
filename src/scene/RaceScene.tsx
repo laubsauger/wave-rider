@@ -29,7 +29,7 @@ import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
-import { GridFloor, Ridges, SceneEnvironment, WarpStreaks } from './Environment'
+import { GridFloor, Ridges, SceneEnvironment, WarpStreaks, WaveformHorizon } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import { Sparks } from './Sparks'
@@ -140,6 +140,7 @@ export function RaceScene({
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
 
   const npcSpecs = useMemo(() => makeNpcs(track), [track])
+
 
   const sim = useRef({
     npcs: [] as NpcState[],
@@ -531,6 +532,8 @@ export function RaceScene({
       <Scenery track={track} frames={frames} />
       <GridFloor track={track} frames={frames} />
       <Ridges track={track} frames={frames} />
+      {/* T124: the skyline is the song */}
+      <WaveformHorizon track={track} energyCurve={features.energy} frameInterval={features.frameInterval} />
       {/* T111: subtle warp streaks at the top end */}
       <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
@@ -554,8 +557,8 @@ export function RaceScene({
       <ExhaustTrails
         shipRef={shipGroup}
         offsets={[
-          [-0.26, 0.22, 2.1],
-          [0.26, 0.22, 2.1],
+          [-0.3, 0.22, 1.62],
+          [0.3, 0.22, 1.62],
         ]}
         color={isMultiplayer && !isHost ? getOpponentColor(playerAccent) : playerAccent}
         intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
@@ -778,8 +781,8 @@ function NpcShips({
             <ExhaustTrails
               shipRef={groupRefs[i]}
               offsets={[
-                [-0.26, 0.22, 2.1],
-                [0.26, 0.22, 2.1],
+                [-0.3, 0.22, 1.62],
+                [0.3, 0.22, 1.62],
               ]}
               color={spec.accent}
               intensity={npcPower}

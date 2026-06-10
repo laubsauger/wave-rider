@@ -161,6 +161,73 @@ export function SceneEnvironment({ track }: { track: TrackData }) {
   return null
 }
 
+const WF_BARS = 96
+const wfObj = new THREE.Object3D()
+
+/**
+ * T124: waveform horizon — a ring of tall bars circling the camera at the
+ * fog line, heights sampled from the song's energy curve around the current
+ * play position. The skyline IS the music, smoothed so it breathes instead
+ * of strobing.
+ */
+export function WaveformHorizon({
+  track,
+  energyCurve,
+  frameInterval,
+}: {
+  track: TrackData
+  energyCurve: Float32Array
+  frameInterval: number
+}) {
+  const meshRef = useRef<THREE.InstancedMesh>(null)
+  const groupRef = useRef<THREE.Group>(null)
+  const heights = useMemo(() => new Float32Array(WF_BARS).fill(20), [])
+  // sit just inside the fog falloff so the silhouette reads
+  const radius = Math.min(900, 2.1 / track.theme.fogDensity)
+
+  useFrame(({ camera }, dt) => {
+    const mesh = meshRef.current
+    const group = groupRef.current
+    if (!mesh || !group) return
+    group.position.set(camera.position.x, 0, camera.position.z)
+
+    const fi = Math.floor(telemetry.songTime / frameInterval)
+    const k = Math.min(1, dt * 2.2) // smooth — no strobe
+    for (let i = 0; i < WF_BARS; i++) {
+      // window of the energy curve centered on "now", spread across the ring
+      const off = Math.round((i - WF_BARS / 2) * 14)
+      const idx = Math.min(energyCurve.length - 1, Math.max(0, fi + off))
+      const e = energyCurve[idx] ?? 0
+      const target = 24 + e * 300
+      heights[i] += (target - heights[i]) * k
+      const a = (i / WF_BARS) * Math.PI * 2
+      const h = heights[i]
+      wfObj.position.set(Math.cos(a) * radius, -85 + h / 2, Math.sin(a) * radius)
+      wfObj.rotation.set(0, -a, 0)
+      wfObj.scale.set(radius * 0.066, h, 10)
+      wfObj.updateMatrix()
+      mesh.setMatrixAt(i, wfObj.matrix)
+    }
+    mesh.instanceMatrix.needsUpdate = true
+  })
+
+  return (
+    <group ref={groupRef}>
+      <instancedMesh ref={meshRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+        <boxGeometry />
+        <meshStandardMaterial
+          color="#060913"
+          metalness={0.3}
+          roughness={0.8}
+          emissive={track.theme.glow}
+          emissiveIntensity={0.07}
+          flatShading
+        />
+      </instancedMesh>
+    </group>
+  )
+}
+
 /** T31: distant low-poly ridge silhouettes flanking the course. */
 export function Ridges({ track, frames }: { track: TrackData; frames: TrackFrames }) {
   const matrices = useMemo(() => {

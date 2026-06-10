@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { attribute, fract, smoothstep, uniform, uv } from 'three/tsl'
+import { attribute, float, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import type { TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
@@ -95,14 +95,14 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   const roadMat = useMemo(() => {
     const m = new THREE.MeshPhysicalNodeMaterial({
       color: new THREE.Color('#040609'),
-      metalness: 0.85,
-      roughness: 0.12,
+      metalness: 0.6,
+      // B27: node materials w/o own envMap IGNORE material.envMapIntensity
+      // (three MaterialProperties.js: scene.environmentIntensity wins) — the
+      // glancing-angle env mirror ("green/red slab") must be killed via
+      // roughness instead
+      roughness: 0.34,
       side: THREE.DoubleSide, // T46: no see-through from below at launch
       transparent: true,
-      // T118/T122-verify: glancing-angle env reflection painted the whole
-      // start straight in theme color (the "green/red slab") — keep a hint
-      // of sheen, kill the mirror
-      envMapIntensity: 0.18,
     })
     m.opacityNode = uOpacity
     const glow = uStripeCol
@@ -116,6 +116,28 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       .add(glow.mul(edgeLine.mul(uEnergy.mul(0.5).add(0.25))))
     return m
   }, [track.theme, uEnergy, uStripeCol, uOpacity])
+
+  // T123: walls v2 — gradient glass, dense at the base fading clear at the
+  // top, lit top edge riding the section palette, faint scanlines. uv.x is
+  // wall height (0 base → 1 top), uv.y arc/20m (mesh.ts).
+  const wallMat = useMemo(() => {
+    const m = new THREE.MeshStandardNodeMaterial({
+      color: new THREE.Color('#05070e'),
+      metalness: 0.4,
+      roughness: 0.55, // B27: env intensity ignored on node materials
+      transparent: true,
+      side: THREE.DoubleSide,
+    })
+    const h = uv().x
+    m.opacityNode = float(0.8).mul(float(1).sub(h.mul(0.72)))
+    const topEdge = smoothstep(0.82, 0.95, h).sub(smoothstep(0.97, 1.0, h))
+    const band = fract(uv().y.mul(1.5))
+    const scan = smoothstep(0.46, 0.5, band).mul(smoothstep(0.54, 0.5, band))
+    m.emissiveNode = uStripeCol
+      .mul(topEdge.mul(uEnergy.mul(1.4).add(0.55)))
+      .add(uStripeCol.mul(scan.mul(uEnergy.mul(0.5).add(0.12))))
+    return m
+  }, [uStripeCol, uEnergy])
 
   // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
   // beat = sharp onset spikes layered on top of the energy floor.
@@ -233,10 +255,10 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
-      {/* T73/T108/T118: start apron — MATTE near-black. The glossy version
-          mirrored the env map at glancing angles → bright green slab. */}
+      {/* T73/T108/T126: start apron — matte near-black, slimmed flush with
+          the road so it reads as deck continuation, not a foreign slab */}
       <mesh position={deck.pos} quaternion={deck.q}>
-        <boxGeometry args={[track.width + 10, 2.7, 240]} />
+        <boxGeometry args={[track.width + 1.6, 2.7, 240]} />
         <meshStandardMaterial color="#030409" metalness={0.1} roughness={0.95} envMapIntensity={0.05} />
       </mesh>
       {/* start gantry over the line */}
@@ -285,16 +307,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
         <mesh key={i} geometry={g} material={railMaterial} />
       ))}
       {[geo.wallL, geo.wallR].map((g, i) => (
-        <mesh key={i} geometry={g}>
-          <meshStandardMaterial
-            color={track.theme.road}
-            emissive={track.theme.glow}
-            emissiveIntensity={0.15}
-            transparent
-            opacity={0.85}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
+        <mesh key={i} geometry={g} material={wallMat} />
       ))}
       <instancedMesh
         ref={(mesh) => {
