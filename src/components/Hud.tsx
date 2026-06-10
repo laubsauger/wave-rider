@@ -4,74 +4,119 @@ import { useGame } from '../game/store'
 import { NPC_ACCENTS } from '../lib/physics/npc'
 import type { TrackData } from '../lib/track/generate'
 
-const MAP_SIZE = 148
+const MAP_W = 230
+const MAP_H = 190
+// T49: oblique 2.5D — z compressed, altitude lifts the line
+const Z_SQUASH = 0.68
+const Y_LIFT = 1.35
 
-/** T48: top-down course map + live racer dots, canvas-drawn at display rate */
+/** T48/T49: oblique course map — ground shadow ↔ path gap shows altitude */
 function Minimap({ track, accent }: { track: TrackData; accent: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const proj = useMemo(() => {
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity
-    for (const p of track.points) {
-      if (p.x < minX) minX = p.x
-      if (p.x > maxX) maxX = p.x
-      if (p.z < minZ) minZ = p.z
-      if (p.z > maxZ) maxZ = p.z
+    let yMin = Infinity
+    for (const p of track.points) if (p.y < yMin) yMin = p.y
+    const pts = track.points.map((p) => ({
+      sx: p.x,
+      sy: p.z * Z_SQUASH - (p.y - yMin) * Y_LIFT,
+      gy: p.z * Z_SQUASH, // ground shadow (altitude flattened)
+      h: p.y - yMin,
+    }))
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity, hMax = 1
+    for (const p of pts) {
+      if (p.sx < minX) minX = p.sx
+      if (p.sx > maxX) maxX = p.sx
+      if (Math.min(p.sy, p.gy) < minY) minY = Math.min(p.sy, p.gy)
+      if (Math.max(p.sy, p.gy) > maxY) maxY = Math.max(p.sy, p.gy)
+      if (p.h > hMax) hMax = p.h
     }
-    const span = Math.max(maxX - minX, maxZ - minZ, 1)
-    const scale = (MAP_SIZE - 16) / span
-    const ox = (MAP_SIZE - (maxX - minX) * scale) / 2 - minX * scale
-    const oz = (MAP_SIZE - (maxZ - minZ) * scale) / 2 - minZ * scale
-    const toMap = (x: number, z: number): [number, number] => [x * scale + ox, z * scale + oz]
-    return { toMap }
+    const scale = Math.min((MAP_W - 18) / Math.max(1, maxX - minX), (MAP_H - 18) / Math.max(1, maxY - minY))
+    const ox = (MAP_W - (maxX - minX) * scale) / 2 - minX * scale
+    const oy = (MAP_H - (maxY - minY) * scale) / 2 - minY * scale
+    const world = (x: number, y: number, z: number): [number, number] => [
+      x * scale + ox,
+      (z * Z_SQUASH - (y - yMin) * Y_LIFT) * scale + oy,
+    ]
+    return { pts, scale, ox, oy, hMax, world }
   }, [track.points])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')
+    const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
     let raf = 0
     const tick = () => {
       raf = requestAnimationFrame(tick)
-      ctx.clearRect(0, 0, MAP_SIZE, MAP_SIZE)
-      ctx.strokeStyle = 'rgba(255,255,255,0.28)'
-      ctx.lineWidth = 2
+      ctx.clearRect(0, 0, MAP_W, MAP_H)
+      const { pts, scale, ox, oy, hMax } = proj
+
+      // ground shadow — flat footprint
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+      ctx.lineWidth = 1.5
       ctx.beginPath()
-      track.points.forEach((p, i) => {
-        const [x, y] = proj.toMap(p.x, p.z)
+      pts.forEach((p, i) => {
+        const x = p.sx * scale + ox
+        const y = p.gy * scale + oy
         if (i === 0) ctx.moveTo(x, y)
         else ctx.lineTo(x, y)
       })
       ctx.stroke()
-      // npc dots first, player on top
+      // altitude struts every ~12th point
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+      ctx.lineWidth = 1
+      for (let i = 0; i < pts.length; i += 12) {
+        const p = pts[i]
+        ctx.beginPath()
+        ctx.moveTo(p.sx * scale + ox, p.gy * scale + oy)
+        ctx.lineTo(p.sx * scale + ox, p.sy * scale + oy)
+        ctx.stroke()
+      }
+      // elevated path, brightness = altitude
+      ctx.lineWidth = 2.2
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1]
+        const b = pts[i]
+        const l = 38 + (b.h / proj.hMax) * 52
+        ctx.strokeStyle = `hsl(0 0% ${l}% / 0.85)`
+        ctx.beginPath()
+        ctx.moveTo(a.sx * scale + ox, a.sy * scale + oy)
+        ctx.lineTo(b.sx * scale + ox, b.sy * scale + oy)
+        ctx.stroke()
+      }
+      void hMax
+
+      // npc dots, then player glowing on top
       for (let i = 1; i < telemetry.racers; i++) {
-        const [x, y] = proj.toMap(telemetry.racersXZ[i * 2], telemetry.racersXZ[i * 2 + 1])
+        const [x, y] = proj.world(
+          telemetry.racersXZ[i * 3],
+          telemetry.racersXZ[i * 3 + 1],
+          telemetry.racersXZ[i * 3 + 2],
+        )
         ctx.fillStyle = NPC_ACCENTS[i - 1] ?? '#ffffff'
         ctx.beginPath()
-        ctx.arc(x, y, 2.4, 0, Math.PI * 2)
+        ctx.arc(x, y, 2.6, 0, Math.PI * 2)
         ctx.fill()
       }
-      const [px, py] = proj.toMap(telemetry.racersXZ[0], telemetry.racersXZ[1])
+      const [px, py] = proj.world(telemetry.racersXZ[0], telemetry.racersXZ[1], telemetry.racersXZ[2])
       ctx.fillStyle = accent
       ctx.shadowColor = accent
-      ctx.shadowBlur = 6
+      ctx.shadowBlur = 7
       ctx.beginPath()
-      ctx.arc(px, py, 3.4, 0, Math.PI * 2)
+      ctx.arc(px, py, 3.6, 0, Math.PI * 2)
       ctx.fill()
       ctx.shadowBlur = 0
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [track.points, proj, accent])
+  }, [proj, accent])
 
   return (
     <canvas
       ref={canvasRef}
-      width={MAP_SIZE}
-      height={MAP_SIZE}
+      width={MAP_W}
+      height={MAP_H}
       className="border border-white/15 bg-black/40"
-      style={{ width: MAP_SIZE, height: MAP_SIZE }}
+      style={{ width: MAP_W, height: MAP_H }}
     />
   )
 }

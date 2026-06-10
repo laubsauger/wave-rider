@@ -98,9 +98,16 @@ T42|x|track furniture: overhead beat-gates, curve chevrons, finish gate|C11,V19
 T43|x|tunnels: breakdown/glide sections → rib tunnels, beat-lit|V16,C11
 T44|x|post v2: bloom ↑, radial motion blur ∝ speed+boost (TSL)|V10,C7
 T45|x|feel v3: camera accel pull + fov surge, speed-scaled hover bob|C11
-T46|.|start: 2-column grid (no pileup), road double-sided (no under-track view @ launch)|V17
-T47|.|real steering: outward drift ∝ k·v² meaningful → ⊥ auto-ride, must steer curves|V18,B12
-T48|.|HUD minimap: top-down track path + live dots (player accent + npc colors)|V6,V13
+T46|x|start: 2-column grid (no pileup), road double-sided (no under-track view @ launch)|V17
+T47|x|real steering: outward drift ∝ k·v² meaningful → ⊥ auto-ride, must steer curves|V18,B12
+T48|x|HUD minimap: top-down track path + live dots (player accent + npc colors)|V6,V13
+T49|x|minimap v2: bigger, oblique 2.5D projection, ground-shadow ↔ path gap = altitude, elevation tint|V6
+T50|.|exhaust smoothing: fixed-dt multi-emit + interpolation, ⊥ frame-paced stutter|C11
+T51|.|carve feel: nose-in yaw ↑ (front points around corner), roll ↓ (no twist), camera look-into-corner + roll ↑|V18
+T52|.|collisions v2: impulse once per contact (cooldown), gradual separation, rear slows / front pushed|V17,B13
+T53|.|engine braking: off-throttle drag ↑ → coast stop ~seconds not minutes|B14
+T54|.|menu showcase: 3 staggered ship variants, key+rim+fill lighting|C11
+T55|.|start grid spacing ↑ (rows 14m, cols ±5m)|V17
 
 ## §B bugs
 
@@ -117,3 +124,5 @@ B9|2026-06-10|event detect: pure percentile thr fails when quiet ≈ half of son
 B10|2026-06-10|curvature ranges absolute → @ 150+ m/s lateral demand k·v² ≈ 300 m/s², unsteerable, wall-grind fest|V20
 B11|2026-06-10|analysis pipeline `await requestAnimationFrame` → background/occluded tab → rAF suspended → hang @ 5% forever|nextFrame races rAF vs 120ms timeout
 B12|2026-06-10|drift factor 0.006 absolute; after V20 k ↓ ~6× → outward drift ≈ 0.2 m/s → thrust-only auto-rides track|V20-aware drift: k·v²·0.5 (T47)
+B13|2026-06-10|collision resolved EVERY step while overlapping (velocity swap + 1.3m teleport) → jerk/glitch loop|impulse once per contact + cooldown + gradual separation
+B14|2026-06-10|drag 0.05·v only → coast τ=20s, halt ≈ 2min|engine braking: off-throttle drag +0.28·v

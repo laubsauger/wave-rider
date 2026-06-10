@@ -212,7 +212,8 @@ export function RaceScene({
     telemetry.position = racePosition(ship.s, s.npcs)
     telemetry.racers = s.npcs.length + 1
     telemetry.racersXZ[0] = s.pose.px
-    telemetry.racersXZ[1] = s.pose.pz
+    telemetry.racersXZ[1] = s.pose.py
+    telemetry.racersXZ[2] = s.pose.pz
 
     // T39: onset beat spikes — sharp 1→0 pulses on detected hits
     let beat = Math.max(0, telemetry.beat - dt * 5)
@@ -426,8 +427,9 @@ function NpcShips({
       poseAt(frames, Math.max(0, st.s), st.d, HOVER_HEIGHT, pose.current)
       const p = pose.current
       g.position.set(p.px, p.py, p.pz)
-      telemetry.racersXZ[(i + 1) * 2] = p.px
-      telemetry.racersXZ[(i + 1) * 2 + 1] = p.pz
+      telemetry.racersXZ[(i + 1) * 3] = p.px
+      telemetry.racersXZ[(i + 1) * 3 + 1] = p.py
+      telemetry.racersXZ[(i + 1) * 3 + 2] = p.pz
       tmpDir.set(-p.tx, -p.ty, -p.tz)
       tmpUp.set(p.nx, p.ny, p.nz)
       tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)

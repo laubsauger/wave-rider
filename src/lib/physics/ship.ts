@@ -120,7 +120,8 @@ export function stepShip(
   // longitudinal
   const vRatio = Math.min(1, state.v / vmax)
   let a = input.thrust * accel * (1 - Math.pow(vRatio, 1.4))
-  a -= state.v * 0.05 // base drag
+  // B14: engine braking — off throttle the field drag bites hard
+  a -= state.v * (0.05 + (1 - input.thrust) * 0.28)
   a -= braking * state.v * 0.35 // airbrake scrub
   if (state.boost > 0) a += 90
   state.v = Math.max(0, state.v + a * dt)
@@ -240,5 +241,6 @@ function clamp(x: number, lo: number, hi: number): number {
  * needs (B5).
  */
 export function computeLean(steer: number, v: number): number {
-  return clamp(steer * (0.72 + Math.min(0.38, v / 600)), -0.95, 0.95)
+  // T51: roll is the garnish — the nose-in yaw carries the carve
+  return clamp(steer * (0.42 + Math.min(0.22, v / 800)), -0.6, 0.6)
 }

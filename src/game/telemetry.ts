@@ -22,7 +22,7 @@ export interface RaceTelemetry {
   beat: number
   /** current section index under the player */
   sectionIndex: number
-  /** T48: world x,z pairs — [0]=player, then NPCs */
+  /** T48/T49: world x,y,z triplets — [0]=player, then NPCs */
   racersXZ: Float32Array
 }
 
@@ -40,5 +40,5 @@ export const telemetry: RaceTelemetry = {
   countdown: 0,
   beat: 0,
   sectionIndex: 0,
-  racersXZ: new Float32Array(12),
+  racersXZ: new Float32Array(18),
 }

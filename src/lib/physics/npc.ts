@@ -53,10 +53,10 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
 }
 
 export function initialNpc(index: number): NpcState {
-  // T46: 2-column grid, 10m row spacing — no spawn-pileup (HIT_DS is 5.5)
+  // T46/T55: 2-column grid, 14m rows, ±5m cols — fully clear of HIT_DS/DD
   const row = Math.floor(index / 2)
   const col = index % 2
-  return { s: -12 - row * 10, d: col === 0 ? -4.2 : 4.2, v: 0, time: 0, finished: false }
+  return { s: -14 - row * 14, d: col === 0 ? -5 : 5, v: 0, time: 0, finished: false }
 }
 
 /** npc accent colors, exported for the HUD minimap (T48) */
@@ -115,7 +115,11 @@ const HIT_DD = 2.8
  * Deterministic — fixed iteration order, no randomness.
  * Returns total impact magnitude involving racers[0] (the player), for shake.
  */
-export function resolveCollisions(racers: Racer[], track: TrackData): number {
+export function resolveCollisions(
+  racers: Racer[],
+  track: TrackData,
+  cooldowns?: Float32Array,
+): number {
   const limit = track.width / 2 - 1.5
   let playerImpact = 0
   for (let i = 0; i < racers.length; i++) {
@@ -124,21 +128,32 @@ export function resolveCollisions(racers: Racer[], track: TrackData): number {
       const b = racers[j]
       if (Math.abs(a.s - b.s) >= HIT_DS || Math.abs(a.d - b.d) >= HIT_DD) continue
 
-      const dv = a.v - b.v
-      const transfer = dv * 0.3
-      a.v = Math.max(0, a.v - transfer)
-      b.v = Math.max(0, b.v + transfer)
-
-      const dir = a.d !== b.d ? Math.sign(a.d - b.d) : a.s >= b.s ? 1 : -1
-      a.d = clamp(a.d + dir * 1.3, -limit, limit)
-      b.d = clamp(b.d - dir * 1.3, -limit, limit)
-
-      if (Math.abs(a.s - b.s) < 2.5) {
-        if (a.s >= b.s) a.s += 0.5
-        else b.s += 0.5
+      // B13: momentum impulse fires ONCE per contact — rear ship brakes,
+      // front ship gets shunted forward. Cooldown stops the jerk loop.
+      const onCooldown = cooldowns ? cooldowns[i] > 0 || cooldowns[j] > 0 : false
+      if (!onCooldown) {
+        const rear = a.s <= b.s ? a : b
+        const front = rear === a ? b : a
+        if (rear.v > front.v) {
+          const dv = rear.v - front.v
+          rear.v = Math.max(0, rear.v - dv * 0.55)
+          front.v += dv * 0.45
+          if (i === 0 || j === 0) playerImpact += dv * 0.3 + 2
+        }
+        if (cooldowns) {
+          cooldowns[i] = 0.4
+          cooldowns[j] = 0.4
+        }
       }
 
-      if (i === 0 || j === 0) playerImpact += Math.abs(transfer) + 2
+      // gradual separation every step — no teleporting (B13)
+      const dir = a.d !== b.d ? Math.sign(a.d - b.d) : a.s >= b.s ? 1 : -1
+      a.d = clamp(a.d + dir * 0.25, -limit, limit)
+      b.d = clamp(b.d - dir * 0.25, -limit, limit)
+      if (Math.abs(a.s - b.s) < 2.5) {
+        if (a.s >= b.s) a.s += 0.3
+        else b.s += 0.3
+      }
     }
   }
   return playerImpact
