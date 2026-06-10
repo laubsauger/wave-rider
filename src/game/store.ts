@@ -19,6 +19,8 @@ export interface UserSong {
   durationLabel: string
   waveform: number[]
   bytes: ArrayBuffer
+  mood?: string
+  intensity?: number
 }
 
 export interface RaceResult {

@@ -143,6 +143,12 @@ T87|x|join failures surfaced in lobby (peer-unavailable → stale-link message)|
 T88|x|MP start handshake: joiner scene announces lobby_ready (300ms), host arbitrates race_start, both launch ±300ms; download/analyze status both ways|B22
 T89|x|SFX: countdown digit beeps + GO chord, synth engine loop (pitch∝v, filter∝thrust, boost growl) — zero assets|C11
 T90|x|boost pads → triple chevron arrows (extruded, flat, section palette) — ⊥ cheap box|C11,V19
+T91|x|opponent/ghost beacon scales w/ camera distance (1.4×→14×)|C11
+T92|x|wallride segments: sustained ~60° bank + matching curve @ onset-dense high energy|V3,V20
+T93|x|pregen meta sidecars: scripts/gen-meta.ts → audio/*.meta.json (waveform/duration/bpm/mood/intensity) committed; cards instant, 0 mp3 bytes on load|C10
+T94|x|track info chips (bpm/mood/intensity) wherever tracks listed|I.ui
+T95|x|menu hangar responsive: aspect>1.1 right column, narrow → arc above|C8
+T96|x|engine tone: triangle body, detune 14→5, gains ~-45%, ⊥ whine/drone|C11
 
 ## §B bugs
 

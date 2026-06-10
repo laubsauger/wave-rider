@@ -8,7 +8,31 @@ import factoryUrl from '../../../audio/M.S.O. - Factory.mp3?url'
 import nitsUrl from '../../../audio/M.S.O. - Nits.mp3?url'
 import attentionUrl from '../../../audio/M.O.E. - Attention - old.mp3?url'
 
+// T93: pregen sidecars (scripts/gen-meta.ts) — rich cards, zero mp3 bytes
+export interface PregenMeta {
+  waveform: number[]
+  durationLabel: string
+  bpm: number
+  mood: string
+  intensity: number
+}
+const pregen = import.meta.glob<PregenMeta>('../../../audio/*.meta.json', {
+  eager: true,
+  import: 'default',
+})
+function metaFor(mp3Url: string): PregenMeta | undefined {
+  // prod URLs carry a hash suffix (Nits-D3Fa2.mp3) — match the sidecar's
+  // base name as a substring of the decoded URL instead
+  const u = decodeURIComponent(mp3Url)
+  for (const [path, m] of Object.entries(pregen)) {
+    const name = (path.split('/').pop() ?? '').replace(/\.meta\.json$/, '')
+    if (name && u.includes(name)) return m
+  }
+  return undefined
+}
+
 export interface BundledSong {
+  meta?: PregenMeta
   id: string
   title: string
   artist?: string
@@ -17,7 +41,7 @@ export interface BundledSong {
   lengthLabel: string
 }
 
-export const BUNDLED_SONGS: BundledSong[] = [
+const RAW_SONGS: BundledSong[] = [
   {
     id: 'mso-nits',
     title: 'NITS',
@@ -47,6 +71,8 @@ export const BUNDLED_SONGS: BundledSong[] = [
     lengthLabel: '—',
   }
 ]
+
+export const BUNDLED_SONGS: BundledSong[] = RAW_SONGS.map((s) => ({ ...s, meta: metaFor(s.url) }))
 
 export interface BundledMeta {
   waveform: number[]

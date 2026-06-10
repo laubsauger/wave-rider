@@ -18,6 +18,7 @@ export type SegmentType =
   | 'corkscrew'
   | 'speedway'
   | 'ridge'
+  | 'wallride'
 
 export interface TrackSegment {
   type: SegmentType
@@ -300,6 +301,18 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): Segme
       walls: true,
     }
   }
+  if (e > 0.62 && onsetDensity > 1.8 && special >= 0.17 && special < 0.27) {
+    // T92: ride the wall — sustained ~60° bank with matching curve
+    const dir = rng() < 0.5 ? -1 : 1
+    return {
+      type: 'wallride',
+      length: rngRange(rng, 260, 400),
+      curvature: rngRange(rng, 0.0018, 0.003) * dir,
+      slope: 0,
+      widthScale: 1.15,
+      walls: true,
+    }
+  }
   if (e > 0.3 && special >= 0.09 && special < 0.17) {
     return {
       type: 'ridge',
@@ -373,9 +386,11 @@ function walkSegment(
   const rollStep = seg.type === 'corkscrew' ? (Math.PI * 2) / steps : 0
   // T65: banked corners — roll into the curve like a velodrome
   const bankTarget =
-    seg.type === 'curve' || seg.type === 'chicane'
-      ? Math.max(-0.42, Math.min(0.42, seg.curvature * 170)) // B17: +k banks INTO the corner
-      : 0
+    seg.type === 'wallride'
+      ? Math.sign(seg.curvature) * 1.05 // T92: ~60° — riding the wall
+      : seg.type === 'curve' || seg.type === 'chicane'
+        ? Math.max(-0.42, Math.min(0.42, seg.curvature * 170)) // B17: +k banks INTO the corner
+        : 0
 
   for (let i = 0; i < steps; i++) {
     let k = seg.curvature

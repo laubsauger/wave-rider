@@ -35,11 +35,11 @@ export function startEngine(): EngineSound {
   const lp = ctx.createBiquadFilter()
   const g = ctx.createGain()
   oscA.type = 'sawtooth'
-  oscB.type = 'sawtooth'
-  oscB.detune.value = 14
+  oscB.type = 'triangle' // warmer body, less whine
+  oscB.detune.value = 5
   lp.type = 'lowpass'
-  lp.frequency.value = 300
-  lp.Q.value = 2
+  lp.frequency.value = 240
+  lp.Q.value = 0.8
   g.gain.value = 0
   oscA.connect(lp)
   oscB.connect(lp)
@@ -52,11 +52,13 @@ export function startEngine(): EngineSound {
     update(v, thrust, boost) {
       if (dead) return
       const t = ctx.currentTime
-      const hz = 38 + v * 0.45 + boost * 40
+      const hz = 30 + v * 0.3 + boost * 25
       oscA.frequency.setTargetAtTime(hz, t, 0.06)
       oscB.frequency.setTargetAtTime(hz * 1.005, t, 0.06)
-      lp.frequency.setTargetAtTime(220 + v * 4 + thrust * 500 + boost * 1200, t, 0.08)
-      g.gain.setTargetAtTime(0.015 + thrust * 0.05 + Math.min(0.03, v / 4000) + boost * 0.04, t, 0.1)
+      lp.frequency.setTargetAtTime(160 + v * 2.2 + thrust * 280 + boost * 700, t, 0.08)
+      // sits UNDER the music — texture, not a voice. Delete startEngine call
+      // in RaceScene if it still fights the mix.
+      g.gain.setTargetAtTime(0.004 + thrust * 0.013 + Math.min(0.008, v / 15000) + boost * 0.012, t, 0.1)
     },
     stop() {
       if (dead) return

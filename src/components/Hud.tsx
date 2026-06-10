@@ -118,8 +118,7 @@ function Minimap({ track, accent }: { track: TrackData; accent: string }) {
       ref={canvasRef}
       width={MAP_W}
       height={MAP_H}
-      className="border border-white/15 bg-black/40"
-      style={{ width: MAP_W, height: MAP_H }}
+      className="h-[190px] w-[230px] border border-white/15 bg-black/40 [@media(max-height:499px)]:h-[107px] [@media(max-height:499px)]:w-[130px]"
     />
   )
 }
@@ -341,11 +340,11 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
             {/* T67: speed + boost live top-right — clear of mobile thumb zones */}
             {/* T83: LCARS-bold readout — big pills, heavy type */}
             <div
-              className="rounded-l-3xl rounded-r-md border-r-8 bg-black/60 py-3 pr-5 pl-7 text-right"
+              className="w-fit self-end rounded-l-2xl border-r-4 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-1.5 pr-3 pl-8 text-right [@media(min-height:500px)]:border-r-8 [@media(min-height:500px)]:py-2.5 [@media(min-height:500px)]:pr-4 [@media(min-height:500px)]:pl-12"
               style={{ borderColor: accent }}
             >
               <div className="mb-1.5 flex items-center justify-end gap-2.5">
-                <div ref={boostLabelRef} className="text-xs font-black tracking-[0.4em] text-(--color-amber-hud)">
+                <div ref={boostLabelRef} className="text-[9px] font-black tracking-[0.4em] text-(--color-amber-hud) [@media(min-height:500px)]:text-xs">
                   BOOST
                 </div>
                 <div className="flex gap-1">
@@ -353,7 +352,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
                     <div
                       key={i}
                       ref={(el) => void (boostCells.current[i] = el)}
-                      className="h-4 w-3 rounded-sm bg-(--color-amber-hud)"
+                      className="h-2.5 w-2 rounded-sm bg-(--color-amber-hud) [@media(min-height:500px)]:h-4 [@media(min-height:500px)]:w-3"
                       style={{ opacity: 0.13 }}
                     />
                   ))}
@@ -362,19 +361,19 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
               <div className="flex items-baseline justify-end gap-2">
                 <span
                   ref={speedRef}
-                  className="inline-block text-8xl font-black tabular-nums leading-none"
+                  className="inline-block text-4xl font-black tabular-nums leading-none [@media(min-height:500px)]:text-8xl"
                   style={{ color: accent, textShadow: `0 0 24px ${accent}` }}
                 >
                   0
                 </span>
-                <span className="text-base font-bold tracking-[0.3em] text-white/70">KPH</span>
+                <span className="text-xs font-bold tracking-[0.3em] text-white/70 [@media(min-height:500px)]:text-base">KPH</span>
               </div>
               <div className="mt-2 flex justify-end gap-1">
                 {Array.from({ length: SPEED_SEGS }, (_, i) => (
                   <div
                     key={i}
                     ref={(el) => void (speedCells.current[i] = el)}
-                    className="h-5 w-4 rounded-sm"
+                    className="h-3 w-2.5 rounded-sm [@media(min-height:500px)]:h-5 [@media(min-height:500px)]:w-4"
                     style={{
                       opacity: 0.13,
                       background: i >= SPEED_SEGS - 3 ? '#ff3355' : accent,
@@ -388,7 +387,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
 
         {/* bottom-left: map + track id + eq (T67) */}
         <div className="flex items-end justify-between">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5">
             {track && <Minimap track={track} accent={accent} />}
             {/* T82: now-playing strip — live spectrum | title | time, music-video style */}
             <div ref={pulseRef} className="ml-1 flex items-center gap-3">

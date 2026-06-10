@@ -24,11 +24,41 @@ function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
   )
 }
 
+const MOOD_COLORS: Record<string, string> = {
+  aggressive: '#ff3355',
+  energetic: '#3d7bff',
+  flowing: '#2fffb0',
+  chill: '#b09aff',
+}
+
+/** T94: bpm / mood / intensity chips, shown wherever a track is listed */
+function TrackChips({ bpm, mood, intensity }: { bpm?: number; mood?: string; intensity?: number }) {
+  return (
+    <span className="relative ml-2 inline-flex items-center gap-1.5 align-middle text-[9px] tracking-[0.18em]">
+      {bpm !== undefined && (
+        <span className="rounded-sm border border-white/15 bg-black/60 px-1 py-px text-white/55">{bpm} BPM</span>
+      )}
+      {mood && (
+        <span
+          className="rounded-sm border bg-black/60 px-1 py-px font-bold"
+          style={{ color: MOOD_COLORS[mood] ?? '#fff', borderColor: (MOOD_COLORS[mood] ?? '#fff') + '55' }}
+        >
+          {mood.toUpperCase()}
+        </span>
+      )}
+      {intensity !== undefined && (
+        <span className="rounded-sm border border-white/15 bg-black/60 px-1 py-px text-white/55">
+          INT {Math.round(intensity * 100)}
+        </span>
+      )}
+    </span>
+  )
+}
+
 function BundledCard({ song }: { song: BundledSong }) {
-  // T68: NO eager mp3 download — meta (waveform/duration) loads on hover
-  // intent only, so first paint costs zero audio bytes
-  const [meta, setMeta] = useState<BundledMeta | null>(null)
-  const requested = useRef(false)
+  // T93: pregen sidecar renders instantly; hover fallback only when absent
+  const [meta, setMeta] = useState<BundledMeta | null>(song.meta ?? null)
+  const requested = useRef(!!song.meta)
   const loadMeta = () => {
     if (requested.current) return
     requested.current = true
@@ -47,7 +77,10 @@ function BundledCard({ song }: { song: BundledSong }) {
         {song.title}
       </span>
       {song.artist && (
-        <span className="relative block text-[10px] tracking-[0.35em] text-white/35">{song.artist}</span>
+        <span className="relative block text-[10px] tracking-[0.35em] text-white/35">
+          {song.artist}
+          <TrackChips bpm={song.meta?.bpm} mood={song.meta?.mood} intensity={song.meta?.intensity} />
+        </span>
       )}
       <span className="relative float-right mt-1 text-sm tabular-nums text-white/40">
         {meta?.durationLabel ?? '…'}
@@ -66,12 +99,20 @@ const SHOWCASE: { pos: [number, number, number]; scale: number; accent: string; 
 
 function ShowcaseShips() {
   const refs = useRef<(THREE.Group | null)[]>([])
-  useFrame(({ clock }) => {
+  // T95: redistribute per aspect — wide: right column; narrow: arc above
+  useFrame(({ clock, viewport }) => {
+    const wide = viewport.aspect > 1.1
     SHOWCASE.forEach((s, i) => {
       const g = refs.current[i]
       if (!g) return
+      const base: [number, number, number] = wide
+        ? s.pos
+        : [(i - 1) * 2.0, 2.6 - i * 0.55, -3.5 - i]
+      g.position.x = base[0]
+      g.position.z = base[2]
+      g.scale.setScalar(wide ? s.scale : s.scale * 0.7)
       g.rotation.y = clock.elapsedTime * 0.45 + s.phase
-      g.position.y = s.pos[1] + Math.sin(clock.elapsedTime * 1.2 + s.phase) * 0.1
+      g.position.y = base[1] + Math.sin(clock.elapsedTime * 1.2 + s.phase) * 0.1
     })
   })
   return (
@@ -183,8 +224,9 @@ export function Menu() {
                     {song.title}
                   </span>
                   <span className="relative float-right mt-0.5 text-xs tabular-nums text-white/40">
-                    {song.bpm} BPM · {song.durationLabel}
+                    {song.durationLabel}
                   </span>
+                  <TrackChips bpm={song.bpm} mood={song.mood} intensity={song.intensity} />
                 </button>
               ))}
             </div>

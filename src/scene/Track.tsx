@@ -23,6 +23,7 @@ function chevronPadGeometry(): THREE.ExtrudeGeometry {
   }
   const g = new THREE.ExtrudeGeometry(shapes, { depth: 0.1, bevelEnabled: false })
   g.rotateX(-Math.PI / 2)
+  g.rotateY(Math.PI) // tips face down-track (pad local -Z = travel)
   return g
 }
 import { telemetry } from '../game/telemetry'

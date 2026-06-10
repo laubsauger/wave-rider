@@ -4,6 +4,8 @@ import * as THREE from 'three/webgpu'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import { poseAt, type TrackFrames } from '../lib/track/sample'
+
+const camRef = new THREE.Vector3()
 import type { OpponentState } from '../lib/network/p2p'
 
 interface NetShipProps {
@@ -26,7 +28,8 @@ export function NetworkShip({ source, frames, accent, isGhost }: NetShipProps) {
   // smoothed local view of the remote state (10Hz updates → 60fps motion)
   const cur = useRef({ s: 0, d: 0, v: 0, yaw: 0, init: false })
 
-  useFrame((_, dt) => {
+  useFrame(({ camera }, dt) => {
+    camRef.copy(camera.position)
     const g = groupRef.current
     if (!g) return
     const tgt = source()
@@ -55,6 +58,12 @@ export function NetworkShip({ source, frames, accent, isGhost }: NetShipProps) {
     tmpMatrix.lookAt(tmpEye, tmpDir, tmpUp)
     g.quaternion.setFromRotationMatrix(tmpMatrix)
     g.rotateY(Math.PI - c.yaw * 1.2)
+    // T91: beacon grows with camera distance — spottable across the track
+    const beacon = g.children[g.children.length - 1]
+    if (beacon) {
+      const dist = camRef.distanceTo(g.position)
+      beacon.scale.setScalar(Math.min(14, Math.max(1.4, dist / 28)))
+    }
   })
 
   const power = () => {

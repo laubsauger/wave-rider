@@ -25,6 +25,7 @@
     "@types/three": "^0.182.0",
     "@vitejs/plugin-react": "^5.0.0",
     "@webgpu/types": "^0.1.70",
+    "audio-decode": "^3.10.1",
     "puppeteer": "^25.1.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",

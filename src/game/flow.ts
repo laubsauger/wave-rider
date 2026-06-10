@@ -93,6 +93,8 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = f
       id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       title,
       bpm: Math.round(features.bpm),
+      mood: features.mood,
+      intensity: Math.round(features.intensity * 100) / 100,
       durationLabel: fmtDuration(features.duration),
       waveform: computeWaveform(pcm),
       bytes: bytes.slice(0),
