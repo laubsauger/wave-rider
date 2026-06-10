@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { GpuCanvas } from '../scene/GpuCanvas'
@@ -25,18 +25,21 @@ function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
 }
 
 function BundledCard({ song }: { song: BundledSong }) {
+  // T68: NO eager mp3 download — meta (waveform/duration) loads on hover
+  // intent only, so first paint costs zero audio bytes
   const [meta, setMeta] = useState<BundledMeta | null>(null)
-  useEffect(() => {
-    let alive = true
-    getBundledMeta(song.url).then((m) => alive && setMeta(m)).catch(() => {})
-    return () => {
-      alive = false
-    }
-  }, [song.url])
+  const requested = useRef(false)
+  const loadMeta = () => {
+    if (requested.current) return
+    requested.current = true
+    getBundledMeta(song.url).then(setMeta).catch(() => {})
+  }
 
   return (
     <button
       className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
+      onPointerEnter={loadMeta}
+      onFocus={loadMeta}
       onClick={() => void startBundledRace(song.url, song.title)}
     >
       {meta && <Waveform peaks={meta.waveform} color="#2ff3ff" />}
@@ -138,16 +141,20 @@ export function Menu() {
               <BundledCard key={song.id} song={song} />
             ))}
             <button
-              className="-skew-x-6 border border-dashed border-(--color-neon-2)/60 px-6 py-3.5 tracking-[0.25em] text-(--color-neon-2) transition hover:bg-(--color-neon-2)/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)]"
+              className="-skew-x-6 border border-dashed border-(--color-neon-2)/60 px-6 py-8 text-lg tracking-[0.25em] text-(--color-neon-2) transition hover:bg-(--color-neon-2)/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)]"
               onClick={() => fileInput.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const file = e.dataTransfer.files?.[0]
+                if (file) void onFile(file)
+              }}
             >
-              ▲ UPLOAD YOUR OWN TRACK
-            </button>
-            <button
-              className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-3.5 tracking-[0.25em] text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"
-              onClick={() => useGame.getState().setScreen('multiplayer-lobby')}
-            >
-              ◎ HOST MULTIPLAYER
+              ▲ UPLOAD OR DROP AUDIO FILE
             </button>
             {ghostPlayback && (
               <p className="text-center text-xs tracking-widest text-[#2ff3ff]">GHOST REPLAY LOADED</p>

@@ -2,7 +2,10 @@ import { useEffect, useMemo, useRef } from 'react'
 import { telemetry } from '../game/telemetry'
 import { useGame } from '../game/store'
 import { NPC_ACCENTS } from '../lib/physics/npc'
+import { fmtDuration } from '../lib/audio/waveform'
 import type { TrackData } from '../lib/track/generate'
+
+const PROG_BARS = 64
 
 const MAP_W = 230
 const MAP_H = 190
@@ -141,7 +144,6 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const timeRef = useRef<HTMLSpanElement>(null)
   const posRef = useRef<HTMLSpanElement>(null)
   const racersRef = useRef<HTMLSpanElement>(null)
-  const progressRef = useRef<HTMLDivElement>(null)
   const boostLabelRef = useRef<HTMLDivElement>(null)
   const vignetteRef = useRef<HTMLDivElement>(null)
   const pulseRef = useRef<HTMLDivElement>(null)
@@ -152,9 +154,26 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const boostCells = useRef<(HTMLDivElement | null)[]>([])
   const cameraMode = useGame((s) => s.cameraMode)
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
+  const songTitle = useGame((s) => s.songTitle)
+  const features = useGame((s) => s.features)
+  const progressClip = useRef<HTMLDivElement>(null)
 
   const fxRef = useRef(fxIntensity)
   fxRef.current = fxIntensity
+
+  // T67: progress bar = waveform approximation from the analyzed energy curve
+  const progPeaks = useMemo(() => {
+    if (!features) return Array(PROG_BARS).fill(0.5) as number[]
+    const e = features.energy
+    const out: number[] = []
+    const per = Math.max(1, Math.floor(e.length / PROG_BARS))
+    for (let b = 0; b < PROG_BARS; b++) {
+      let peak = 0.12
+      for (let i = b * per; i < Math.min(e.length, (b + 1) * per); i += 2) peak = Math.max(peak, e[i])
+      out.push(peak)
+    }
+    return out
+  }, [features])
 
   useEffect(() => {
     let raf = 0
@@ -188,7 +207,14 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
       }
       if (posRef.current) posRef.current.textContent = `${telemetry.position}`
       if (racersRef.current) racersRef.current.textContent = `/${telemetry.racers}`
-      if (progressRef.current) progressRef.current.style.width = `${(telemetry.progress * 100).toFixed(2)}%`
+      if (progressClip.current) {
+        progressClip.current.style.clipPath = `inset(0 ${(100 - telemetry.progress * 100).toFixed(2)}% 0 0)`
+      }
+      // T72: speedo pops on boost, runs amber while the field is hot
+      if (speedRef.current) {
+        speedRef.current.style.transform = `scale(${1 + telemetry.boostFlash * 0.16})`
+        speedRef.current.style.color = telemetry.boost > 0 ? '#ffb13d' : accent
+      }
 
       const speedFill = Math.round(Math.min(1, kph / MAX_KPH) * SPEED_SEGS)
       speedCells.current.forEach((cell, i) => {
@@ -253,9 +279,9 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         }}
       />
 
-      <div className="hud-safe absolute inset-0 flex flex-col justify-between py-3">
-        {/* top: time | progress | position */}
-        <div className="flex items-center gap-5">
+      <div className="hud-safe absolute inset-0 flex flex-col justify-between p-5">
+        {/* top: time | waveform progress | pos + speed column (T67) */}
+        <div className="flex items-start gap-5">
           <div className="-skew-x-12 border-l-4 bg-black/50 px-4 py-1.5" style={{ borderColor: accent }}>
             <div className="text-[10px] tracking-[0.4em] text-white/40">TIME</div>
             <span
@@ -266,85 +292,104 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
               0:00.00
             </span>
           </div>
-          <div className="relative h-3.5 flex-1 -skew-x-12 overflow-hidden border border-white/20 bg-black/50">
+          {/* T67: progress = the song's own waveform, revealed as you ride it */}
+          <div className="relative mt-1 h-7 flex-1 -skew-x-12 overflow-hidden border border-white/15 bg-black/50 px-1">
+            <div className="absolute inset-x-1 inset-y-0 flex items-center gap-px opacity-20">
+              {progPeaks.map((p, i) => (
+                <div key={i} className="flex-1" style={{ height: `${Math.max(8, p * 92)}%`, background: accent }} />
+              ))}
+            </div>
             <div
-              ref={progressRef}
-              className="h-full"
-              style={{
-                width: '0%',
-                background: `linear-gradient(90deg, ${accent}55, ${accent})`,
-                boxShadow: `0 0 14px ${accent}`,
-              }}
-            />
-          </div>
-          <div className="-skew-x-12 border-r-4 bg-black/50 px-4 py-1.5 text-right" style={{ borderColor: accent }}>
-            <div className="text-[10px] tracking-[0.4em] text-white/40">
-              POS · <span className="text-white/70">{cameraMode === 'chase' ? '3P' : '1P'}</span>
-            </div>
-            <span
-              className="text-2xl font-bold tabular-nums"
-              style={{ color: accent, textShadow: `0 0 12px ${accent}` }}
+              ref={progressClip}
+              className="absolute inset-x-1 inset-y-0 flex items-center gap-px"
+              style={{ clipPath: 'inset(0 100% 0 0)', filter: `drop-shadow(0 0 6px ${accent})` }}
             >
-              <span ref={posRef}>1</span>
-              <span ref={racersRef} className="text-sm text-white/50">/6</span>
-            </span>
-          </div>
-        </div>
-
-        {/* bottom: map+eq | speed block */}
-        <div className="flex items-end justify-between">
-          <div className="flex flex-col gap-2">
-            {track && <Minimap track={track} accent={accent} />}
-            <div ref={pulseRef} className="ml-1 flex items-end gap-1" aria-hidden>
-            {[3, 5, 8, 6, 4].map((h, i) => (
-              <div
-                key={i}
-                className="w-1.5 animate-[pulse-glow_0.6s_ease-in-out_infinite]"
-                style={{ height: h * 4, background: accent, animationDelay: `${i * 80}ms` }}
-              />
-            ))}
+              {progPeaks.map((p, i) => (
+                <div key={i} className="flex-1" style={{ height: `${Math.max(8, p * 92)}%`, background: accent }} />
+              ))}
             </div>
           </div>
-
-          <div className="-skew-x-12 border-r-4 bg-black/50 px-5 py-2 text-right" style={{ borderColor: accent }}>
-            {/* boost: segmented amber bar */}
-            <div className="mb-1 flex items-center justify-end gap-2">
-              <div ref={boostLabelRef} className="text-[10px] font-bold tracking-[0.4em] text-(--color-amber-hud)">
-                BOOST
+          <div className="flex flex-col items-end gap-2">
+            <div className="-skew-x-12 border-r-4 bg-black/50 px-4 py-1.5 text-right" style={{ borderColor: accent }}>
+              <div className="text-[10px] tracking-[0.4em] text-white/40">
+                POS · <span className="text-white/70">{cameraMode === 'chase' ? '3P' : '1P'}</span>
               </div>
-              <div className="flex gap-0.5">
-                {Array.from({ length: BOOST_SEGS }, (_, i) => (
+              <span
+                className="text-2xl font-bold tabular-nums"
+                style={{ color: accent, textShadow: `0 0 12px ${accent}` }}
+              >
+                <span ref={posRef}>1</span>
+                <span ref={racersRef} className="text-sm text-white/50">/6</span>
+              </span>
+            </div>
+            {/* T67: speed + boost live top-right — clear of mobile thumb zones */}
+            <div className="-skew-x-12 border-r-4 bg-black/50 px-5 py-2 text-right" style={{ borderColor: accent }}>
+              <div className="mb-1 flex items-center justify-end gap-2">
+                <div ref={boostLabelRef} className="text-[10px] font-bold tracking-[0.4em] text-(--color-amber-hud)">
+                  BOOST
+                </div>
+                <div className="flex gap-0.5">
+                  {Array.from({ length: BOOST_SEGS }, (_, i) => (
+                    <div
+                      key={i}
+                      ref={(el) => void (boostCells.current[i] = el)}
+                      className="h-2.5 w-2 bg-(--color-amber-hud)"
+                      style={{ opacity: 0.13, clipPath: 'polygon(30% 0, 100% 0, 70% 100%, 0 100%)' }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <span
+                  ref={speedRef}
+                  className="inline-block text-5xl font-bold tabular-nums leading-none"
+                  style={{ color: accent, textShadow: `0 0 18px ${accent}` }}
+                >
+                  0
+                </span>
+                <span className="ml-2 text-sm tracking-widest text-white/60">KPH</span>
+              </div>
+              <div className="mt-1.5 flex justify-end gap-0.5">
+                {Array.from({ length: SPEED_SEGS }, (_, i) => (
                   <div
                     key={i}
-                    ref={(el) => void (boostCells.current[i] = el)}
-                    className="h-2.5 w-2 bg-(--color-amber-hud)"
-                    style={{ opacity: 0.13, clipPath: 'polygon(30% 0, 100% 0, 70% 100%, 0 100%)' }}
+                    ref={(el) => void (speedCells.current[i] = el)}
+                    className="h-3 w-3"
+                    style={{
+                      opacity: 0.13,
+                      background: i >= SPEED_SEGS - 3 ? '#ff3355' : accent,
+                      clipPath: 'polygon(30% 0, 100% 0, 70% 100%, 0 100%)',
+                    }}
                   />
                 ))}
               </div>
             </div>
-            <div>
+          </div>
+        </div>
+
+        {/* bottom-left: map + track id + eq (T67) */}
+        <div className="flex items-end justify-between">
+          <div className="flex flex-col gap-2">
+            {track && <Minimap track={track} accent={accent} />}
+            <div className="ml-1 flex items-center gap-3">
               <span
-                ref={speedRef}
-                className="text-6xl font-bold tabular-nums leading-none"
-                style={{ color: accent, textShadow: `0 0 18px ${accent}` }}
+                className="max-w-[200px] truncate text-sm font-bold tracking-[0.2em]"
+                style={{ color: accent, textShadow: `0 0 10px ${accent}` }}
               >
-                0
+                {songTitle || 'UNKNOWN FREQUENCY'}
               </span>
-              <span className="ml-2 text-sm tracking-widest text-white/60">KPH</span>
+              {track && (
+                <span className="text-xs tabular-nums tracking-widest text-white/45">
+                  {fmtDuration(track.duration)}
+                </span>
+              )}
             </div>
-            {/* speed: segmented thrust bar, top cells run hot */}
-            <div className="mt-1.5 flex justify-end gap-0.5">
-              {Array.from({ length: SPEED_SEGS }, (_, i) => (
+            <div ref={pulseRef} className="ml-1 flex items-end gap-1" aria-hidden>
+              {[3, 5, 8, 6, 4].map((h, i) => (
                 <div
                   key={i}
-                  ref={(el) => void (speedCells.current[i] = el)}
-                  className="h-3 w-3"
-                  style={{
-                    opacity: 0.13,
-                    background: i >= SPEED_SEGS - 3 ? '#ff3355' : accent,
-                    clipPath: 'polygon(30% 0, 100% 0, 70% 100%, 0 100%)',
-                  }}
+                  className="w-1.5 animate-[pulse-glow_0.6s_ease-in-out_infinite]"
+                  style={{ height: h * 4, background: accent, animationDelay: `${i * 80}ms` }}
                 />
               ))}
             </div>

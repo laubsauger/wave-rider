@@ -24,8 +24,8 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
-import { createGhostRecorder, deserializeGhost } from '../lib/network/ghost'
-import { network, type OpponentState } from '../lib/network/p2p'
+import { createGhostRecorder } from '../lib/network/ghost'
+import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
 import { GridFloor, Ridges, WarpStreaks } from './Environment'
@@ -129,6 +129,7 @@ export function RaceScene({
     [track.theme],
   )
   const shipGroup = useRef<THREE.Group>(null)
+  const burstRef = useRef<THREE.Mesh>(null)
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
 
   const npcSpecs = useMemo(() => makeNpcs(track), [track])
@@ -157,6 +158,8 @@ export function RaceScene({
     cooldowns: new Float32Array(6),
     /** T63: slow-filtered steer for camera pivots */
     camSteer: 0,
+    /** T72: boost shockwave ring timer */
+    burstT: 9,
     ghostRecorder: null as ReturnType<typeof createGhostRecorder> | null,
     opponent: null as OpponentState | null,
     ghostReplayPos: { s: 0, d: 0, v: 0, yaw: 0 },
@@ -311,6 +314,12 @@ export function RaceScene({
       g.rotateY(Math.PI - ship.yaw * 1.2)
       g.rotateZ(-s.roll)
       g.rotateX(s.airPitch)
+      // T72: fire the shockwave ring where the pad was caught
+      if (boostEvent && burstRef.current) {
+        s.burstT = 0
+        burstRef.current.position.copy(g.position)
+        burstRef.current.quaternion.copy(g.quaternion)
+      }
     }
 
     if (s.ghostRecorder) s.ghostRecorder.record(ship)
@@ -337,6 +346,18 @@ export function RaceScene({
 
     // telemetry for HUD
     const songTime = s.song ? s.song.time() : ship.time
+    // T72: expanding shockwave ring
+    const bm = burstRef.current
+    if (bm) {
+      s.burstT = Math.min(2, s.burstT + dt * 2.2)
+      const bt = s.burstT
+      bm.visible = bt < 1
+      if (bt < 1) {
+        bm.scale.setScalar(1 + bt * 18)
+        ;(bm.material as THREE.MeshBasicMaterial).opacity = (1 - bt) * 0.7 * fxIntensity
+      }
+    }
+
     telemetry.speed = ship.v
     telemetry.progress = ship.s / track.length
     telemetry.timeMs = ship.time * 1000
@@ -379,7 +400,9 @@ export function RaceScene({
       scene.background.lerpColors(skyColors.base, skyColors.flash, telemetry.energy * track.theme.pulse)
     }
 
-    if (finishedEvent) {
+    // T70: song over → race over, rank by distance
+    const songDone = s.countdown <= 0 && ship.time > track.duration + 2 && !ship.finished
+    if (finishedEvent || songDone) {
       s.started = false
       s.song?.stop(1.5)
       
@@ -419,6 +442,18 @@ export function RaceScene({
           power={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
         />
       </group>
+      <mesh ref={burstRef} visible={false}>
+        <torusGeometry args={[1.4, 0.1, 8, 36]} />
+        <meshBasicMaterial
+          color={track.theme.glow}
+          transparent
+          opacity={0}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
       <ExhaustTrails
         shipRef={shipGroup}
         offsets={[
@@ -500,7 +535,8 @@ function updateCamera(
       pose.pz + pose.tz * 12 + pose.bz * lookIn,
     )
   } else {
-    camPos.set(pose.px + pose.tx * 0.4 + pose.nx * 0.55, pose.py + pose.ty * 0.4 + pose.ny * 0.55, pose.pz + pose.tz * 0.4 + pose.nz * 0.55)
+    // T69: nose cam — ahead of the canopy bubble
+    camPos.set(pose.px - pose.tx * 1.7 + pose.nx * 0.5, pose.py - pose.ty * 1.7 + pose.ny * 0.5, pose.pz - pose.tz * 1.7 + pose.nz * 0.5)
     camera.position.copy(camPos)
     camTarget.set(pose.px + pose.tx * 30, pose.py + pose.ty * 30, pose.pz + pose.tz * 30)
   }

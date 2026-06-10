@@ -160,7 +160,8 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
       const geo = mesh.geometry
       geo.attributes.position.array.set(trail.positions)
       geo.attributes.position.needsUpdate = true
-      geo.computeBoundingSphere()
+      // B18: frustumCulled=false → no bounding sphere needed; computing it on
+      // degenerate first-frame quads spammed NaN warnings
     })
   })
 

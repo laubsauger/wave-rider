@@ -48,7 +48,7 @@ export function GhostLobby() {
         <h2 className="mt-2 text-2xl font-bold tracking-widest text-white">{ghost.songTitle}</h2>
         
         <p className="mt-6 text-xs tracking-[0.4em] text-white/50">OPPONENT TIME</p>
-        <p className="mt-1 font-mono text-3xl text-(--color-neon-2)">{formatTime(ghost.timeMs)}</p>
+        <p className="mt-1 font-mono text-3xl text-(--color-neon-2)">{formatTime(ghost.timeMs ?? 0)}</p>
       </div>
 
       <div className="mt-8 flex w-full max-w-lg flex-col gap-4">

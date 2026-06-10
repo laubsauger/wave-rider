@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState } from 'react'
 import { useGame } from '../game/store'
 import { network, type NetworkMessage, type P2PState } from '../lib/network/p2p'
 import { BUNDLED_SONGS } from '../lib/audio/bundled'
@@ -8,7 +8,6 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   const [p2pState, setP2pState] = useState<P2PState>(network.state)
   const [peerId, setPeerId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const handleState = (s: P2PState) => {

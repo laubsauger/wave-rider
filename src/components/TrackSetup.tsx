@@ -1,5 +1,4 @@
 import { useGame } from '../game/store'
-import { network } from '../lib/network/p2p'
 import { fmtDuration } from '../lib/audio/waveform'
 import { requestFullscreen } from '../lib/fullscreen'
 

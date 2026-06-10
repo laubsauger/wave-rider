@@ -155,7 +155,7 @@ export function stepShip(
   // T65: banked track grips — frame tilt (upY < 1) cuts outward drift
   const upYHere = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
   const bankGrip = Math.max(0.3, 1 - (1 - Math.min(1, Math.abs(upYHere))) * 3)
-  const drift = k * state.v * state.v * 0.5 * (1 - 0.35 * carveAlign) * bankGrip
+  const drift = k * state.v * state.v * 0.38 * (1 - 0.35 * carveAlign) * bankGrip
   // T65 traction: lateral velocity converges toward demand at a grip rate —
   // the ship slides then bites. Airbrakes add bite.
   const tractionRate = 5 + braking * 6 + carveAlign * 2

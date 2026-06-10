@@ -259,7 +259,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng): Segme
 
   if (e > 0.6) {
     // T60: barrel-roll the road itself when the music hammers
-    if (onsetDensity > 1.6 && roll < 0.16) {
+    if (onsetDensity > 1.2 && roll < 0.22) {
       return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
     }
     if (onsetDensity > 2.5 && roll < 0.45) {
@@ -320,7 +320,7 @@ function walkSegment(
   // T65: banked corners — roll into the curve like a velodrome
   const bankTarget =
     seg.type === 'curve' || seg.type === 'chicane'
-      ? Math.max(-0.42, Math.min(0.42, -seg.curvature * 170))
+      ? Math.max(-0.42, Math.min(0.42, seg.curvature * 170)) // B17: +k banks INTO the corner
       : 0
 
   for (let i = 0; i < steps; i++) {

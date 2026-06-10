@@ -55,6 +55,8 @@ export function ShipMesh({
   const engineMat = useRef<THREE.MeshStandardMaterial>(null)
   const flameL = useRef<THREE.Mesh>(null)
   const flameR = useRef<THREE.Mesh>(null)
+  const wispL = useRef<THREE.Mesh>(null)
+  const wispR = useRef<THREE.Mesh>(null)
 
   const bodyGeo = useMemo(() => {
     if (variant === 1) return planformGeometry(0.85, -0.55)
@@ -71,6 +73,11 @@ export function ShipMesh({
     const p = power ? power() : boost
     if (engineMat.current) {
       engineMat.current.emissiveIntensity = 1.8 + Math.sin(clock.elapsedTime * 31) * 0.3 + p * 4
+    }
+    // T69: condensation wisps stream off the nose past ~70% power
+    const wispO = Math.max(0, (p - 0.7) * 1.6) * (0.55 + Math.sin(clock.elapsedTime * 23) * 0.45)
+    for (const wm of [wispL.current, wispR.current]) {
+      if (wm) (wm.material as THREE.MeshBasicMaterial).opacity = Math.min(0.5, wispO)
     }
     const len = Math.max(0.001, 0.25 + p * 2.3 + Math.sin(clock.elapsedTime * 47) * 0.12 * p)
     for (const f of [flameL.current, flameR.current]) {
@@ -122,6 +129,27 @@ export function ShipMesh({
         <mesh key={side} position={[side * 1.16, 0.2, 0.78]} rotation={[0, side * -0.45, 0]} scale={[0.05, 0.1, 0.6]}>
           <boxGeometry />
           <meshStandardMaterial color="#000" emissive={accent} emissiveIntensity={2.4} toneMapped={false} />
+        </mesh>
+      ))}
+      {/* T69: nose condensation wisps — flicker in under hard power */}
+      {[-1, 1].map((side) => (
+        <mesh
+          key={`wisp${side}`}
+          ref={side < 0 ? wispL : wispR}
+          position={[side * 0.3, 0.16, -2.1]}
+          rotation={[0, side * 0.5, side * 0.9]}
+          scale={[0.04, 0.5, 1]}
+        >
+          <planeGeometry />
+          <meshBasicMaterial
+            color="#cfe8ff"
+            transparent
+            opacity={0}
+            blending={THREE.AdditiveBlending}
+            depthWrite={false}
+            toneMapped={false}
+            side={THREE.DoubleSide}
+          />
         </mesh>
       ))}
       {/* nose stripe decals */}

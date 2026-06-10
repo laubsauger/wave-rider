@@ -140,15 +140,39 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const q = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().lookAt(new THREE.Vector3(), t, up),
     )
-    return { pos, q }
+    const col = new THREE.Vector3().crossVectors(t, up).normalize()
+    return { pos, q, fwd: t.clone(), col }
   }, [frames])
 
   return (
     <group>
       <mesh geometry={geo.road} material={roadMat} receiveShadow />
+      {/* T73: start apron — dark deck, no glow band */}
       <mesh position={deck.pos} quaternion={deck.q}>
-        <boxGeometry args={[track.width + 9, 2.6, 140]} />
-        <meshStandardMaterial color="#0a0d18" metalness={0.6} roughness={0.5} emissive={track.theme.glow} emissiveIntensity={0.1} />
+        <boxGeometry args={[track.width + 9, 2.6, 150]} />
+        <meshStandardMaterial color="#05070d" metalness={0.4} roughness={0.8} />
+      </mesh>
+      {/* start gantry over the line */}
+      {[-1, 1].map((side) => (
+        <mesh
+          key={side}
+          position={[
+            deck.pos.x + deck.col.x * side * (track.width / 2 + 3) - deck.fwd.x * 68,
+            deck.pos.y + deck.col.y * side * (track.width / 2 + 3) + 7,
+            deck.pos.z + deck.col.z * side * (track.width / 2 + 3) - deck.fwd.z * 68,
+          ]}
+          quaternion={deck.q}
+        >
+          <boxGeometry args={[1.4, 16, 1.4]} />
+          <meshStandardMaterial color="#0c0f1c" emissive={track.theme.edge} emissiveIntensity={0.7} toneMapped={false} />
+        </mesh>
+      ))}
+      <mesh
+        position={[deck.pos.x - deck.fwd.x * 68, deck.pos.y + 14.2, deck.pos.z - deck.fwd.z * 68]}
+        quaternion={deck.q}
+      >
+        <boxGeometry args={[track.width + 8, 1.6, 1.6]} />
+        <meshStandardMaterial color="#000" emissive={track.theme.edge} emissiveIntensity={2.6} toneMapped={false} />
       </mesh>
       {[geo.railL, geo.railR].map((g, i) => (
         <mesh key={i} geometry={g} material={railMaterial} />

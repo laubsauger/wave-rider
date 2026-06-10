@@ -119,6 +119,15 @@ T63|x|camera steering damping: cubic response, slow-filtered, speed-scaled — p
 T64|x|gate wave: per-gate colors restored, beat flash radiates from player (proximity falloff), ⊥ uniform white blink|V19,C11
 T65|x|traction sim: lateral velocity state w/ grip convergence, airbrakes bite; banked corners (roll ∝ k); bank → grip ↑|V18,V20
 T66|x|ship v5: WipEout wedge — flat delta planform extrude, chamfered, embedded engine block, twin glow slots|C11
+T67|x|HUD v3: waveform progress bar, track name+duration @ minimap, speed/boost → top-right, inset from corners|V6
+T68|x|bundled mp3 lazy: ⊥ eager 35MB; meta fetch on hover intent only|C10
+T69|x|cockpit cam → ahead of canopy; nose vapor wisps @ high power|C11,V7
+T70|x|race ends @ song end: rank by distance (DNF placing)|V2,V13
+T71|x|steer fight ↓ (drift 0.5→0.38); bank sign FLIPPED (was anti-camber, B17); corkscrew spawn loosened|V20,B17
+T72|x|boost burst: expanding shockwave ring @ pad hit + speedo pop|C11,V10
+T73|x|start zone v2: gantry arch @ line, deck restyled (⊥ weird band)|C11
+T74|x|fix NaN boundingSphere spam: exhaust skips bounding computation (frustumCulled off)|B18
+T75|.|track-setup screen wiring (solo/multi/ghost on user scaffold) → next session|—
 
 ## §B bugs
 
@@ -138,3 +147,5 @@ B12|2026-06-10|drift factor 0.006 absolute; after V20 k ↓ ~6× → outward dri
 B13|2026-06-10|collision resolved EVERY step while overlapping (velocity swap + 1.3m teleport) → jerk/glitch loop|impulse once per contact + cooldown + gradual separation
 B14|2026-06-10|drag 0.05·v only → coast τ=20s, halt ≈ 2min|engine braking: off-throttle drag +0.28·v
 B15|2026-06-10|visual yaw applied + after rotateY(π) model flip → nose turns OPPOSITE steer|negate yaw in render (T56)
+B17|2026-06-10|bank roll sign: rotate(n,t,+θ) tilts up toward +binormal → -k*170 banked AGAINST corners|+k*170 (T71)
+B18|2026-06-10|exhaust computeBoundingSphere each frame on degenerate first-frames → NaN radius console spam|skip: frustumCulled=false needs no sphere

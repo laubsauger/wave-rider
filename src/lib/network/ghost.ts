@@ -8,6 +8,8 @@ export const GHOST_HZ = 10
 export const GHOST_DT = 1 / GHOST_HZ
 
 export interface GhostData {
+  songTitle?: string
+  timeMs?: number
   songId: string
   frames: Float32Array // [s, d, v, yaw,  s, d, v, yaw, ...]
 }
