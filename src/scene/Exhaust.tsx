@@ -12,6 +12,8 @@ interface TrailProps {
   color: string
   /** 0..1+ thrust/boost intensity, read per frame */
   intensity: () => number
+  /** ship speed m/s, read per frame — drives the hyperspeed escalation */
+  speed?: () => number
 }
 
 /**
@@ -20,10 +22,12 @@ interface TrailProps {
  * subtle flicker bands. Geometry rebuilt per frame from a position ring
  * buffer; the look lives in the shader, not vertex colors.
  */
-export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: TrailProps) {
+export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, speed }: TrailProps) {
   const meshRefs = useRef<(THREE.Mesh | null)[]>([])
   const uPower = useMemo(() => uniform(0), [])
   const uTime = useMemo(() => uniform(0), [])
+  /** 0..1 over ~250→2000 kph — the whole escalation rides this */
+  const uVel = useMemo(() => uniform(0), [])
 
   const material = useMemo(() => {
     const m = new THREE.MeshBasicNodeMaterial({
@@ -41,22 +45,29 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     // T127/T141: the head IS the flame — but the ACCENT owns it; white only
     // kisses the core so the player color reads through
     const flameHead = sub(1, v).pow(8).mul(uPower.mul(0.5))
-    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.5).add(flameHead).min(0.8)).mul(
-      float(1.05).add(uPower.mul(0.4)).add(flameHead.mul(0.45)),
-    )
-    // T141: flicker calmed — texture, not strobe
-    const flicker = sin(v.mul(26).sub(uTime.mul(34))).mul(0.06).add(0.94)
+    // hyperspeed escalation: an OVERDRIVEN accent filament ignites down the
+    // center and reaches further along the trail as uVel climbs — the plume
+    // saturates IN the player color instead of blowing out to white
+    const filament = smoothstep(float(0.92).sub(uVel.mul(0.18)), 1.0, cross)
+      .mul(sub(1, v).pow(float(3).sub(uVel.mul(1.6))))
+      .mul(uVel)
+    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.5).add(flameHead).min(0.8))
+      .add(color(new THREE.Color(accent)).mul(filament.mul(2.6)))
+      .mul(float(1.05).add(uPower.mul(0.4)).add(flameHead.mul(0.45)).add(uVel.mul(0.5)))
+    // T141: flicker calmed — texture, not strobe; agitates a touch with speed
+    const flicker = sin(v.mul(26).sub(uTime.mul(34).add(uVel.mul(18)))).mul(float(0.06).add(uVel.mul(0.05))).add(0.94)
     // T141: soft leading edge — the ribbon blooms out of the nozzle instead
     // of starting as a razor cut
     const headEase = smoothstep(0.0, 0.045, v).mul(0.45).add(0.55)
     m.opacityNode = cross
       .pow(1.6)
-      .mul(sub(1, v).pow(2.6))
-      .mul(uPower.min(1.5))
+      // tail persists longer at speed — the trail READS as longer fire
+      .mul(sub(1, v).pow(float(2.6).sub(uVel.mul(1.0))))
+      .mul(uPower.min(1.5).add(uVel.mul(0.3)))
       .mul(flicker)
       .mul(headEase)
     return m
-  }, [accent, uPower, uTime])
+  }, [accent, uPower, uTime, uVel])
 
   const trails = useMemo(
     () =>
@@ -109,6 +120,11 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
     const power = intensity()
     uPower.value += (power - uPower.value) * 0.25
     uTime.value = clock.elapsedTime
+    // smooth speed-normalized escalation: continuous from 0 — no dead zone,
+    // every kph gained reads on the plume (sqrt-ish curve lifts the low end)
+    const kph = (speed?.() ?? 0) * 3.6
+    const velN = Math.pow(Math.min(1, Math.max(0, kph / 2000)), 0.8)
+    uVel.value += (velN - uVel.value) * 0.06
 
     trails.forEach((trail, ti) => {
       const mesh = meshRefs.current[ti]
@@ -164,9 +180,9 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
 
         const age = i / POINTS
         // T127/T141: mach-diamond read — bulge right at the nozzle exit,
-        // pinch, then the long taper down the trail
+        // pinch, then the long taper down the trail. Plume GROWS with speed.
         const bulge = 1 + Math.exp(-i * 0.85) * 0.55
-        const w = 0.22 * (1 - age * 0.72) * (0.3 + Math.min(1.5, power) * 0.65) * bulge
+        const w = 0.22 * (1 - age * 0.72) * (0.3 + Math.min(1.5, power) * 0.65) * bulge * (1 + uVel.value * 0.85)
         trail.positions.set(
           [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
           i * 6,

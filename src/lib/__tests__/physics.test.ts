@@ -35,6 +35,7 @@ const noEvents = (): StepEvents => ({
   landed: false,
   landImpact: 0,
   respawned: false,
+  exploded: false,
 })
 
 function scriptedInput(step: number): ShipInput {
@@ -206,6 +207,12 @@ describe('vertical loops (R9b/T104)', () => {
     ship.air = 8
     ship.vy = 0
     stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    // death sequence: the slam EXPLODES first; the reset lands after the
+    // wreck pause (~1.3s) so the player sees what happened
+    expect(ev.exploded).toBe(true)
+    for (let i = 0; i < 200 && !ev.respawned; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    }
     expect(ev.respawned).toBe(true)
     expect(ship.s).toBeLessThanOrEqual(loop.start - 30 + 1e-6)
     expect(ship.airborne).toBe(false)

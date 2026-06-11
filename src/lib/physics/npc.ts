@@ -1,12 +1,26 @@
 /**
  * NPC racers (T20). Deterministic (V15): specs seeded from track.seed,
  * stepped at the same fixed dt as the player. No Math.random (V8).
+ *
+ * Physics unification: NPCs no longer have their own movement model — they
+ * are a steering/throttle CONTROLLER on top of the player's stepShip. Same
+ * vmax, accel, drag, drift, walls, boost pads, energy. Skill differences are
+ * driving differences: line quality, braking margin, wobble — never a
+ * different rulebook.
  */
 import { mulberry32, rngRange } from '../prng'
 import { contrastShift } from '../accent'
 import type { TrackData } from '../track/generate'
 import { curvatureAt, type TrackFrames } from '../track/sample'
-import { PHYSICS_DT } from './ship'
+import {
+  PHYSICS_DT,
+  initialShip,
+  maxCarveCurvature,
+  stepShip,
+  type ShipInput,
+  type ShipState,
+  type StepEvents,
+} from './ship'
 
 export interface NpcSpec {
   name: string
@@ -26,17 +40,8 @@ export interface NpcSpec {
   gridD: number
 }
 
-export interface NpcState {
-  s: number
-  d: number
-  v: number
-  time: number
-  finished: boolean
-  /** T161: seconds of boost remaining */
-  boost: number
-  /** T161: last consumed pad index — each fires once */
-  lastBoostIdx: number
-}
+/** an NPC IS a ship — full player state, no parallel model */
+export type NpcState = ShipState
 
 const NAMES = ['VEKTOR', 'NYX-7', 'KAIROS', 'BLUR', 'SABLE'] as const
 const ACCENTS = ['#ff5533', '#ffd23d', '#7bff8a', '#b07bff', '#ff7bd5'] as const
@@ -72,11 +77,28 @@ export function initialNpc(index: number): NpcState {
   // T46/T55: 2-column grid, 14m rows, ±5m cols — fully clear of HIT_DS/DD
   const row = Math.floor(index / 2)
   const col = index % 2
-  return { s: -14 - row * 14, d: col === 0 ? -5 : 5, v: 0, time: 0, finished: false, boost: 0, lastBoostIdx: -1 }
+  const ship = initialShip()
+  ship.s = -14 - row * 14
+  ship.d = col === 0 ? -5 : 5
+  return ship
 }
 
 /** npc accent colors, exported for the HUD minimap (T48) */
 export const NPC_ACCENTS = ACCENTS
+
+// module-level scratch — stepNpc is single-threaded and deterministic (V15)
+const npcInput: ShipInput = { steer: 0, thrust: 0, brakeLeft: false, brakeRight: false }
+const npcEvents: StepEvents = {
+  wallHit: false,
+  wallImpact: 0,
+  boostFired: false,
+  finished: false,
+  takeoff: false,
+  landed: false,
+  landImpact: 0,
+  respawned: false,
+  exploded: false,
+}
 
 export function stepNpc(
   state: NpcState,
@@ -85,56 +107,52 @@ export function stepNpc(
   frames: TrackFrames,
 ): void {
   if (state.finished) return
-  const dt = PHYSICS_DT
 
   const i = Math.max(0, Math.round(state.s / frames.ds))
-  const k = Math.abs(curvatureAt(frames, i))
-  // corners scare the unskilled
-  const cornerFactor = Math.max(0.45, 1 - k * state.v * 0.35 * (1 - spec.cornerSkill))
-  // T159: HARD launch — everyone leaves WITH the GO, tiny row ripple, hot
-  // spool for the first seconds. The player earns the lead, never gifted it.
-  const launch = Math.min(1, 0.3 + Math.max(0, state.time - spec.gridRow * 0.12) / 3)
-  const targetV = track.avgSpeed * spec.pace * cornerFactor * launch
-  // T159: NPCs obey the same accel envelope as the player (B8 taper) — no
-  // teleporting to top speed; the pack stays a pack.
-  // T161: an active boost lifts both the target and the envelope.
-  const boosted = state.boost > 0 ? 1 : 0
-  const vRatio = Math.min(1, state.v / Math.max(1, track.avgSpeed * spec.pace * (1 + boosted * 0.14)))
-  const maxA = track.avgSpeed * 0.164 * (1 - Math.pow(vRatio, 1.4)) + 6 + boosted * 50 // T170, re-anchored
-  const want = (targetV * (1 + boosted * 0.14) - state.v) * Math.min(1, dt * 1.6)
-  state.v += Math.max(-track.avgSpeed * 0.27 * dt, Math.min(maxA * dt, want))
-  state.boost = Math.max(0, state.boost - dt)
+  const v = Math.max(20, state.v)
+  // look ~1.1s down the road — braking and line decisions happen AHEAD
+  const la = Math.round((v * 1.1) / frames.ds)
+  const kAhead = curvatureAt(frames, Math.min(frames.count - 1, i + la))
+  const kNow = curvatureAt(frames, i)
+  const hw = (track.width * frames.widths[Math.min(frames.count - 1, i)]) / 2 - 2.4
 
-  // T161: NPCs catch pads with the SAME geometry as the player (ship.ts) —
-  // each pad fires once, lane must line up
-  for (let bi = state.lastBoostIdx + 1; bi < track.boosts.length; bi++) {
-    const pad = track.boosts[bi]
-    if (pad.s > state.s + 14) break
-    if (state.s >= pad.s - 14 && state.s <= pad.s + 14) {
-      const padD = pad.lane * (track.width / 2 - 1.5)
-      if (Math.abs(state.d - padD) <= 3.2) {
-        state.boost = 0.9 // T170
-        state.v += 15
-      }
-      state.lastBoostIdx = bi
-    }
-  }
-
-  const halfW = (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, i))]) / 2 - 1.6
-  // T145: hold the formation lane off the line, blend to racing line 2s→6s
+  // ---- racing line: lane preference, pulled INSIDE upcoming corners by
+  // skill, plus the personality wobble. Formation hold for the launch.
   const formation = Math.min(1, Math.max(0, (state.time - 2) / 4))
+  const insidePull =
+    Math.sign(kAhead) * Math.min(1, Math.abs(kAhead) / 0.004) * hw * 0.45 * spec.cornerSkill
   const raceD =
-    spec.lanePref * halfW * 0.55 + Math.sin(state.time * spec.wobbleFreq * Math.PI * 2 + spec.phase) * spec.wobbleAmp
-  const targetD = spec.gridD * (1 - formation) + raceD * formation
-  state.d += (targetD - state.d) * Math.min(1, dt * 1.6)
-  state.d = Math.min(halfW, Math.max(-halfW, state.d))
+    spec.lanePref * hw * 0.4 +
+    insidePull +
+    Math.sin(state.time * spec.wobbleFreq * Math.PI * 2 + spec.phase) * spec.wobbleAmp
+  const targetD = Math.min(hw, Math.max(-hw, spec.gridD * (1 - formation) + raceD * formation))
 
-  state.s += state.v * dt
-  state.time += dt
-  if (state.s >= track.length) {
-    state.s = track.length
-    state.finished = true
-  }
+  // ---- steering: feedforward counters the drift demand exactly like a
+  // human holding a carve, PD on lane error cleans up the rest
+  const grip = 1 / (1 + v / 150)
+  const yawAuthority = 0.42 * (0.5 + grip)
+  const driftDemand = (kNow * v * Math.min(v, 320) * 0.3) / (1 + v / 700)
+  const ffYaw = Math.asin(Math.min(0.9, Math.max(-0.9, driftDemand / v)))
+  const ff = Math.min(1.1, Math.max(-1.1, ffYaw / yawAuthority))
+  const err = targetD - state.d
+  const steer = Math.min(1, Math.max(-1, ff * (0.7 + 0.3 * spec.cornerSkill) + err * 0.05 - state.latVel * 0.018))
+
+  // ---- speed management: same carve-authority math as track gen. Skilled
+  // drivers commit closer to the limit; everyone airbrakes past it.
+  const kMax = maxCarveCurvature(v) * (0.55 + 0.5 * spec.cornerSkill)
+  const over = Math.abs(kAhead) > kMax
+  const wayOver = Math.abs(kAhead) > kMax * 1.4
+
+  // T159: rows leave WITH the GO, 0.12s ripple — same physics, just throttle
+  const launched = state.time >= spec.gridRow * 0.12
+  npcInput.steer = launched ? steer : 0
+  // tiny pace spread via throttle ceiling (drag punishes partial throttle)
+  npcInput.thrust = !launched ? 0 : over ? 0.3 : Math.min(1, 0.87 + spec.pace * 0.14)
+  npcInput.brakeLeft = wayOver
+  npcInput.brakeRight = wayOver
+
+  // the ONE physics step — identical rulebook to the player (V12, V17, T161)
+  stepShip(state, npcInput, track, frames, npcEvents)
 }
 
 /** V13: live race position — 1 + racers strictly ahead. */

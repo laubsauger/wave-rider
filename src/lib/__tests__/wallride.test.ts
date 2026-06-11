@@ -40,7 +40,7 @@ it('banks apply: 60° standard, ~84° vertical variant; ship rides clean', () =>
   console.log('vertical wallride @', vwall!.start | 0, '-', vwall!.end | 0)
   // ride it
   const ship = initialShip()
-  const ev: StepEvents = { wallHit: false, wallImpact: 0, boostFired: false, finished: false, takeoff: false, landed: false, landImpact: 0, respawned: false }
+  const ev: StepEvents = { wallHit: false, wallImpact: 0, boostFired: false, finished: false, takeoff: false, landed: false, landImpact: 0, respawned: false, exploded: false }
   ship.s = Math.max(0, vwall!.start - 150)
   ship.v = track.avgSpeed
   let prevS = ship.s

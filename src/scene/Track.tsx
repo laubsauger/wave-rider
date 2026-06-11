@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { attribute, float, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
-import type { TrackFrames } from '../lib/track/sample'
+import { curvatureAt, type TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
 import { makeNpcs } from '../lib/physics/npc'
 import { pickShipAccent } from '../lib/accent'
@@ -42,6 +42,42 @@ function toGeometry(r: RibbonGeometry): THREE.BufferGeometry {
   return g
 }
 
+/**
+ * Surface-pattern attributes, 2 verts per frame sample. The deck stripes are
+ * SIGNAGE now, not wallpaper:
+ *  - aSlant: signed diagonal lean following the curvature ~130m AHEAD — the
+ *    slashes tilt into the upcoming turn before you reach it
+ *  - aPhase: accumulated stripe phase with per-segment frequency folded in
+ *    (chicane/jump ahead → rapid ticks, speedway → long panels). Phase
+ *    accumulates so frequency changes never jump the pattern.
+ *  - aVis: glides run a clean silent deck — no stripes at all
+ */
+function roadPatternAttrs(track: TrackData, frames: TrackFrames) {
+  const n = frames.count
+  const phase = new Float32Array(n * 2)
+  const slant = new Float32Array(n * 2)
+  const vis = new Float32Array(n * 2)
+  const ahead = Math.max(1, Math.round(130 / frames.ds))
+  let segIdx = 0
+  let ph = 0
+  let sm = 0
+  for (let i = 0; i < n; i++) {
+    const sAhead = (i + ahead) * frames.ds
+    while (segIdx < track.segments.length - 1 && sAhead >= track.segments[segIdx].end) segIdx++
+    const seg = track.segments[segIdx]
+    const freq =
+      seg.type === 'chicane' ? 2.4 : seg.type === 'jump' ? 3.2 : seg.type === 'speedway' ? 0.55 : 1
+    const k = curvatureAt(frames, Math.min(n - 1, i + ahead))
+    const target = Math.max(-1, Math.min(1, k / 0.005)) * 1.1
+    sm += (target - sm) * 0.08
+    ph += (freq * frames.ds) / 20
+    phase[i * 2] = phase[i * 2 + 1] = ph
+    slant[i * 2] = slant[i * 2 + 1] = sm
+    vis[i * 2] = vis[i * 2 + 1] = seg.type === 'glide' ? 0 : 1
+  }
+  return { phase, slant, vis }
+}
+
 /** per-frame-sample section accent, V19 — drives rail vertex colors */
 function railSectionColors(track: TrackData, frames: TrackFrames): Float32Array {
   const arr = new Float32Array(frames.count * 2 * 3)
@@ -67,8 +103,13 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const railR = toGeometry(buildRail(track, frames, 1))
     railL.setAttribute('color', new THREE.BufferAttribute(railColors, 3))
     railR.setAttribute('color', new THREE.BufferAttribute(railColors, 3))
+    const road = toGeometry(buildRoad(track, frames))
+    const pat = roadPatternAttrs(track, frames)
+    road.setAttribute('aPhase', new THREE.BufferAttribute(pat.phase, 1))
+    road.setAttribute('aSlant', new THREE.BufferAttribute(pat.slant, 1))
+    road.setAttribute('aVis', new THREE.BufferAttribute(pat.vis, 1))
     return {
-      road: toGeometry(buildRoad(track, frames)),
+      road,
       railL,
       railR,
       wallL: toGeometry(buildWall(track, frames, -1)),
@@ -108,8 +149,15 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     })
     m.opacityNode = uOpacity
     const glow = uStripeCol
-    const v = fract(uv().y)
-    const stripe = smoothstep(0.93, 0.965, v).sub(smoothstep(0.965, 1.0, v))
+    // signage stripes: phase carries cadence, slant tilts them into the
+    // turn ahead, vis silences glides. Slanted (turn) stripes run brighter.
+    const w = uv().x.sub(0.5)
+    const aSlant = attribute('aSlant')
+    const v = fract(attribute('aPhase').add(aSlant.mul(w)))
+    const stripe = smoothstep(0.93, 0.965, v)
+      .sub(smoothstep(0.965, 1.0, v))
+      .mul(attribute('aVis'))
+      .mul(float(1).add(aSlant.abs().mul(0.5)))
     // faint neon edge lines where deck meets the rails
     const xDist = uv().x.sub(0.5).abs()
     const edgeLine = smoothstep(0.46, 0.495, xDist)
@@ -233,6 +281,11 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
         'uv',
         new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 0, vEnd, 1, 0, 1, vEnd, 0, vEnd]), 2),
       )
+      // pattern attrs so roadMat's signage shader binds on the lead-in too:
+      // phase continues the cadence backwards, no slant, stripes visible
+      g.setAttribute('aPhase', new THREE.BufferAttribute(new Float32Array([0, 0, vEnd, 0, vEnd, vEnd]), 1))
+      g.setAttribute('aSlant', new THREE.BufferAttribute(new Float32Array(6), 1))
+      g.setAttribute('aVis', new THREE.BufferAttribute(new Float32Array(6).fill(1), 1))
       g.computeVertexNormals()
       return g
     }

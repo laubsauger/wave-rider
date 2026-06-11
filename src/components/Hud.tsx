@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { telemetry } from '../game/telemetry'
 import { useGame } from '../game/store'
 import { NPC_ACCENTS } from '../lib/physics/npc'
+import { shipVmax } from '../lib/physics/ship'
 import { fmtDuration } from '../lib/audio/waveform'
 import type { TrackData } from '../lib/track/generate'
 
@@ -130,9 +131,13 @@ function fmtTime(ms: number): string {
   return `${m}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
 }
 
-const SPEED_SEGS = 14
-const BOOST_SEGS = 8
-const MAX_KPH = 1100
+// HUD v3: TWO bars. THRUST = speed-toward-ceiling (throttle, speed and boost
+// are one physical story — the last segments are overdrive, only boost
+// reaches them). ENERGY = hull. Segment heights GROW toward the top end.
+// Same segment count/width so the two bars sit flush as one instrument.
+const THRUST_SEGS = 14
+const ENERGY_SEGS = 14
+const ENERGY_COL = '#a06bff'
 
 /**
  * HUD v2 (T19, V6): DOM-driven at display rate via rAF reading telemetry —
@@ -143,15 +148,21 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const timeRef = useRef<HTMLSpanElement>(null)
   const posRef = useRef<HTMLSpanElement>(null)
   const racersRef = useRef<HTMLSpanElement>(null)
-  const boostLabelRef = useRef<HTMLDivElement>(null)
   const vignetteRef = useRef<HTMLDivElement>(null)
   const specBars = useRef<(HTMLDivElement | null)[]>([])
   const nowTimeRef = useRef<HTMLSpanElement>(null)
   const linesRef = useRef<HTMLDivElement>(null)
+  const linesOff = useRef(0)
+  const linesBucket = useRef(-1)
+  const vigBucket = useRef(-1)
+  const lastTs = useRef(0)
+  const vigRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
   const countdownRef = useRef<HTMLDivElement>(null)
-  const speedCells = useRef<(HTMLDivElement | null)[]>([])
-  const boostCells = useRef<(HTMLDivElement | null)[]>([])
+  const thrustCells = useRef<(HTMLDivElement | null)[]>([])
+  const energyCells = useRef<(HTMLDivElement | null)[]>([])
+  const thrustLabelRef = useRef<HTMLDivElement>(null)
+  const energyLabelRef = useRef<HTMLDivElement>(null)
   const cameraMode = useGame((s) => s.cameraMode)
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
   const songTitle = useGame((s) => s.songTitle)
@@ -178,8 +189,10 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
 
   useEffect(() => {
     let raf = 0
-    const tick = () => {
+    const tick = (ts: number) => {
       raf = requestAnimationFrame(tick)
+      const dt = Math.min(0.1, (ts - lastTs.current) / 1000 || 0)
+      lastTs.current = ts
       const kph = telemetry.speed * 3.6
       if (speedRef.current) speedRef.current.textContent = String(Math.round(kph))
       if (timeRef.current) timeRef.current.textContent = fmtTime(telemetry.timeMs)
@@ -228,19 +241,43 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         speedRef.current.style.color = telemetry.boost > 0 ? '#ffb13d' : accent
       }
 
-      const speedFill = Math.round(Math.min(1, kph / MAX_KPH) * SPEED_SEGS)
-      speedCells.current.forEach((cell, i) => {
+      // THRUST: one bar tells the whole speed story — fill = v toward the
+      // BOOSTED ceiling; segments past the no-boost ceiling are the
+      // overdrive zone, only reachable on a boost chain
+      const vmaxB = track ? shipVmax(track.avgSpeed, true) : 700
+      const vmaxNB = track ? shipVmax(track.avgSpeed, false) : 600
+      const odStart = Math.floor((vmaxNB / vmaxB) * THRUST_SEGS)
+      const tFill = Math.round(Math.min(1, telemetry.speed / vmaxB) * THRUST_SEGS)
+      thrustCells.current.forEach((cell, i) => {
         if (!cell) return
-        const on = i < speedFill
-        cell.style.opacity = on ? '1' : '0.13'
-        cell.style.boxShadow = on ? `0 0 8px ${i >= SPEED_SEGS - 3 ? '#ff3355' : accent}` : 'none'
+        const on = i < tFill
+        const od = i >= odStart
+        const col = od ? '#ff2fd6' : '#ffb13d'
+        cell.style.opacity = on ? '1' : '0.12'
+        cell.style.background = on && od && telemetry.boostFlash > 0.4 ? '#ffffff' : col
+        cell.style.boxShadow = on ? `0 0 12px ${col}` : 'none'
       })
-      const boostFill = Math.round(Math.min(1, telemetry.boost / 1.1) * BOOST_SEGS)
-      boostCells.current.forEach((cell, i) => {
+      if (thrustLabelRef.current) {
+        thrustLabelRef.current.style.color = telemetry.boost > 0 ? '#ff2fd6' : '#ffb13d'
+      }
+
+      // ENERGY: hull integrity — purple base (distinct from theme), amber
+      // warning, red panic; damage flashes the lit cells white
+      const hull = telemetry.hull
+      const eFill = Math.ceil(hull * ENERGY_SEGS)
+      const eCol = hull < 0.25 ? '#ff3355' : hull < 0.5 ? '#ffb13d' : ENERGY_COL
+      energyCells.current.forEach((cell, i) => {
         if (!cell) return
-        cell.style.opacity = i < boostFill ? '1' : '0.13'
+        const on = i < eFill
+        cell.style.opacity = on ? '1' : '0.12'
+        cell.style.background = telemetry.hullFlash > 0.6 && on ? '#ffffff' : eCol
+        cell.style.boxShadow = on ? `0 0 12px ${eCol}` : 'none'
       })
-      if (boostLabelRef.current) boostLabelRef.current.style.opacity = telemetry.boost > 0 ? '1' : '0.25'
+      if (energyLabelRef.current) {
+        energyLabelRef.current.style.color = eCol
+        // low hull: the label itself screams
+        energyLabelRef.current.style.opacity = hull < 0.25 ? String(0.5 + 0.5 * Math.abs(Math.sin(telemetry.timeMs / 120))) : '0.9'
+      }
 
       if (vignetteRef.current) {
         const w = telemetry.wallFlash
@@ -260,10 +297,40 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
       if (nowTimeRef.current) {
         nowTimeRef.current.textContent = fmtDuration(telemetry.songTime)
       }
-      // V10: speed lines + boost flash scale with fxIntensity, 0 → invisible
+      // V10: speed lines + boost flash scale with fxIntensity, 0 → invisible.
+      // Lines v2: they MOVE (mask scrolls with speed) and REACH — the streak
+      // field spreads inward as speed climbs, a building tunnel, not a static
+      // sticker that fades in once and is done
       if (linesRef.current) {
-        const o = (Math.max(0, (kph - 260) / 650) + telemetry.beat * 0.08) * fxRef.current
-        linesRef.current.style.opacity = Math.min(0.9, o).toFixed(3)
+        const spN = Math.min(1, Math.max(0, (kph - 280) / 1500))
+        const o = (spN * 1.05 + telemetry.beat * 0.06) * fxRef.current
+        linesRef.current.style.opacity = Math.min(0.85, o).toFixed(3)
+        // scroll: px/s ∝ speed — streaks visibly RUSH past
+        linesOff.current = (linesOff.current + kph * dt * 0.7) % 14
+        linesRef.current.style.maskPosition = `0px ${(-linesOff.current).toFixed(1)}px`
+        // spread: rebuild the gradient only when the (quantized) level moves
+        const bucket = Math.round(spN * 12)
+        if (bucket !== linesBucket.current) {
+          linesBucket.current = bucket
+          const reach = 7 + bucket * 1.6 // % of screen each side
+          linesRef.current.style.background = `linear-gradient(90deg, rgba(255,255,255,0.55) 0%, transparent ${reach}%, transparent ${100 - reach}%, rgba(255,255,255,0.55) 100%)`
+        }
+      }
+      // T162 v3: guaranteed BLACK vignette in the DOM — the post-chain one
+      // got buried under bloom/heat. Starts breathing at ~400 kph, closes
+      // toward a tight tunnel at the top end (fx-gated, V10)
+      if (vigRef.current) {
+        const vN = Math.min(1, Math.max(0, (kph - 400) / 1600)) * fxRef.current
+        const vb = Math.round(vN * 24)
+        if (vb !== vigBucket.current) {
+          vigBucket.current = vb
+          const inner = 78 - vb * 1.7 // transparent radius % — shrinks the view
+          const alpha = (vb / 24) * 0.82
+          vigRef.current.style.background =
+            vb === 0
+              ? 'none'
+              : `radial-gradient(ellipse at center, transparent ${inner.toFixed(0)}%, rgba(0,0,0,${alpha.toFixed(3)}) 100%)`
+        }
       }
       if (flashRef.current) {
         flashRef.current.style.opacity = (telemetry.boostFlash * 0.5 * fxRef.current).toFixed(3)
@@ -271,11 +338,13 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [accent])
+  }, [accent, track])
 
   return (
     <div className="pointer-events-none absolute inset-0">
       <div ref={vignetteRef} className="absolute inset-0" />
+      {/* speed tunnel-vision: DOM black vignette, driven from ~400 kph */}
+      <div ref={vigRef} className="absolute inset-0" />
       {/* speed lines: edge streaks that fade in past ~350 kph */}
       <div
         ref={linesRef}
@@ -342,7 +411,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
               ))}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-col items-end gap-1.5">
             <div className="-skew-x-12 border-r-4 bg-black/50 px-4 py-1.5 text-right short:px-2.5 short:py-1" style={{ borderColor: accent }}>
               <div className="text-[10px] tracking-[0.4em] text-white/40 short:text-[8px]">
                 POS · <span className="text-white/70">{cameraMode === 'chase' ? '3P' : '1P'}</span>
@@ -358,24 +427,9 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
             {/* T67: speed + boost live top-right — clear of mobile thumb zones */}
             {/* T83: LCARS-bold readout — big pills, heavy type */}
             <div
-              className="w-fit self-end rounded-l-2xl border-r-8 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-2.5 pr-4 pl-12 text-right short:border-r-4 short:py-1.5 short:pr-3 short:pl-8"
+              className="w-fit self-end rounded-l-2xl border-r-8 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-1.5 pr-3 pl-7 text-right short:border-r-4 short:py-1 short:pr-2.5 short:pl-5"
               style={{ borderColor: accent }}
             >
-              <div className="mb-1.5 flex items-center justify-end gap-2.5">
-                <div ref={boostLabelRef} className="text-xs font-black tracking-[0.4em] text-(--color-amber-hud) short:text-[9px]">
-                  BOOST
-                </div>
-                <div className="flex gap-1">
-                  {Array.from({ length: BOOST_SEGS }, (_, i) => (
-                    <div
-                      key={i}
-                      ref={(el) => void (boostCells.current[i] = el)}
-                      className="h-4 w-3 rounded-sm bg-(--color-amber-hud) short:h-2.5 short:w-2"
-                      style={{ opacity: 0.13 }}
-                    />
-                  ))}
-                </div>
-              </div>
               <div className="flex items-baseline justify-end gap-2">
                 <span
                   ref={speedRef}
@@ -386,18 +440,48 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
                 </span>
                 <span className="text-base font-bold tracking-[0.3em] text-white/70 short:text-xs">KPH</span>
               </div>
-              <div className="mt-2 flex justify-end gap-1">
-                {Array.from({ length: SPEED_SEGS }, (_, i) => (
-                  <div
-                    key={i}
-                    ref={(el) => void (speedCells.current[i] = el)}
-                    className="h-5 w-4 rounded-sm short:h-3 short:w-2.5"
-                    style={{
-                      opacity: 0.13,
-                      background: i >= SPEED_SEGS - 3 ? '#ff3355' : accent,
-                    }}
-                  />
-                ))}
+              {/* HUD v3 (WipEout ref): one flush instrument — THRUST on top
+                  (slope rising along its top edge), ENERGY mirrored beneath
+                  (slope falling along its bottom edge), labels bracketing */}
+              <div className="mt-1 flex origin-right flex-col items-end short:scale-[0.68]">
+                <div ref={thrustLabelRef} className="text-[11px] font-black tracking-[0.4em] text-(--color-amber-hud)">
+                  THRUST
+                </div>
+                {/* THRUST = speed→ceiling; magenta tail = boost overdrive.
+                    Heights ease in: gentle low end, pronounced swell at the top */}
+                <div className="flex items-end gap-[3px]">
+                  {Array.from({ length: THRUST_SEGS }, (_, i) => (
+                    <div
+                      key={i}
+                      ref={(el) => void (thrustCells.current[i] = el)}
+                      className="w-4 -skew-x-12 rounded-[2px] border border-white/15"
+                      style={{
+                        height: `${12 + Math.pow(i / (THRUST_SEGS - 1), 1.9) * 22}px`,
+                        opacity: 0.12,
+                        background: '#ffb13d',
+                      }}
+                    />
+                  ))}
+                </div>
+                {/* ENERGY: flipped — flat seam against THRUST, slope below.
+                    Slimmer than THRUST, softer swell */}
+                <div className="mt-[3px] flex items-start gap-[3px]">
+                  {Array.from({ length: ENERGY_SEGS }, (_, i) => (
+                    <div
+                      key={i}
+                      ref={(el) => void (energyCells.current[i] = el)}
+                      className="w-4 -skew-x-12 rounded-[2px] border border-white/15"
+                      style={{
+                        height: `${8 + Math.pow(i / (ENERGY_SEGS - 1), 1.6) * 9}px`,
+                        opacity: 1,
+                        background: ENERGY_COL,
+                      }}
+                    />
+                  ))}
+                </div>
+                <div ref={energyLabelRef} className="text-[11px] font-black tracking-[0.4em]" style={{ color: ENERGY_COL }}>
+                  ENERGY
+                </div>
               </div>
             </div>
           </div>

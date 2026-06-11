@@ -119,7 +119,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         q.setFromRotationMatrix(m)
         obj.quaternion.copy(q)
         obj.position.set(pose.px, pose.py, pose.pz)
-        const r = rngRange(rng, 0.9, 1.25)
+        const r = rngRange(rng, 0.9, 1.25) * Math.max(1, lhw(s) / halfW)
         obj.scale.set(r, r, r)
         obj.updateMatrix()
         ringMatrices.push(obj.matrix.clone())
@@ -314,17 +314,20 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     const cRaw = telemetry.centroid * track.theme.pulse
     const c = cRaw * cRaw
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
-    if (glowMat.current) glowMat.current.color.setScalar(0.12 + secE * 0.55 + e * 2.8) // T166
-    if (archMat.current) archMat.current.color.setScalar(0.18 + secE * 0.65 + e * 2.6) // T166
-    if (ringMat.current) ringMat.current.opacity = 0.08 + secE * 0.12 + e * 0.55
-    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.14 + secE * 0.25 + e * 1.1
-    if (chevronMat.current) chevronMat.current.color.setScalar(0.45 + c * 3.2)
+    // activation, not ambiance: idle floors near-black, the music SWITCHES
+    // things on — was idling ~75% lit and only going brighter (eye fatigue)
+    if (glowMat.current) glowMat.current.color.setScalar(0.04 + secE * 0.2 + e * 3.4)
+    if (archMat.current) archMat.current.color.setScalar(0.05 + secE * 0.26 + e * 3.2)
+    if (ringMat.current) ringMat.current.opacity = 0.02 + secE * 0.06 + e * 0.8
+    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.05 + secE * 0.12 + e * 1.5
+    if (chevronMat.current) chevronMat.current.color.setScalar(0.18 + c * 4.0)
     // R9f: crystal cavern breathes with the section energy
     if (biomeMat.current && data.biome === 'cavern') {
-      biomeMat.current.emissiveIntensity = 0.18 + secE * 0.35 + e * 0.7
+      biomeMat.current.emissiveIntensity = 0.06 + secE * 0.16 + e * 1.0
     }
-    // T155: capture gates pulse on the beat — they're the thing to aim for
-    if (entryMat.current) entryMat.current.color.setScalar(1.1 + b * 2.2)
+    // T155: capture gates pulse on the beat — still the thing to aim for, so
+    // a readable floor stays
+    if (entryMat.current) entryMat.current.color.setScalar(0.6 + b * 3.0)
 
     // T58: threading a gate → big flash + HUD kick
     const playerS = telemetry.progress * track.length

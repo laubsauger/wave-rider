@@ -239,9 +239,11 @@ function layoutCourse(
     (sec) => ((sec.end - sec.start) / features.duration) * totalLength,
   )
 
-  // T142: whole-course elevation trend — the track climbs or sinks ~±0.7%
-  // overall so upcoming segments stack into actual vistas
-  const globalTrend = rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1)
+  // T142: whole-course elevation trend — the track climbs or sinks overall
+  // so upcoming segments stack into actual vistas. Boosted ~1.5×: tracks
+  // were cutting through themselves where the course re-crossed its own
+  // footprint at near-identical height.
+  const globalTrend = rngRange(rng, 0.006, 0.013) * (rng() < 0.5 ? -1 : 1)
 
   // T157: distance since the last jump ended — twist zones need a clean
   // run-in, not an airborne arrival off a crest
@@ -267,7 +269,9 @@ function layoutCourse(
     // T38: each section trends up or down — vertical separation where the
     // course crosses itself, and the skyline keeps changing
     // T114: amplitude ↑ — the course should climb and dive, not simmer
-    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.03 + (sec.energy - 0.5) * 0.045 + globalTrend // T163
+    // T163 → amplitude up (0.03→0.05, 0.045→0.06): more vertical separation
+    // between sections = self-crossings pass OVER each other, not through
+    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.05 + (sec.energy - 0.5) * 0.06 + globalTrend
     let remaining = secLen
 
     while (remaining > 1) {
@@ -404,10 +408,10 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     return {
       type: 'curve',
       length: rngRange(rng, 600, 900),
-      curvature: rngRange(rng, 0.004, 0.006) * (rng() < 0.5 ? -1 : 1),
+      curvature: rngRange(rng, 0.0035, 0.0055) * (rng() < 0.5 ? -1 : 1),
       slope: rngRange(rng, -0.06, -0.035),
       bankGain: 420, // slams the 0.78 cap — riding the wall of the spiral
-      widthScale: 1.0, // tight-ish ribbon, but rideable at pace
+      widthScale: 1.3, // steep + tight needs shoulder room to be FUN
     }
   }
   // T160: sbank — sustained hard right-bank PULLING into hard left-bank
@@ -442,14 +446,14 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   if (e > 0.6 || (eRel > 0.85 && e > 0.3)) {
     if (onsetDensity > 2.5 && roll < 0.52) {
       return {
-        // each half of the S needs ≥2s at ridden pace — 120m halves at
-        // 280 m/s were sub-second jerks, not corners
+        // each half of the S needs ≥2s at ridden pace; curvature softened —
+        // quick left-rights are a rhythm change, not a wall lottery
         type: 'chicane',
-        length: rngRange(rng, 260, 420),
-        curvature: rngRange(rng, 0.009, 0.017) * (rng() < 0.5 ? -1 : 1), // T170
+        length: rngRange(rng, 320, 480),
+        curvature: rngRange(rng, 0.0065, 0.011) * (rng() < 0.5 ? -1 : 1),
         slope: 0,
         bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
-        widthScale: 1.25,
+        widthScale: 1.4,
       }
     }
     if (roll < 0.75) {
@@ -559,17 +563,23 @@ function walkSegment(
         : 0
 
   for (let i = 0; i < steps; i++) {
-    let k = seg.curvature
+    const t = i / steps
+    // transition windows: curvature (and bank, below) ramp in over the first
+    // 12% and out over the last 12% of the segment — entering a sweeper is a
+    // swell, not a step discontinuity in drift; exits unwind before the seam
+    const edgeWin = Math.min(1, t / 0.12, (1 - t) / 0.12)
+    // chicane S-flip passes THROUGH flat — no instant sign snap mid-corner;
+    // wide window (≈40% of the segment ramps) so the flip is a breath
+    const flipWin = isChicane ? Math.min(1, Math.abs(t - 0.5) * 5) : 1
+    let k = seg.curvature * edgeWin
     if (isChicane) {
-      // S-shape: flip curvature halfway
-      k = i < steps / 2 ? seg.curvature : -seg.curvature
+      k = (i < steps / 2 ? seg.curvature : -seg.curvature) * edgeWin * flipWin
     }
     let slopeTarget = seg.slope
     let ease = 0.3
     if (isJump) {
       // seg.slope carries drop strength: ramp to a crest @ 28%, then a
       // catchable dive (T36 → T158: gentler crest, shallower dive)
-      const t = i / steps
       slopeTarget = t < 0.28 ? 0.04 + seg.slope * 0.018 : -0.06 * seg.slope - 0.03 // T170
       ease = 0.45
     }
@@ -578,9 +588,11 @@ function walkSegment(
     cur.x += Math.sin(cur.heading) * ds
     cur.z -= Math.cos(cur.heading) * ds
     cur.y += cur.pitch * ds
-    // keep track above the void floor
-    if (cur.y < -130) {
-      cur.y = -130
+    // runaway-dive guard — the GridFloor FOLLOWS the track (height −85, see
+    // Environment.tsx), so this is generous: long descending courses keep
+    // diving instead of flattening into a self-cut plane at the old −130
+    if (cur.y < -400) {
+      cur.y = -400
       cur.pitch = Math.max(0, cur.pitch)
     }
     if (rollStep !== 0) {
@@ -588,7 +600,9 @@ function walkSegment(
     } else {
       // ease toward bank (or back to upright), preserving full corkscrew turns
       const base = Math.round(cur.roll / (Math.PI * 2)) * Math.PI * 2
-      let bank = isChicane && i >= steps / 2 ? -bankTarget : bankTarget
+      // bank rides the same transition windows as curvature — rolls on with
+      // the corner, unwinds before the seam, passes flat through the S-flip
+      let bank = (isChicane && i >= steps / 2 ? -bankTarget : bankTarget) * edgeWin * flipWin
       // B32: this guard silently zeroed WALLRIDE banks since T92 — every
       // "wallride" shipped as a flat wide curve. Wallrides bank now.
       if (seg.type !== 'curve' && seg.type !== 'chicane' && seg.type !== 'wallride') bank = 0

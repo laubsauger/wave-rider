@@ -48,36 +48,58 @@ describe('NPC racers (T20, V13, V15)', () => {
   it('NPCs stay within walls and finish eventually', () => {
     const specs = makeNpcs(track)
     const states = specs.map((_, i) => initialNpc(i))
-    const halfW = track.width / 2
     // bound relative to the track, not wall-clock minutes — V2 rework sizes
-    // tracks for play pace, so absolute caps rot
-    const maxSteps = 120 * Math.ceil((track.length / track.avgSpeed) * 2)
+    // tracks for play pace, so absolute caps rot. NPCs run REAL physics now
+    // (cruise ≈ 0.75× pace + pads), so give them 2.6× design time.
+    const maxSteps = 120 * Math.ceil((track.length / track.avgSpeed) * 2.6)
     for (let step = 0; step < maxSteps; step++) {
       for (let i = 0; i < states.length; i++) {
         stepNpc(states[i], specs[i], track, frames)
-        expect(Math.abs(states[i].d)).toBeLessThanOrEqual(halfW)
+        // unified physics: walls follow the LOCAL width (T77); falling off a
+        // rail-less ridge is legal mid-plunge (T78) — same rules as physics.test
+        const st = states[i]
+        if (st.falling || st.s < 0) continue
+        const fi = Math.min(frames.count - 1, Math.max(0, Math.round(st.s / frames.ds)))
+        const limit = (track.width * frames.widths[fi]) / 2
+        const margin = frames.walls[fi] > 0.5 ? 0.5 : 1.8
+        if (!st.airborne) expect(Math.abs(st.d)).toBeLessThanOrEqual(limit + margin)
       }
     }
     expect(states.every((s) => s.finished)).toBe(true)
   })
 
   it('V13: racePosition counts racers strictly ahead', () => {
-    const mk = (s: number): NpcState => ({ s, d: 0, v: 0, time: 0, finished: false, boost: 0, lastBoostIdx: -1 })
+    const mk = (s: number): NpcState => {
+      const ship = initialNpc(0)
+      ship.s = s
+      ship.d = 0
+      return ship
+    }
     expect(racePosition(100, [mk(50), mk(99.9), mk(101), mk(500)])).toBe(3)
     expect(racePosition(600, [mk(50), mk(99.9), mk(101), mk(500)])).toBe(1)
     expect(racePosition(0, [mk(1), mk(2), mk(3)])).toBe(4)
     expect(racePosition(100, [mk(100)])).toBe(1) // ties don't count as ahead
   })
 
-  it('faster pace specs run ahead of slower ones on open road', () => {
+  it('the pro spec beats the back-marker over a long run', () => {
+    // unified physics: pace is a throttle ceiling and skill is line quality +
+    // braking margin — locally a lucky pad run can flip 30s samples, but the
+    // pro (spec[0]) must clearly beat the tail over a longer horizon
     const specs = makeNpcs(track)
-    const states = specs.map(() => ({ s: 0, d: 0, v: 0, time: 0, finished: false, boost: 0, lastBoostIdx: -1 }))
-    for (let step = 0; step < 120 * 30; step++) {
+    const states = specs.map(() => {
+      const ship = initialNpc(0)
+      ship.s = 0
+      ship.d = 0
+      return ship
+    })
+    for (let step = 0; step < 120 * 90; step++) {
       for (let i = 0; i < states.length; i++) stepNpc(states[i], specs[i], track, frames)
     }
-    // spec[0] has the highest base pace — expect it in front
-    const maxS = Math.max(...states.map((s) => s.s))
-    expect(states[0].s).toBe(maxS)
+    // both may finish inside 90s (time freezes at the line) — compare TIMES
+    const pro = states[0]
+    const tail = states[states.length - 1]
+    expect(pro.finished).toBe(true)
+    expect(pro.time).toBeLessThan(tail.finished ? tail.time : Infinity)
   })
 })
 

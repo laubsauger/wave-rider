@@ -6,6 +6,7 @@ import { telemetry } from '../game/telemetry'
 import { attachKeyboard, onGameKey, readShipInput, resetInput } from '../game/input'
 import {
   computeLean,
+  drainEnergy,
   initialShip,
   shipVmax,
   stepShip,
@@ -326,15 +327,21 @@ export function RaceScene({
     let boostEvent = false
     let finishedEvent = false
     let landEvent = 0
+    let explodedEvent = false
     for (let i = 0; i < steps; i++) {
       stepShip(s.ship, s.input, track, frames, s.events)
+      if (s.events.exploded) explodedEvent = true
       for (let ni = 0; ni < s.npcs.length; ni++) stepNpc(s.npcs[ni], npcSpecs[ni], track, frames)
       // T32/T52: bump resolution — impulse once per contact, cooldown-gated
       for (let ci = 0; ci < s.cooldowns.length; ci++) {
         s.cooldowns[ci] = Math.max(0, s.cooldowns[ci] - PHYSICS_DT)
       }
       const bump = resolveCollisions([s.ship, ...s.npcs], track, s.cooldowns)
-      if (bump > 0) wallEvent = Math.max(wallEvent, bump * 0.6)
+      if (bump > 0) {
+        wallEvent = Math.max(wallEvent, bump * 0.6)
+        // racer contact chews the hull like wall contact does
+        drainEnergy(s.ship, 0.03 + bump * 0.003)
+      }
       // T79: wreck-level slam → shockwave ring + max trauma
       if (bump >= 35 && burstRef.current && shipGroup.current) {
         s.burstT = 0
@@ -371,6 +378,20 @@ export function RaceScene({
       if (fxIntensity > 0) haptics.boost()
     }
 
+    // hull explosion: full wreck treatment — shockwave ring, max trauma,
+    // a thick ember burst (T153 channel, cranked), buzz. The ship halts in
+    // the wreck pause (ship.wrecked) so all of this is actually WATCHABLE.
+    if (explodedEvent) {
+      wallEvent = Math.max(wallEvent, 40)
+      if (burstRef.current && shipGroup.current) {
+        s.burstT = 0
+        burstRef.current.position.copy(shipGroup.current.position)
+        burstRef.current.quaternion.copy(shipGroup.current.quaternion)
+      }
+      s.wallPulse = Math.max(s.wallPulse, 70)
+      s.shake.trauma = 1
+      telemetry.hullFlash = 1
+    }
     // T152: haptics on touch devices — fx-gated like every feedback channel
     if (fxIntensity > 0) {
       if (wallEvent >= 35) haptics.wreck()
@@ -415,8 +436,8 @@ export function RaceScene({
     poseAt(frames, ship.s, ship.d, HOVER_HEIGHT + ship.air, s.pose)
     const g = shipGroup.current
     if (g) {
-      // T109: first person = no hull in the way
-      g.visible = cameraMode !== 'cockpit'
+      // T109: first person = no hull in the way; wrecked = hull is GONE
+      g.visible = cameraMode !== 'cockpit' && ship.wrecked <= 0
       const bobAmp = 1 + ship.v / 350
       const bob = (Math.sin(ship.time * 7) * 0.05 + Math.sin(ship.time * 13.7) * 0.02) * bobAmp
       g.position.set(
@@ -488,6 +509,10 @@ export function RaceScene({
     telemetry.progress = ship.s / track.length
     telemetry.timeMs = ship.time * 1000
     telemetry.boost = ship.boost
+    telemetry.hull = ship.energy
+    telemetry.thrust = s.input.thrust + (ship.boost > 0 ? 0.35 : 0)
+    if (wallEvent > 0) telemetry.hullFlash = 1
+    else telemetry.hullFlash = Math.max(0, telemetry.hullFlash - dt * 2.5)
     telemetry.songTime = songTime
     const fi = Math.min(features.energy.length - 1, Math.floor(songTime / features.frameInterval))
     telemetry.energy = features.energy[fi] ?? 0
@@ -607,7 +632,13 @@ export function RaceScene({
       <group ref={shipGroup}>
         <ShipMesh
           accent={isMultiplayer && !isHost ? getOpponentColor(playerAccent) : playerAccent}
-          power={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
+          power={() =>
+            sim.current.ship.wrecked > 0
+              ? 0
+              : sim.current.input.thrust * 0.3 +
+                Math.min(1, sim.current.ship.v / shipVmax(track.avgSpeed, false)) * 0.65 +
+                (sim.current.ship.boost > 0 ? 0.35 : 0)
+          }
         />
       </group>
       <mesh ref={burstRef} visible={false}>
@@ -629,7 +660,16 @@ export function RaceScene({
           [0.3, 0.22, 1.62],
         ]}
         color={isMultiplayer && !isHost ? getOpponentColor(playerAccent) : playerAccent}
-        intensity={() => sim.current.input.thrust * 0.7 + (sim.current.ship.boost > 0 ? 0.9 : 0)}
+        // continuous accel read: glow tracks SPEED, not the 3-state throttle —
+        // the plume visibly builds the entire 0→vmax climb
+        intensity={() =>
+          sim.current.ship.wrecked > 0
+            ? 0
+            : sim.current.input.thrust * 0.3 +
+              Math.min(1, sim.current.ship.v / shipVmax(track.avgSpeed, false)) * 0.65 +
+              (sim.current.ship.boost > 0 ? 0.35 : 0)
+        }
+        speed={() => sim.current.ship.v}
       />
       {/* R9e: grind/airbrake sparks + landing dust */}
       <Sparks
@@ -816,6 +856,8 @@ function NpcShips({
       const g = refs.current[i]
       const st = npcs[i]
       if (!g || !st) continue
+      // wrecked NPCs vanish for the pause — same death drama as the player
+      g.visible = st.wrecked <= 0
       poseAt(frames, Math.max(0, st.s), st.d, HOVER_HEIGHT, pose.current)
       const p = pose.current
       g.position.set(p.px, p.py, p.pz)
@@ -863,6 +905,7 @@ function NpcShips({
               ]}
               color={spec.accent}
               intensity={npcPower}
+              speed={() => simRef.current.npcs[i]?.v ?? 0}
             />
           </group>
         )

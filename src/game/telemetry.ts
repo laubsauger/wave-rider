@@ -30,6 +30,12 @@ export interface RaceTelemetry {
   racersXZ: Float32Array
   /** P2P synchronization state */
   syncState: 'waiting' | 'ready'
+  /** hull integrity 0..1 — ENERGY bar; 0 = explosion */
+  hull: number
+  /** one-shot flash when hull takes damage, decays in scene */
+  hullFlash: number
+  /** current throttle 0..1 (+boost reads above 1) — THRUST bar */
+  thrust: number
 }
 
 export const telemetry: RaceTelemetry = {
@@ -50,4 +56,7 @@ export const telemetry: RaceTelemetry = {
   oppStatus: '',
   racersXZ: new Float32Array(18),
   syncState: 'ready',
+  hull: 1,
+  hullFlash: 0,
+  thrust: 0,
 }

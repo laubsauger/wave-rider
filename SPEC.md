@@ -226,6 +226,7 @@ T169|x|HYPERSPEED: vmax → avgSpeed×3+100 (~2000-2600 kph ceiling); drift v² 
 T170|x|boost DISCIPLINE = skill ceiling: quadratic drag drops no-boost cruise ~55% vmax, per-boost punch ↓ (kick 15, window 0.9s, accel 75) — holding near max takes sustained chains; gen recalibrated for hyperspeed: jumps gentler, chicane/sbank curvature ↓, global k budget 50→42, long curves wider (1.25-1.8)|V12,V16,V20,V3
 T171|x|airtime @ hyperspeed: takeoff demands REAL crest (Δslope ≤ −0.02, ⊥ speed-amplified undulation pops) + downforce gravity ∝ v (fast hops stay short)|V16,V5
 T172|x|frame-order fix (B34): exhaust/sparks read ship pose AFTER the sim writes it — trail head was one frame stale (gap = v·dt, 10m+ @ hyperspeed)|C11,V5
+T173|.|perf optimization passes GLOBAL: frame-budget audit — draw calls + instancing (scenery/pads/streaks), TSL shader cost (post chain, road signage), per-frame alloc/GC pressure, geometry + effect LOD per quality tier|C7,C11
 
 ## §B bugs
 

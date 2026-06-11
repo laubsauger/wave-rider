@@ -43,6 +43,8 @@ export interface ShipState {
   onWall: boolean
   /** ramped steer input (B7) — what yaw actually follows */
   steerSmooth: number
+  /** seconds the current steer direction has been held — progressive lock */
+  steerHeld: number
   /** airborne over a crest (V16) */
   airborne: boolean
   /** vertical velocity while airborne, m/s */
@@ -55,6 +57,12 @@ export interface ShipState {
   falling: boolean
   /** T115: arc position where the fall began — respawn sets back from here */
   fallS: number
+  /** hull integrity 0..1 — wall hits and bumps drain it; 0 = explode+reset */
+  energy: number
+  /** seconds since last damage — regen starts after a grace window */
+  damageT: number
+  /** wreck pause: seconds until respawn — the explosion gets its moment */
+  wrecked: number
 }
 
 export interface StepEvents {
@@ -69,6 +77,8 @@ export interface StepEvents {
   respawned: boolean
   /** vertical speed at touchdown */
   landImpact: number
+  /** energy hit zero — hull blew, respawn follows */
+  exploded: boolean
 }
 
 export function initialShip(): ShipState {
@@ -86,18 +96,44 @@ export function initialShip(): ShipState {
     lastBoostIdx: -1,
     onWall: false,
     steerSmooth: 0,
+    steerHeld: 0,
     airborne: false,
     vy: 0,
     air: 0,
     latVel: 0,
     falling: false,
     fallS: 0,
+    energy: 1,
+    damageT: 99,
+    wrecked: 0,
   }
+}
+
+/** wreck pause before any reset — long enough to SEE what happened */
+const WRECK_PAUSE = 1.3
+
+/** begin the death sequence: halt where it happened, explosion plays, the
+ * respawn (40m behind `anchorS`, centered, fresh hull) lands after the pause */
+function startWreck(state: ShipState, anchorS: number, events: StepEvents): void {
+  state.wrecked = WRECK_PAUSE
+  state.fallS = anchorS
+  state.v = 0
+  state.falling = false
+  events.exploded = true
+}
+
+/** apply hull damage — resets the regen grace window. Scene code uses this
+ * for racer-bump impacts; stepShip uses it for walls internally. */
+export function drainEnergy(state: ShipState, amount: number): void {
+  state.energy = Math.max(0, state.energy - amount)
+  state.damageT = 0
 }
 
 const SHIP_HALF_WIDTH = 1.0
 const BOOST_LEN = 14
-const BOOST_HALF_WIDTH = 2.2
+// forgiving catch: slicing a pad edge counts — full-center precision isn't
+// the skill being tested, line choice is
+const BOOST_HALF_WIDTH = 2.9
 /** arcade gravity, m/s² — heavier than earth so jumps stay snappy */
 const GRAVITY = 34
 
@@ -152,9 +188,45 @@ export function stepShip(
   events.landed = false
   events.landImpact = 0
   events.respawned = false
+  events.exploded = false
 
   if (state.finished) return
   const dt = PHYSICS_DT
+
+  // wreck pause: ship is DEAD where it died — the explosion plays, the
+  // player sees what happened, THEN the reset lands
+  if (state.wrecked > 0) {
+    state.wrecked -= dt
+    state.time += dt
+    if (state.wrecked <= 0) {
+      state.wrecked = 0
+      state.s = Math.max(0, state.fallS - 40)
+      state.d = 0
+      state.v = track.avgSpeed * 0.22
+      state.yaw = 0
+      state.latVel = 0
+      state.airborne = false
+      state.air = 0
+      state.vy = 0
+      // fresh hull after the reset — the malus is the pause + setback
+      state.energy = 1
+      state.damageT = 0
+      events.respawned = true
+    }
+    return
+  }
+
+  // hull energy: regen after a 2s no-damage grace; empty hull = explosion
+  // (the malus that makes wall-bashing a losing strategy)
+  state.damageT += dt
+  if (state.damageT > 2 && state.energy < 1) {
+    state.energy = Math.min(1, state.energy + 0.09 * dt)
+  }
+  if (state.energy <= 0 && !state.falling) {
+    startWreck(state, state.s, events)
+    state.time += dt
+    return
+  }
 
   const vmax = shipVmax(track.avgSpeed, state.boost > 0)
   // B8: slower spool — accel tapers hard as v climbs, top speed is earned
@@ -183,9 +255,18 @@ export function stepShip(
     (input.brakeLeft && !input.brakeRight ? -0.6 : 0) + (input.brakeRight && !input.brakeLeft ? 0.6 : 0)
   const steerTarget = clamp(input.steer + steerAssist, -1.2, 1.2)
   const attacking = Math.abs(steerTarget) > Math.abs(state.steerSmooth)
-  // player-feel rework: faster attack = stick answers NOW; slower release =
-  // the ship doesn't auto-straighten the moment you ease off
-  const rate = attacking ? 5 : 4
+  // Progressive digital steering (keyboard-first, standard arcade solution):
+  // the lock RAMPS while held — a tap is a fine nudge (~15% lock), a hold
+  // builds to full over ~0.7s. Attack also softens slightly with speed.
+  // Release stays quick so flick-corrections unwind without auto-pilot feel.
+  if (Math.sign(input.steer) !== Math.sign(state.steerHeld) || input.steer === 0) {
+    state.steerHeld = 0
+  }
+  state.steerHeld += Math.sign(input.steer) * dt
+  const held = Math.abs(state.steerHeld)
+  const speedSoft = 1 / (1 + state.v / 900)
+  const attackRate = (1.8 + Math.min(1, held / 0.65) * 5.5) * (0.7 + 0.3 * speedSoft)
+  const rate = attacking ? attackRate : 7
   state.steerSmooth += clamp(steerTarget - state.steerSmooth, -rate * dt, rate * dt)
 
   // T131: steering authority falls off with speed — no hairpin snaps at
@@ -233,14 +314,10 @@ export function stepShip(
     state.v = Math.max(0, state.v - state.v * 0.4 * dt)
     state.time += dt
     if (state.air < -14) {
-      state.falling = false
-      state.air = 0
+      // bottom of the plunge → BOOM down there, then the T115 setback
+      // (startWreck keeps fallS — respawn lands behind the edge you missed)
+      startWreck(state, state.fallS, events)
       state.vy = 0
-      state.d = 0
-      state.v *= 0.4
-      // T115: setback — respawn behind where you went over the edge
-      state.s = Math.max(0, state.fallS - 40)
-      events.respawned = true
     }
     return
   }
@@ -262,19 +339,17 @@ export function stepShip(
     // (vy < −6) gets captured up to 12m; only floating HIGH gets the reset
     const diving = state.vy < -6 && state.air < 12
     if (state.air > 6.5 && !diving) {
-      // missed the capture window
+      // missed the capture window — slammed: explosion, then reset before
+      // the twist zone (anchor +10 so the −40 setback lands at start −30)
+      let anchorS = state.s
       for (const sg of track.segments) {
         if (state.s >= sg.start && state.s < sg.end) {
-          state.s = Math.max(0, sg.start - 30)
+          anchorS = sg.start + 10
           break
         }
       }
+      startWreck(state, anchorS, events)
       state.airborne = false
-      state.air = 0
-      state.vy = 0
-      state.d = 0
-      state.v *= 0.45
-      events.respawned = true
       return
     }
     state.airborne = false
@@ -324,12 +399,14 @@ export function stepShip(
       // walls are the price of a missed line, not a rumble strip
       state.v *= Math.max(0.62, 1 - impact * 0.02)
       state.yaw *= 0.5
+      drainEnergy(state, 0.05 + impact * 0.004)
       events.wallHit = true
       events.wallImpact = impact
       state.wallHits++
       state.onWall = true
     } else {
       state.v = Math.max(0, state.v - state.v * 0.55 * dt)
+      drainEnergy(state, 0.06 * dt) // grinding sands the hull down
     }
   } else if (state.onWall && Math.abs(state.d) < limit - 1.2) {
     // wide release band: brushing along the wall is one impact + grind,
