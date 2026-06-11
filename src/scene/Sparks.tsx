@@ -12,6 +12,8 @@ import { mulberry32 } from '../lib/prng'
 
 const SPARKS = 160
 const DUST = 48
+/** T153: hot orange embers — heavier, shorter-lived, layered over the sparks */
+const EMBERS = 120
 const G = 26
 
 export interface SparkSource {
@@ -24,6 +26,9 @@ export interface SparkSource {
   /** landing impact pulse; Sparks clears it after spawning */
   landPulse: number
   clearLand: () => void
+  /** T153: wall impact pulse — ember burst; Sparks clears it */
+  wallPulse: number
+  clearWall: () => void
 }
 
 interface Pool {
@@ -48,6 +53,7 @@ function makePool(count: number): Pool {
 
 const tmpLocal = new THREE.Vector3()
 const tmpObj = new THREE.Object3D()
+const tmpVel = new THREE.Vector3()
 
 export function Sparks({
   shipRef,
@@ -62,10 +68,12 @@ export function Sparks({
 }) {
   const sparkMesh = useRef<THREE.InstancedMesh>(null)
   const dustMesh = useRef<THREE.InstancedMesh>(null)
+  const emberMesh = useRef<THREE.InstancedMesh>(null)
   const sparks = useMemo(() => makePool(SPARKS), [])
   const dust = useMemo(() => makePool(DUST), [])
+  const embers = useMemo(() => makePool(EMBERS), [])
   const rng = useMemo(() => mulberry32(0x59a47c1), [])
-  const emitAcc = useRef({ grind: 0, brake: 0 })
+  const emitAcc = useRef({ grind: 0, brake: 0, ember: 0 })
 
   const spawn = (pool: Pool, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number) => {
     const i = pool.cursor
@@ -80,6 +88,7 @@ export function Sparks({
     if (fxIntensity <= 0) {
       if (sparkMesh.current) sparkMesh.current.visible = false
       if (dustMesh.current) dustMesh.current.visible = false
+      if (emberMesh.current) emberMesh.current.visible = false
       return
     }
     const ship = shipRef.current
@@ -109,6 +118,23 @@ export function Sparks({
           0.25 + rng() * 0.3,
         )
       }
+      // T153: ember stream rides the grind — hot, heavy, dies fast
+      emitAcc.current.ember += dt * Math.min(110, st.v * 0.6) * fxIntensity
+      while (emitAcc.current.ember >= 1) {
+        emitAcc.current.ember -= 1
+        const p = local(side * (1.15 + rng() * 0.25), 0.05, 0.2 + r() * 1.4)
+        spawn(embers, p.x, p.y, p.z, r() * 6, 1 + rng() * 5, 4 + r() * 6, 0.12 + rng() * 0.22)
+      }
+    }
+    // T153: wall IMPACT → ember burst, count ∝ hit speed
+    if (st.wallPulse > 0) {
+      const n = Math.min(EMBERS, Math.round(8 + st.wallPulse * 0.8))
+      const side = Math.sign(st.d) || 1
+      for (let i = 0; i < n; i++) {
+        const p = local(side * (1.1 + rng() * 0.4), 0.1 + rng() * 0.4, r() * 1.6)
+        spawn(embers, p.x, p.y, p.z, side * (2 + rng() * 6) + r() * 3, 2 + rng() * 6, r() * 8, 0.15 + rng() * 0.3)
+      }
+      st.clearWall()
     }
     // airbrake scrub at speed: wingtip snaps
     if (st.braking && !st.airborne && st.v > 60) {
@@ -130,7 +156,7 @@ export function Sparks({
       st.clearLand()
     }
 
-    // integrate + write instances
+    // integrate + write instances — blob mode (dust) for soft puffs
     const step = (pool: Pool, mesh: THREE.InstancedMesh | null, size: (a: number) => number, gravity: number) => {
       if (!mesh) return
       mesh.visible = true
@@ -152,18 +178,65 @@ export function Sparks({
       }
       mesh.instanceMatrix.needsUpdate = true
     }
-    step(sparks, sparkMesh.current, (a) => 0.05 + a * 0.07, G)
+
+    // T153v2: streak mode — needle-thin, stretched along velocity. Sparks
+    // AND embers both; only dust stays a puff (it's dust).
+    const stepStreaks = (pool: Pool, mesh: THREE.InstancedMesh | null, thick: number, lenK: number, gravity: number) => {
+      if (!mesh) return
+      mesh.visible = true
+      for (let i = 0; i < pool.count; i++) {
+        if (pool.life[i] > 0) {
+          pool.life[i] -= dt
+          pool.vel[i * 3 + 1] -= gravity * dt
+          pool.pos[i * 3] += pool.vel[i * 3] * dt
+          pool.pos[i * 3 + 1] += pool.vel[i * 3 + 1] * dt
+          pool.pos[i * 3 + 2] += pool.vel[i * 3 + 2] * dt
+        }
+        const a = Math.max(0, pool.life[i] / Math.max(1e-4, pool.maxLife[i]))
+        tmpObj.position.set(pool.pos[i * 3], pool.pos[i * 3 + 1], pool.pos[i * 3 + 2])
+        const vx = pool.vel[i * 3]
+        const vy = pool.vel[i * 3 + 1]
+        const vz = pool.vel[i * 3 + 2]
+        const speed = Math.hypot(vx, vy, vz)
+        if (pool.life[i] > 0 && speed > 0.01) {
+          tmpVel.set(tmpObj.position.x + vx, tmpObj.position.y + vy, tmpObj.position.z + vz)
+          tmpObj.lookAt(tmpVel)
+          tmpObj.scale.set(thick, thick, (0.18 + speed * lenK) * a + 0.04)
+        } else {
+          tmpObj.scale.setScalar(0)
+        }
+        tmpObj.updateMatrix()
+        mesh.setMatrixAt(i, tmpObj.matrix)
+      }
+      mesh.instanceMatrix.needsUpdate = true
+    }
+
+    stepStreaks(sparks, sparkMesh.current, 0.022, 0.05, G)
     step(dust, dustMesh.current, (a) => 0.5 + (1 - a) * 1.3, 4)
+    stepStreaks(embers, emberMesh.current, 0.016, 0.035, 44)
   })
 
   return (
     <group>
       <instancedMesh ref={sparkMesh} args={[undefined, undefined, SPARKS]} frustumCulled={false}>
-        <boxGeometry args={[1, 1, 2.4]} />
+        <boxGeometry args={[1, 1, 1]} />
         <meshBasicMaterial
-          color={new THREE.Color(accent).lerp(new THREE.Color('#ffe9c4'), 0.6)}
+          color={new THREE.Color(accent).lerp(new THREE.Color('#ffffff'), 0.7).multiplyScalar(2)}
           transparent
           opacity={0.9}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </instancedMesh>
+      {/* T153v2: ember layer — needle streaks, over-bright core so bloom
+          draws the hot line, not an orange puff */}
+      <instancedMesh ref={emberMesh} args={[undefined, undefined, EMBERS]} frustumCulled={false}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshBasicMaterial
+          color={new THREE.Color('#ffa040').multiplyScalar(2.4)}
+          transparent
+          opacity={0.95}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}

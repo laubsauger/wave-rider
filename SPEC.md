@@ -203,6 +203,11 @@ T146|x|countdown text: soft radial shadow halo ⊥ chunky glass box|C11,V6
 T147|x|mobile fit v2: short-viewport alignment top+scroll (⊥ center-cutoff), density ↓↓; rotate→landscape w/o fullscreen → one-tap fullscreen banner|C3,C8
 T148|x|DoF refocus: ship + near field SHARP (focus ≈ cam→ish), distance blurs ∝ speed|V10,C11
 T149|x|dynamic range pass: audio-reactive brightness floors ↓ + energy² curves (⊥ pegged @ max), horizon EQ colors drift w/ section palette + per-bar shading variation, floor grid toned ↓|V3,V19,C11
+T150|x|NPC feel: separation nudges dt-scaled (⊥ 0.3m/step teleport stutter @ 120Hz), exhaust power reads full-throttle|V15,V17,C11
+T151|x|track aggression v3: banked curves THE NORM (energy-scaled gain, cap 0.78), wallride gates ↓↓ + longer + sloped — sideways action actually common|V3,V20
+T152|x|mobile haptics: vibrate on boost catch / wall hit (impact-scaled) / wreck — fx-gated|C4,V10
+T153|x|wall contact v2: orange EMBER spray layer (hot, heavy, short-lived) on top of spark puffs; impact burst + grind stream|C11,V10
+T154|x|spectacle gates fixed for REAL songs: corkscrew/loop/wallride energy+onset thresholds ↓ (bundled catalog sits mid-energy → gates never fired); verified on builtin analyzed audio|V3,V16
 
 ## §B bugs
 
@@ -236,3 +241,4 @@ B27|2026-06-10|node materials w/o own envMap IGNORE material.envMapIntensity (sc
 B28|2026-06-11|ridge cones radius ≤230m placed 170m off-track → faces reached INTO the corridor|radius clamped to lateral−80 (Environment)
 B29|2026-06-11|occluded tab suspends rAF → next frame's giant dt skipped countdown + fast-forwarded sim in one burst (B11 lesson, race-loop edition)|dt clamped to 0.1s in RaceScene frame loop
 B30|2026-06-11|start-grid slot pads (6×9m, emissive glow 0.35, ×6) fused into one theme-colored carpet = the "green/red slab @ start" — blamed on apron, road env, ridges before raycast probe found it|slots dimmed to faint outlines (emissive 0.05, opacity 0.45)
+B31|2026-06-11|section boundary truncates corkscrew → walkSegment still rolls FULL 2π over the stub → violent frame twist @ seam, hitch + ship kicked off|shrink to remaining if ≥320m else demote to straight; test pins min corkscrew length

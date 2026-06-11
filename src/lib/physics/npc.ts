@@ -177,13 +177,17 @@ export function resolveCollisions(
         }
       }
 
-      // gradual separation every step — no teleporting (B13); T112 gentler
+      // gradual separation — T150: dt-scaled VELOCITIES, not per-step jumps.
+      // 0.17m + 0.3m per 120Hz step was 20-36 m/s of invisible teleporting —
+      // the "NPCs stuttering around" feel whenever ships ran close.
       const dir = a.d !== b.d ? Math.sign(a.d - b.d) : a.s >= b.s ? 1 : -1
-      a.d = clamp(a.d + dir * 0.17, -limit, limit)
-      b.d = clamp(b.d - dir * 0.17, -limit, limit)
+      const sep = 3.2 * PHYSICS_DT
+      a.d = clamp(a.d + dir * sep, -limit, limit)
+      b.d = clamp(b.d - dir * sep, -limit, limit)
       if (Math.abs(a.s - b.s) < 2.5) {
-        if (a.s >= b.s) a.s += 0.3
-        else b.s += 0.3
+        const push = 5 * PHYSICS_DT
+        if (a.s >= b.s) a.s += push
+        else b.s += push
       }
     }
   }

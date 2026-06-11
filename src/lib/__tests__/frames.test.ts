@@ -84,6 +84,13 @@ describe('track frames (R9b/T104)', () => {
     expect(minNy).toBeLessThan(-0.5)
   })
 
+  it('B31: no truncated corkscrews — every barrel roll gets ≥320m of road', () => {
+    for (const seg of track.segments) {
+      if (seg.type !== 'corkscrew') continue
+      expect(seg.end - seg.start).toBeGreaterThanOrEqual(320 - 1e-6)
+    }
+  })
+
   it('V1: identical features → identical frames', () => {
     const again = sampleTrack(generateTrack(fakeFeatures()), 3)
     expect(again.positions).toEqual(frames.positions)

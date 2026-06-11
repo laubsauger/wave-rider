@@ -235,10 +235,16 @@ function layoutCourse(
   // accel ~50 m/s² at the reference max curve k of 0.012
   const kScale = Math.min(1, 50 / (avgSpeed * avgSpeed * 0.012))
 
+  // T154: spectacle gates are RELATIVE to the song's own dynamics — real
+  // analysis yields section energies ~0.2-0.55, half the synthetic scale the
+  // absolute gates were tuned on. Every song's hottest stretch gets the show.
+  const maxSecE = Math.max(0.001, ...features.sections.map((x) => x.energy))
+
   for (let si = 0; si < features.sections.length; si++) {
     const sec = features.sections[si]
     const secLen = sectionLengths[si]
     const onsetDensity = onsetsPerSecond(features, sec)
+    const eRel = sec.energy / maxSecE
     // T38: each section trends up or down — vertical separation where the
     // course crosses itself, and the skyline keeps changing
     // T114: amplitude ↑ — the course should climb and dive, not simmer
@@ -262,10 +268,19 @@ function layoutCourse(
           slope: rngRange(rng, -0.03, -0.01),
         }
       } else {
-        seg = chooseSegment(sec, onsetDensity, rng, avgSpeed)
+        seg = chooseSegment(sec, onsetDensity, rng, avgSpeed, eRel)
         if (seg.type === 'loop' && seg.length > remaining) {
           // a truncated loop would strand the cursor mid-circle — bail to a straight
           seg = { type: 'straight', length: remaining, curvature: 0, slope: 0 }
+        }
+        // B31: walkSegment rolls the FULL 2π over whatever length it gets —
+        // a section boundary truncating a corkscrew compresses the whole
+        // barrel roll into the stub: violent twist @ the seam, ship kicked.
+        // Shrink to the room available if sane, else demote.
+        if (seg.type === 'corkscrew' && seg.length > remaining) {
+          seg = remaining >= 320
+            ? { ...seg, length: remaining }
+            : { type: 'straight', length: remaining, curvature: 0, slope: 0 }
         }
         seg.curvature *= kScale
         if (seg.type !== 'loop') seg.slope += slopeBias
@@ -301,6 +316,8 @@ interface SegmentPlan {
   radius?: number
   /** R9b: lateral exit shift direction so the loop clears its own entry */
   side?: 1 | -1
+  /** T151: bank gain (rad per k) — energy-scaled so hot sections TILT */
+  bankGain?: number
 }
 
 /**
@@ -309,15 +326,15 @@ interface SegmentPlan {
  *  - mid energy: sweeping curves, occasional hills
  *  - low energy: wide flowing curves, gentle elevation
  */
-function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpeed: number): SegmentPlan {
+function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpeed: number, eRel: number): SegmentPlan {
   const e = sec.energy
   const roll = rng()
   // T77/T78: special track parts — wide boost speedways, narrow rail-less
   // ridges where falling off is on the table
   const special = rng()
-  // R9b: full vertical loop when the music slams hardest — radius scales
-  // with design speed so the circle reads at pace (T114: loosened)
-  if (e > 0.6 && onsetDensity > 0.9 && special >= 0.31 && special < 0.385) {
+  // R9b/T154: full vertical loop in the song's OWN hottest stretches —
+  // relative gate + low absolute floor (chill stays chill)
+  if (eRel > 0.78 && e > 0.32 && onsetDensity > 0.9 && special >= 0.31 && special < 0.385) {
     const radius = 42 + avgSpeed * 0.1
     return {
       type: 'loop',
@@ -328,7 +345,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       side: rng() < 0.5 ? -1 : 1,
     }
   }
-  if (e > 0.5 && special < 0.09) {
+  if (eRel > 0.6 && e > 0.25 && special < 0.09) {
     return {
       type: 'speedway',
       length: rngRange(rng, 340, 500),
@@ -338,14 +355,15 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       walls: true,
     }
   }
-  if (e > 0.48 && onsetDensity > 0.9 && special >= 0.17 && special < 0.31) {
-    // T92: ride the wall — sustained ~60° bank with matching curve (T130: common now)
+  if (eRel > 0.5 && e > 0.22 && onsetDensity > 0.6 && special >= 0.17 && special < 0.35) {
+    // T92/T151/T154: ride the wall — sustained ~60° bank, LONG, sloped, and
+    // common in any song's upper half
     const dir = rng() < 0.5 ? -1 : 1
     return {
       type: 'wallride',
-      length: rngRange(rng, 300, 480),
+      length: rngRange(rng, 320, 560),
       curvature: rngRange(rng, 0.0018, 0.003) * dir,
-      slope: 0,
+      slope: rngRange(rng, -0.04, 0.04),
       widthScale: 1.15,
       walls: true,
     }
@@ -361,18 +379,20 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     }
   }
 
-  if (e > 0.6) {
-    // T60: barrel-roll the road itself when the music hammers (T130: more,
-    // but chicanes keep their V3 slot — windows rebalanced)
-    if (onsetDensity > 0.8 && roll < 0.3) {
-      return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
-    }
+  // T60/T154: barrel-roll the road in above-average sections — was locked
+  // behind an absolute e>0.6 no real song ever reached
+  if (eRel > 0.68 && e > 0.28 && onsetDensity > 0.8 && roll < 0.3) {
+    return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
+  }
+
+  if (e > 0.6 || (eRel > 0.85 && e > 0.3)) {
     if (onsetDensity > 2.5 && roll < 0.52) {
       return {
         type: 'chicane',
         length: rngRange(rng, 120, 220),
         curvature: rngRange(rng, 0.012, 0.022) * (rng() < 0.5 ? -1 : 1),
         slope: 0,
+        bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
       }
     }
     if (roll < 0.75) {
@@ -383,6 +403,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       length: rngRange(rng, 150, 280),
       curvature: rngRange(rng, 0.006, 0.012) * (rng() < 0.5 ? -1 : 1),
       slope: 0,
+      bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
     }
   }
 
@@ -393,6 +414,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
         length: rngRange(rng, 180, 320),
         curvature: rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1),
         slope: rngRange(rng, -0.015, 0.015),
+        bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
       }
     }
     if (roll < 0.75) {
@@ -406,6 +428,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     length: rngRange(rng, 250, 420),
     curvature: rngRange(rng, 0.002, 0.005) * (rng() < 0.5 ? -1 : 1),
     slope: rngRange(rng, -0.01, 0.01),
+    bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
   }
 }
 
@@ -460,7 +483,7 @@ function walkSegment(
     seg.type === 'wallride'
       ? Math.sign(seg.curvature) * 1.05 // T92: ~60° — riding the wall
       : seg.type === 'curve' || seg.type === 'chicane'
-        ? Math.max(-0.58, Math.min(0.58, seg.curvature * 230)) // B17/T130: banks you can SEE
+        ? Math.max(-0.78, Math.min(0.78, seg.curvature * (seg.bankGain ?? 200))) // B17/T151
         : 0
 
   for (let i = 0; i < steps; i++) {

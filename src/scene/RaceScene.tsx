@@ -37,6 +37,7 @@ import { SponsorBoards } from './SponsorBoards'
 import { NetworkShip } from './NetworkShip'
 import type { TrackData } from '../lib/track/generate'
 import { pickShipAccent } from '../lib/accent'
+import { haptics } from '../lib/haptics'
 
 function getOpponentColor(hex: string): string {
   const r = parseInt(hex.slice(1, 3), 16) / 255
@@ -180,6 +181,8 @@ export function RaceScene({
     lastCountInt: 9,
     /** R9e: one-shot landing impact pulse — Sparks consumes + clears */
     landPulse: 0,
+    /** T153: one-shot wall impact pulse — ember burst */
+    wallPulse: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -339,6 +342,14 @@ export function RaceScene({
     // shake trauma (V10: scaled by fxIntensity at application time)
     if (wallEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + 0.25 + wallEvent * 0.02)
     if (boostEvent) s.shake.trauma = Math.min(1, s.shake.trauma + 0.18)
+    // T152: haptics on touch devices — fx-gated like every feedback channel
+    if (fxIntensity > 0) {
+      if (wallEvent >= 35) haptics.wreck()
+      else if (wallEvent > 0) haptics.wall(wallEvent)
+      else if (boostEvent) haptics.boost()
+    }
+    // T153: ember burst feed
+    if (wallEvent > 0) s.wallPulse = wallEvent
     if (landEvent > 0) {
       s.shake.trauma = Math.min(1, s.shake.trauma + Math.min(0.45, landEvent * 0.012))
       s.landPulse = landEvent // R9e: dust burst
@@ -581,9 +592,11 @@ export function RaceScene({
           d: sim.current.ship.d,
           landPulse: sim.current.landPulse,
           clearLand: () => void (sim.current.landPulse = 0),
+          wallPulse: sim.current.wallPulse,
+          clearWall: () => void (sim.current.wallPulse = 0),
         })}
       />
-      {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} />}
+      {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} avgSpeed={track.avgSpeed} />}
       {/* B19: mounted unconditionally — reads live state per frame */}
       {isMultiplayer && (
         <NetworkShip
@@ -727,10 +740,12 @@ function NpcShips({
   specs,
   simRef,
   frames,
+  avgSpeed,
 }: {
   specs: NpcSpec[]
   simRef: React.RefObject<{ npcs: NpcState[] }>
   frames: TrackFrames
+  avgSpeed: number
 }) {
   const refs = useRef<(THREE.Group | null)[]>([])
   const pose = useRef({} as FramePose)
@@ -770,7 +785,9 @@ function NpcShips({
       {specs.map((spec, i) => {
         const npcPower = () => {
           const st = simRef.current.npcs[i]
-          return st && !st.finished && st.v > 1 ? 0.55 : 0
+          // T150: NPCs read as FULL throttle — power tracks their actual pace
+          if (!st || st.finished || st.v <= 1) return 0
+          return Math.min(1.1, 0.5 + st.v / (avgSpeed * 1.4))
         }
         return (
           <group key={spec.name}>
