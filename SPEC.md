@@ -30,7 +30,7 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 ## §V invariants
 
 - V1: ∀ audio input → identical bytes → identical `TrackData`. Gen pure fn of features.
-- V2: race mode point-to-point: track length ≅ song duration, finish line @ song end. Laps/infinite → ROADMAP.md.
+- V2 (rework 2026-06-11): point-to-point; `avgSpeed` = SKILLED ride pace (boost discipline), ⊥ slow reference. Physics derives: no-boost cruise ≈ 0.75×, ceiling 1.36×+100 (ship.ts). length = avgSpeed × duration → good ride finishes ≅ song end. Laps/infinite → ROADMAP.md.
 - V3: mood/tempo → track params: high bpm/energy → fast straights, tight chicanes; calm → flowing curves. Mapping documented & deterministic.
 - V4: mobile portrait → gameplay blocked, rotate overlay shown. Landscape → play.
 - V5: physics step fixed (e.g. 1/120s accumulator). Render fps ≠ affect sim result.
@@ -48,8 +48,12 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V17: ship collisions: deterministic, energy transfer ⊥ create speed (Σv after ≤ Σv before + ε), both stay in walls.
 - V18: lean ∝ user steer input only. Track curvature ⊥ auto-lean ship. (amends V14)
 - V19: ∀ adjacent sections w/ Δbrightness ≥ 0.1 → distinct rail/pad/scenery palette (visual development).
-- V20: curvature speed-scaled: implied lateral accel k·avgSpeed² ≤ ~90 m/s² for p95 of samples → curves rideable @ design speed.
+- V20 (rework 2026-06-11): curvature budget = ship CARVE AUTHORITY, ⊥ fixed lateral-accel target: p95 |k| ≤ maxCarveCurvature(0.75·avgSpeed) (ship.ts mirrors drift model). Sharpest peaks (chicane) may exceed → airbrake zones = speed-management skill.
 - V21: post chain color stages operate on rgb (vec3) only; outputNode reassembles `vec4(rgb, 1)`. ⊥ vec4 color math through `PostProcessing.outputNode` — alpha warp kills WebGPU pipeline SILENT (no console error). Post edits → verify visually @ FX>0.
+- V22: hull ENERGY 0..1: wall/median hits drain ∝ impact + forward speed; ship-ship collision drains BOTH ∝ closing speed (rammer ~1.75× victim, fatal ≥ ~215 m/s closing); grind drains continuous; regen after 2s no-damage grace; 0 → explosion → wreck pause (~1.3s, watchable) → reset 40m back, fresh hull. All resets (fall, loop-miss, explosion) share the wreck path.
+- V23: NPCs run stepShip — ONE physics rulebook (vmax, drag, drift, pads, walls, energy). NPC-ness = controller only: steer ff+PD (speed-scaled gains), smoothed throttle ceiling, brake margin ∝ cornerSkill. ⊥ parallel movement model. (V15 determinism unchanged.)
+- V24: corners CAMBER ∝ coordinated-turn angle atan(k·vC²/g)·0.55, cap 0.76 rad (curve/chicane/split/glide; wallride keeps bankAbs). Flat = straights/speedways only. Transitions: smoothstep edge windows (~15%) + chicane/split S-flip through flat.
+- V25: trackside spawns (pylons, biome) must clear the WHOLE course corridor — spatial-hash check, reject when horizontally within objR+34m AND vertically overlapping a non-own track section. Course crosses its own footprint; own-segment clearance is not enough.
 
 ## §T tasks
 
@@ -226,7 +230,14 @@ T169|x|HYPERSPEED: vmax → avgSpeed×3+100 (~2000-2600 kph ceiling); drift v² 
 T170|x|boost DISCIPLINE = skill ceiling: quadratic drag drops no-boost cruise ~55% vmax, per-boost punch ↓ (kick 15, window 0.9s, accel 75) — holding near max takes sustained chains; gen recalibrated for hyperspeed: jumps gentler, chicane/sbank curvature ↓, global k budget 50→42, long curves wider (1.25-1.8)|V12,V16,V20,V3
 T171|x|airtime @ hyperspeed: takeoff demands REAL crest (Δslope ≤ −0.02, ⊥ speed-amplified undulation pops) + downforce gravity ∝ v (fast hops stay short)|V16,V5
 T172|x|frame-order fix (B34): exhaust/sparks read ship pose AFTER the sim writes it — trail head was one frame stale (gap = v·dt, 10m+ @ hyperspeed)|C11,V5
-T173|.|perf optimization passes GLOBAL: frame-budget audit — draw calls + instancing (scenery/pads/streaks), TSL shader cost (post chain, road signage), per-frame alloc/GC pressure, geometry + effect LOD per quality tier|C7,C11
+T173|.|perf passes REMAINING: TSL shader cost @ retina (post chain), per-frame alloc/GC audit (chase CPU dips w/ cpu+lt meters), geometry+effect LOD per quality tier|C7,C11
+T174|x|carve/track rework: V2 skilled-pace re-anchor (vmax 3.0→1.36, accel 0.34→0.155, NPC pace → fractions); V20 carve-authority kScale; width 29-34 + widthScale floors ↑; wall malus graded; smoothstep transition windows + S-flip through flat; V24 downforce camber everywhere|V2,V20,V24,V3
+T175|x|ENERGY system: hull drain (walls ∝ impact+speed, grind, ship-ship ∝ closing speed BOTH parties), 2s-grace regen, 0 → explosion (fireball+debris+flash) + 1.3s wreck pause + reset; damage film grain < 35% hull; ENERGY bar (purple tiers)|V22,V10
+T176|x|NPC unification: stepNpc = controller over stepShip (ff+PD steer speed-scaled, smoothed aiThrottle, brake margins); grid FLIPPED (field ahead, player last) + poseAt negative-s extrapolation (B35); intro camera dolly READY→GO|V23,V15,V13
+T177|x|SPLIT segments: lane forks 2× width around divider island (median = wall, physics+mesh+NPC lane commit), S-weave + camber flip, remerge; pads shoved off the island|V3,V24,V22
+T178|x|perf round 1: dpr deterministic+capped (B36), pipeline warmup @ countdown, chunked track ribbons + fog-distance culling, bucketed scenery instancing, minimap offscreen bake, trail distance cull, spark idle skip, gpu/cpu/longtask instrumentation (PerfHud F2/?perf)|C7,C11,T173
+T179|x|UX round: HUD v3 (THRUST=speed story w/ overdrive zone + flush ENERGY bar, eased segment heights), road signage patterns (slant→turn ahead, ticks→technical), restart in pause, fullscreen buttons, loading veil, TrackChips on setup, sponsor boards XL + neon rails, exhaust escalation w/ accent core (de-blinded), progressive kb steering, touch steer gain+centerline|V10,V6,C11
+T180|x|scenery clearance vs WHOLE course (B37): spatial hash + corridor rejection for pylons/biome|V25
 
 ## §B bugs
 
@@ -264,3 +275,6 @@ B31|2026-06-11|section boundary truncates corkscrew → walkSegment still rolls 
 B33|2026-06-11|sonic boom threshold vs UNBOOSTED vmax → every boost pad crossing re-fired it = random blips|threshold vs shipVmax(boosted) — boom only at the absolute ceiling (T168)
 B34|2026-06-11|child useFrame subscribes before parent (bottom-up mount effects) → exhaust/sparks read ship pose ONE FRAME STALE → trail head detached by v·dt (10m+ @ hyperspeed)|readers get useFrame priority 0.5, pose writers stay 0 (T172)
 B32|2026-06-11|walkSegment bank guard (`type !== curve && !== chicane → bank=0`) silently DISCARDED wallride banks since T92 — every "wallride" shipped flat; censuses counted them, nobody ever rode one|guard admits wallride + faster bank ease (0.4); test pins 60°/84° banks + rideability
+B35|2026-06-11|poseAt CLAMPED s<0 to 0 → every grid ship rendered stacked AT the start line (physics grid fine, render collapsed) — "ships glitching through each other at start"|poseAt extrapolates s<0 along start tangent; render clamps removed (T176)
+B36|2026-06-11|r3f `dpr` prop LOST during async WebGPU renderer init — canvas at pixelRatio 1 until first window resize, then jumped to 2: render res random per session, quality tiers never controlled startup res, "30fps sometimes"|DprSync child applies dpr post-mount, capped at devicePixelRatio (T178)
+B37|2026-06-11|course crosses own footprint → scenery placed clear of OWN segment sat inside a DIFFERENT track section (towers/pylons through the road)|V25 corridor clearance: spatial hash of whole course, reject overlapping spawns (T180)

@@ -53,6 +53,41 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     const lhw = (s: number) =>
       (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, Math.round(s / frames.ds)))]) / 2
 
+    // B37: the course CROSSES its own footprint — an object placed clear of
+    // its own segment can sit inside a DIFFERENT part of the track. Spatial
+    // hash of the whole course; spawns that intersect any far corridor
+    // section (horizontally near + vertically overlapping) are rejected.
+    const CELL = 40
+    const corridor = new Map<string, number[]>() // key → flat [x,y,z,s,...]
+    for (let i = 0; i < frames.count; i += 5) {
+      const x = frames.positions[i * 3]
+      const key = `${Math.floor(x / CELL)}:${Math.floor(frames.positions[i * 3 + 2] / CELL)}`
+      const arr = corridor.get(key) ?? []
+      if (arr.length === 0) corridor.set(key, arr)
+      arr.push(x, frames.positions[i * 3 + 1], frames.positions[i * 3 + 2], i * frames.ds)
+    }
+    const clearOfCourse = (x: number, z: number, yMin: number, yMax: number, r: number, ownS: number) => {
+      const cx = Math.floor(x / CELL)
+      const cz = Math.floor(z / CELL)
+      const reach = r + 34 // object radius + generous road half-width
+      const cells = Math.ceil(reach / CELL)
+      for (let dx = -cells; dx <= cells; dx++) {
+        for (let dz = -cells; dz <= cells; dz++) {
+          const arr = corridor.get(`${cx + dx}:${cz + dz}`)
+          if (!arr) continue
+          for (let k = 0; k < arr.length; k += 4) {
+            if (Math.abs(arr[k + 3] - ownS) < 150) continue // own neighborhood
+            const sy = arr[k + 1]
+            if (sy < yMin - 8 || sy > yMax + 8) continue
+            const ddx = arr[k] - x
+            const ddz = arr[k + 2] - z
+            if (ddx * ddx + ddz * ddz < reach * reach) return false
+          }
+        }
+      }
+      return true
+    }
+
     const pylonMatrices: THREE.Matrix4[] = []
     const glowMatrices: THREE.Matrix4[] = []
     const glowColors: THREE.Color[] = []
@@ -63,6 +98,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         const lateral = side * (lhw(s) + rngRange(rng, 8, 28))
         const h = rngRange(rng, 8, 36)
         poseAt(frames, s, lateral, 0, pose)
+        if (!clearOfCourse(pose.px, pose.pz, pose.py - 26, pose.py + h, 4, s)) continue
         obj.position.set(pose.px, pose.py + h / 2 - 26, pose.pz)
         obj.rotation.set(0, rng() * Math.PI, 0)
         obj.scale.set(rngRange(rng, 0.9, 2.4), h, rngRange(rng, 0.9, 2.4))
@@ -238,6 +274,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           const lateral = side * (lhw(s) + rngRange(rng, 30, 130))
           const h = rngRange(rng, 30, 120)
           poseAt(frames, s, lateral, 0, pose)
+          if (!clearOfCourse(pose.px, pose.pz, pose.py - 30, pose.py + h, 16, s)) continue
           obj.position.set(pose.px, pose.py + h / 2 - 30, pose.pz)
           obj.rotation.set(0, rng() * Math.PI, 0)
           obj.scale.set(rngRange(rng, 6, 16), h, rngRange(rng, 6, 16))
@@ -246,6 +283,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           const lateral = side * (lhw(s) + rngRange(rng, 60, 220))
           const h = rngRange(rng, 18, 64)
           poseAt(frames, s, lateral, 0, pose)
+          if (!clearOfCourse(pose.px, pose.pz, pose.py - 32, pose.py + h, 38, s)) continue
           obj.position.set(pose.px, pose.py + h / 2 - 32, pose.pz)
           obj.rotation.set(0, rng() * Math.PI * 2, 0)
           obj.scale.set(rngRange(rng, 14, 38), h, rngRange(rng, 14, 38))
@@ -254,6 +292,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           const lateral = side * (lhw(s) + rngRange(rng, 18, 80))
           const r = rngRange(rng, 3, 11)
           poseAt(frames, s, lateral, rngRange(rng, -18, 14), pose)
+          if (!clearOfCourse(pose.px, pose.pz, pose.py - r, pose.py + r, r, s)) continue
           obj.position.set(pose.px, pose.py, pose.pz)
           obj.rotation.set(rngRange(rng, -0.5, 0.5), rng() * Math.PI * 2, rngRange(rng, -0.5, 0.5))
           obj.scale.set(r * 0.45, r, r * 0.45)
