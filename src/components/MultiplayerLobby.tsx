@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useGame } from '../game/store'
 import { network, type NetworkMessage, type P2PState } from '../lib/network/p2p'
-import { BUNDLED_SONGS } from '../lib/audio/bundled'
-import { startBundledRace, startFileRace } from '../game/flow'
+import { BUNDLED_SONGS, bundledDisplayTitle } from '../lib/audio/bundled'
+import { BUILTIN_SONGS } from '../lib/audio/builtin'
+import { resolveSongSource } from '../lib/network/lobbySong'
+import { startBuiltinRace, startBundledRace, startFileRace } from '../game/flow'
 
 export function MultiplayerLobby() {
   const [p2pState, setP2pState] = useState<P2PState>(network.state)
@@ -22,24 +24,26 @@ export function MultiplayerLobby() {
       setP2pState(s)
       if (s === 'connected' && network.isHost) {
         const state = useGame.getState()
-        const title = state.songTitle
-        const builtin = BUNDLED_SONGS.find((song) => song.title === title)
-        if (builtin) {
-          network.send({ type: 'lobby_song_builtin', songId: builtin.id })
+        // B38/V27: resolve by STABLE ID — matching on the display title broke
+        // the moment titles became "ARTIST — TITLE"
+        const src = resolveSongSource(state.songId, state.userSongs)
+        if (!src) {
+          setError(`Could not resolve the selected track (${state.songTitle || 'none'}) to a sendable source!`)
+          return
+        }
+        if (src.kind === 'bundled') {
+          network.send({ type: 'lobby_song_builtin', songId: src.song.id })
+        } else if (src.kind === 'synth') {
+          // T182: synths re-render deterministically on the joiner (V1)
+          network.send({ type: 'lobby_song_synth', songId: src.spec.id })
         } else {
-          const userSong = state.userSongs.find((song) => song.title === title)
-          if (userSong) {
-            // T88: tiny status lands before the heavy bytes — joiner sees a
-            // download indicator instead of "waiting for host"
-            network.send({
-              type: 'status',
-              text: `HOST SENDING TRACK (${(userSong.bytes.byteLength / 1e6).toFixed(1)} MB)…`,
-            })
-            network.send({ type: 'lobby_song_custom', title: userSong.title, bytes: userSong.bytes })
-          } else {
-            setError('Could not find track bytes to send!')
-            return
-          }
+          // T88: tiny status lands before the heavy bytes — joiner sees a
+          // download indicator instead of "waiting for host"
+          network.send({
+            type: 'status',
+            text: `HOST SENDING TRACK (${(src.song.bytes.byteLength / 1e6).toFixed(1)} MB)…`,
+          })
+          network.send({ type: 'lobby_song_custom', title: src.song.title, bytes: src.song.bytes })
         }
         state.startRace()
       }
@@ -84,7 +88,13 @@ export function MultiplayerLobby() {
       const song = BUNDLED_SONGS.find(s => s.id === msg.songId)
       if (song) {
         useGame.getState().setMultiplayer(true, false)
-        await startBundledRace(song.url, song.title)
+        await startBundledRace(song.url, bundledDisplayTitle(song), song.id)
+      }
+    } else if (msg.type === 'lobby_song_synth') {
+      const spec = BUILTIN_SONGS.find(s => s.id === msg.songId)
+      if (spec) {
+        useGame.getState().setMultiplayer(true, false)
+        await startBuiltinRace(spec)
       }
     } else if (msg.type === 'lobby_song_custom') {
       network.send({ type: 'status', text: 'OPPONENT ANALYZING TRACK…' })

@@ -9,8 +9,8 @@ Anti-gravity racing where **your music is the track**. Drop in any audio file �
 - Audio analysis → track generation, no server, no `Math.random` — every twist is seeded from the song
 - Drops become jumps. Breakdowns become glide tunnels. Onset-dense peaks spawn corkscrews, loops and wall rides
 - WebGPU renderer (three.js + TSL): bloom, depth of field, radial blur, re-entry heat at hyperspeed
-- 5 NPC racers on the same physics rulebook, hull energy, wreck explosions
-- 1v1 multiplayer over WebRTC — the host streams the song to the joiner, both race the identical generated track
+- 5 NPC racers, hull energy, wreck explosions
+- 1v1 multiplayer over WebRTC — the host sends the song file to the joiner, both race the identical generated track
 - Ghost replays shareable as a URL
 - Keyboard + touch, quality tiers, mobile landscape
 

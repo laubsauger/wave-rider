@@ -11,8 +11,10 @@ export interface OpponentState {
   finished: boolean
 }
 
-export type NetworkMessage = 
+export type NetworkMessage =
   | { type: 'lobby_song_builtin', songId: string }
+  /** T182: synth debug track — joiner re-renders it locally (deterministic, V1) */
+  | { type: 'lobby_song_synth', songId: string }
   | { type: 'lobby_song_custom', title: string, bytes: ArrayBuffer }
   | { type: 'lobby_ready' }
   | { type: 'race_start', startTime: number }

@@ -42,6 +42,9 @@ interface GameState {
   features: AudioFeatures | null
   track: TrackData | null
   songTitle: string
+  /** V27: stable song id (bundled id | synth id | user slug) — display titles
+   * are NEVER lookup keys (B38) */
+  songId: string | null
   /** decoded song for playback during race */
   songBuffer: AudioBuffer | null
   result: RaceResult | null
@@ -69,6 +72,7 @@ interface GameState {
     track: TrackData
     songBuffer: AudioBuffer | null
     songTitle: string
+    songId: string
   }) => void
   startRace: () => void
   finishRace: (r: RaceResult) => void
@@ -108,6 +112,7 @@ export const useGame = create<GameState>((set) => ({
   features: null,
   track: null,
   songTitle: '',
+  songId: null,
   songBuffer: null,
   result: null,
   analysisProgress: 0,
@@ -141,8 +146,8 @@ export const useGame = create<GameState>((set) => ({
   toggleCamera: () =>
     set((st) => ({ cameraMode: st.cameraMode === 'chase' ? 'cockpit' : 'chase' })),
   setAnalysis: (analysisProgress) => set({ analysisProgress }),
-  setupRace: ({ features, track, songBuffer, songTitle }) =>
-    set({ features, track, songBuffer, songTitle, screen: 'track-setup', result: null, opponentFinished: false, opponentTimeMs: null, ghostData: null }),
+  setupRace: ({ features, track, songBuffer, songTitle, songId }) =>
+    set({ features, track, songBuffer, songTitle, songId, screen: 'track-setup', result: null, opponentFinished: false, opponentTimeMs: null, ghostData: null }),
   startRace: () => set({ screen: 'race' }),
   finishRace: (result) => set({ result, screen: 'results' }),
   setMultiplayer: (isMultiplayer, isHost = false) => set({ isMultiplayer, isHost }),

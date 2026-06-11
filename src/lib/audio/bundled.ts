@@ -74,6 +74,12 @@ const RAW_SONGS: BundledSong[] = [
 
 export const BUNDLED_SONGS: BundledSong[] = RAW_SONGS.map((s) => ({ ...s, meta: metaFor(s.url) }))
 
+/** the ONE place "ARTIST — TITLE" is composed (T100). Display only — never a
+ * lookup key (V27/B38); ghost-link compat matches against it explicitly. */
+export function bundledDisplayTitle(s: BundledSong): string {
+  return s.artist ? `${s.artist} — ${s.title}` : s.title
+}
+
 export interface BundledMeta {
   waveform: number[]
   durationLabel: string

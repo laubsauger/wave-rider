@@ -55,6 +55,7 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V24: corners CAMBER ∝ coordinated-turn angle atan(k·vC²/g)·0.55, cap 0.76 rad (curve/chicane/split/glide; wallride keeps bankAbs). Flat = straights/speedways only. Transitions: smoothstep edge windows (~15%) + chicane/split S-flip through flat.
 - V25: trackside spawns (pylons, biome) must clear the WHOLE course corridor — spatial-hash check, reject when horizontally within objR+34m AND vertically overlapping a non-own track section. Course crosses its own footprint; own-segment clearance is not enough.
 - V26: localStorage = META RECORDS only (settings, recents, acks) — audio bytes ⊥ localStorage (quota blowup). Song bytes live in session memory | on user's disk via explicit save.
+- V27: song identity = STABLE ID (bundled id | synth id | user slug) carried in store.songId through every flow entry. Display strings ("ARTIST — TITLE") ⊥ lookup keys. MP lobby resolves transfer source by id only.
 
 ## §T tasks
 
@@ -240,6 +241,7 @@ T178|x|perf round 1: dpr deterministic+capped (B36), pipeline warmup @ countdown
 T179|x|UX round: HUD v3 (THRUST=speed story w/ overdrive zone + flush ENERGY bar, eased segment heights), road signage patterns (slant→turn ahead, ticks→technical), restart in pause, fullscreen buttons, loading veil, TrackChips on setup, sponsor boards XL + neon rails, exhaust escalation w/ accent core (de-blinded), progressive kb steering, touch steer gain+centerline|V10,V6,C11
 T180|x|scenery clearance vs WHOLE course (B37): spatial hash + corridor rejection for pylons/biome|V25
 T181|x|song keep: SAVE SONG (pause + results) downloads session bytes, ext via magic-byte sniff; RECENTS in menu — localStorage meta records (V26), session bytes → instant replay, post-reload → re-import picker|I.ui,V26
+T182|x|songId plumbing: store.songId set by EVERY flow entry; lobby resolves bundled|synth|user source by id (pure resolver, tested); synth host → lobby_song_synth msg (deterministic re-render joiner-side, V1)|V27,B38
 
 ## §B bugs
 
@@ -280,3 +282,4 @@ B32|2026-06-11|walkSegment bank guard (`type !== curve && !== chicane → bank=0
 B35|2026-06-11|poseAt CLAMPED s<0 to 0 → every grid ship rendered stacked AT the start line (physics grid fine, render collapsed) — "ships glitching through each other at start"|poseAt extrapolates s<0 along start tangent; render clamps removed (T176)
 B36|2026-06-11|r3f `dpr` prop LOST during async WebGPU renderer init — canvas at pixelRatio 1 until first window resize, then jumped to 2: render res random per session, quality tiers never controlled startup res, "30fps sometimes"|DprSync child applies dpr post-mount, capped at devicePixelRatio (T178)
 B37|2026-06-11|course crosses own footprint → scenery placed clear of OWN segment sat inside a DIFFERENT track section (towers/pylons through the road)|V25 corridor clearance: spatial hash of whole course, reject overlapping spawns (T180)
+B38|2026-06-11|MP host resolved song by DISPLAY title — T100 "ARTIST — TITLE" compose broke BUNDLED_SONGS title match → bundled-track host: "Could not find track bytes to send!", joiner stuck @ connected|V27 (T182)

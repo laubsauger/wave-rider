@@ -1,6 +1,6 @@
 import { useGame } from '../game/store'
 import { startBundledRace } from '../game/flow'
-import { BUNDLED_SONGS } from '../lib/audio/bundled'
+import { BUNDLED_SONGS, bundledDisplayTitle } from '../lib/audio/bundled'
 import { useRef } from 'react'
 import { startFileRace } from '../game/flow'
 
@@ -10,12 +10,16 @@ export function GhostLobby() {
 
   if (!ghost) return null
 
-  const isBuiltin = BUNDLED_SONGS.some((s) => s.title === ghost.songTitle)
+  // B38-class: ghost records the DISPLAY title — match the composed form
+  // (raw-title fallback keeps pre-T100 ghost links alive)
+  const findGhostSong = () =>
+    BUNDLED_SONGS.find((s) => bundledDisplayTitle(s) === ghost.songTitle || s.title === ghost.songTitle)
+  const isBuiltin = !!findGhostSong()
 
   const handlePlayGhost = async () => {
-    const song = BUNDLED_SONGS.find((s) => s.title === ghost.songTitle)
+    const song = findGhostSong()
     if (song) {
-      await startBundledRace(song.url, song.title)
+      await startBundledRace(song.url, bundledDisplayTitle(song), song.id)
     }
   }
 

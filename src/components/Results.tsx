@@ -20,7 +20,7 @@ export function Results() {
   const opponentTimeMs = useGame((s) => s.opponentTimeMs)
   const ghostData = useGame((s) => s.ghostData)
   // T181: keep the track — bytes live in the session library for uploads and
-  // for the song the host streamed over (the joiner's only copy)
+  // for the song the host sent over (the joiner's only copy)
   const songTitle = useGame((s) => s.songTitle)
   const songBytes = useGame((s) => s.userSongs.find((u) => u.title === s.songTitle)?.bytes)
 

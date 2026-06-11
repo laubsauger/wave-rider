@@ -39,10 +39,10 @@ export async function startBuiltinRace(spec: SongSpec): Promise<void> {
   const track = generateTrack(features)
   const songBuffer = pcmToAudioBuffer(pcm, audioContext())
   game.setAnalysis(1)
-  useGame.getState().setupRace({ features, track, songBuffer, songTitle: spec.title })
+  useGame.getState().setupRace({ features, track, songBuffer, songTitle: spec.title, songId: spec.id })
 }
 
-export async function startBundledRace(url: string, title: string): Promise<void> {
+export async function startBundledRace(url: string, title: string, songId: string): Promise<void> {
   const game = useGame.getState()
   game.setScreen('analyzing')
   game.setAnalysis(0.05)
@@ -78,7 +78,7 @@ export async function startBundledRace(url: string, title: string): Promise<void
       bytes = await res.arrayBuffer()
     }
     game.setAnalysis(0.3)
-    await raceFromBytes(bytes, title)
+    await raceFromBytes(bytes, title, false, songId)
   } catch (e) {
     // never strand the user on the analyzing screen
     console.error('bundled song load failed', e)
@@ -114,10 +114,15 @@ export async function startLibraryRace(songId: string): Promise<void> {
     durationLabel: song.durationLabel,
     waveform: song.waveform,
   })
-  await raceFromBytes(song.bytes.slice(0), song.title, false)
+  await raceFromBytes(song.bytes.slice(0), song.title, false, song.id)
 }
 
-async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = false): Promise<void> {
+// V27: stable id for user files — same slug the session library uses
+export function songSlug(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-')
+}
+
+async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = false, songId?: string): Promise<void> {
   const game = useGame.getState()
   const pcm = await decodeForAnalysis(bytes)
   game.setAnalysis(0.55)
@@ -133,7 +138,7 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = f
 
   if (addToLibrary) {
     const meta = {
-      id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+      id: songSlug(title),
       title,
       bpm: Math.round(features.bpm),
       mood: features.mood,
@@ -146,5 +151,5 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = f
     // uploader AND the multiplayer joiner (custom transfer lands here too)
     recordRecent(meta)
   }
-  useGame.getState().setupRace({ features, track, songBuffer, songTitle: title })
+  useGame.getState().setupRace({ features, track, songBuffer, songTitle: title, songId: songId ?? songSlug(title) })
 }

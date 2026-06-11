@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu'
 import { GpuCanvas } from '../scene/GpuCanvas'
 import { ShipMesh } from '../scene/ShipMesh'
 import { BUILTIN_SONGS } from '../lib/audio/builtin'
-import { BUNDLED_SONGS, getBundledMeta, type BundledMeta, type BundledSong } from '../lib/audio/bundled'
+import { BUNDLED_SONGS, bundledDisplayTitle, getBundledMeta, type BundledMeta, type BundledSong } from '../lib/audio/bundled'
 import { startBuiltinRace, startBundledRace, startFileRace, startLibraryRace } from '../game/flow'
 import { useGame } from '../game/store'
 import { setMuted } from '../lib/audio/playback'
@@ -52,7 +52,7 @@ function BundledCard({ song }: { song: BundledSong }) {
       className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left short:px-3 short:py-1.5 transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
       onPointerEnter={loadMeta}
       onFocus={loadMeta}
-      onClick={() => void startBundledRace(song.url, song.artist ? `${song.artist} — ${song.title}` : song.title)}
+      onClick={() => void startBundledRace(song.url, bundledDisplayTitle(song), song.id)}
     >
       {meta && <Waveform peaks={meta.waveform} color="#2ff3ff" />}
       <span className="relative block text-xl font-bold tracking-[0.25em] text-white group-hover:text-(--color-neon) short:text-sm">
