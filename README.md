@@ -1,8 +1,6 @@
 # WAVE RIDER
 
 [![Deploy](https://github.com/laubsauger/wave-rider/actions/workflows/deploy.yml/badge.svg)](https://github.com/laubsauger/wave-rider/actions/workflows/deploy.yml)
-[![Stars](https://img.shields.io/github/stars/laubsauger/wave-rider?style=flat)](https://github.com/laubsauger/wave-rider/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/laubsauger/wave-rider)](https://github.com/laubsauger/wave-rider/commits/main)
 ![WebGPU](https://img.shields.io/badge/WebGPU-only-ff6b35)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
 
