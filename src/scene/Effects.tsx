@@ -22,6 +22,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
   const uCa = useMemo(() => uniform(0), [])
   const uBokeh = useMemo(() => uniform(0.5), [])
   const uVig = useMemo(() => uniform(0.26), [])
+  const uHeat = useMemo(() => uniform(0), [])
 
   const post = useMemo(() => {
     if (fxIntensity <= 0) return null
@@ -60,10 +61,17 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const sCurve = c01.mul(c01).mul(c01.mul(-2).add(3))
     const toned = mix(rgb, sCurve, 0.22 * fxIntensity)
 
-    // T162: vignette is ALIVE — always-there base, tightening into tunnel
-    // vision as speed climbs (uVig driven per frame)
-    const vig = smoothstep(0.34, 1.0, dir.length()).mul(uVig) // T167: ring reaches IN
+    // T162/T169: vignette is ALIVE — punched visible, tightening into
+    // tunnel vision as speed climbs (uVig driven per frame)
+    const vig = smoothstep(0.24, 0.85, dir.length()).mul(uVig)
     const vignetted = toned.mul(vig.oneMinus())
+
+    // T169: RE-ENTRY HEAT — past ~1000 kph the screen edges ignite, plasma
+    // veil intensifying toward the ceiling. Hot orange→white, shimmering.
+    const heatMask = smoothstep(0.3, 0.85, dir.length())
+    const heatShimmer = hash(uv().x.mul(733.7).add(uv().y.mul(521.3)).add(time.mul(43))).mul(0.3).add(0.7)
+    const heatCol = mix(vec3(1.0, 0.32, 0.08), vec3(1.0, 0.85, 0.55), uHeat)
+    const heated = vignetted.add(heatCol.mul(heatMask).mul(heatShimmer).mul(uHeat).mul(0.55))
 
     // film grain — B25: seed multipliers must exceed pixel pitch or
     // hash().toUint() quantizes neighbors together → horizontal static
@@ -72,9 +80,9 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const grain = hash(grainSeed).sub(0.5).mul(0.014 * fxIntensity)
 
     const post = new THREE.PostProcessing(renderer)
-    post.outputNode = vec4(vignetted.add(grain), 1)
+    post.outputNode = vec4(heated.add(grain), 1)
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uVig])
+  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uVig, uHeat])
 
   useEffect(() => {
     return () => {
@@ -88,14 +96,18 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
       (Math.max(0, (kph - 480) / 600) + telemetry.boostFlash * 0.5 + telemetry.beat * 0.08) * fxIntensity
     uBlur.value += (Math.min(1.4, target) - uBlur.value) * 0.1
     // CA: faint floor, ramps with speed + boost kick
-    const caTarget = (0.0006 + Math.max(0, kph - 300) / 900 * 0.004 + telemetry.boostFlash * 0.002) * fxIntensity
-    uCa.value += (Math.min(0.006, caTarget) - uCa.value) * 0.12
+    const caTarget = (0.0006 + Math.max(0, kph - 300) / 900 * 0.004 + telemetry.boostFlash * 0.002 + uHeat.value * 0.005) * fxIntensity
+    uCa.value += (Math.min(0.011, caTarget) - uCa.value) * 0.12
     // T137: bokeh swells with speed — standing still stays crisp
     const bokehTarget = (0.4 + Math.min(1, kph / 900) * 2.4) * fxIntensity
     uBokeh.value += (bokehTarget - uBokeh.value) * 0.08
-    // T162: tunnel vision — base ring always present, clamps in with speed
-    const vigTarget = (0.22 + Math.min(0.55, (kph / 1000) * 0.55) + telemetry.boostFlash * 0.12) * fxIntensity // T167
+    // T162/T169: tunnel vision — base ring always present, clamps with speed
+    // over the hyperspeed range
+    const vigTarget = (0.28 + Math.min(0.6, (kph / 1900) * 0.6) + telemetry.boostFlash * 0.12) * fxIntensity
     uVig.value += (vigTarget - uVig.value) * 0.06
+    // T169: re-entry heat builds 1000 → 2500 kph
+    const heatTarget = Math.min(1, Math.max(0, (kph - 1000) / 1500)) * fxIntensity
+    uHeat.value += (heatTarget - uHeat.value) * 0.05
     if (post) post.render()
     else renderer.render(scene, camera)
   }, 1)

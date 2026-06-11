@@ -7,6 +7,7 @@ import { attachKeyboard, onGameKey, readShipInput, resetInput } from '../game/in
 import {
   computeLean,
   initialShip,
+  shipVmax,
   stepShip,
   PHYSICS_DT,
   type ShipInput,
@@ -24,7 +25,7 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
-import { beep, goChord, sonicBoom } from '../lib/audio/sfx'
+import { beep, goChord } from '../lib/audio/sfx'
 import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
@@ -348,7 +349,9 @@ export function RaceScene({
     if (boostEvent) s.shake.trauma = Math.min(1, s.shake.trauma + 0.18)
     // T167: SONIC BOOM — punching through 93% of vmax pops a shockwave,
     // flash, boom + buzz; re-arms once you fall back under 85%
-    const vmaxNow = track.avgSpeed * 1.62
+    // B33: threshold vs UNBOOSTED vmax fired a boom on every pad — blip spam.
+    // Boom marks touching the ABSOLUTE ceiling (boosted vmax).
+    const vmaxNow = shipVmax(track.avgSpeed, true)
     if (!s.sonicArmed && s.ship.v < vmaxNow * 0.85) s.sonicArmed = true
     if (s.sonicArmed && s.ship.v >= vmaxNow * 0.93) {
       s.sonicArmed = false
@@ -359,7 +362,7 @@ export function RaceScene({
       }
       telemetry.boostFlash = Math.max(telemetry.boostFlash, 0.9)
       s.shake.trauma = Math.min(1, s.shake.trauma + 0.3)
-      sonicBoom()
+      // T169: boom is VISUAL — shockwave + flash + shake + buzz, no sfx
       if (fxIntensity > 0) haptics.boost()
     }
 
@@ -719,7 +722,7 @@ function updateCamera(
   camera.lookAt(camTarget)
 
   // speed FOV: subtle always, boost kick scaled by fx
-  const speedNorm = Math.min(1, ship.v / 280)
+  const speedNorm = Math.min(1, ship.v / 430) // T169: fov spread over the new range
   const targetFov = 62 + speedNorm * 31 + (ship.boost > 0 ? 10 * fxIntensity : 0) + s.pull * 7 // T167
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4)
   camera.updateProjectionMatrix()

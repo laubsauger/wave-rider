@@ -43,7 +43,7 @@ const ACCENTS = ['#ff5533', '#ffd23d', '#7bff8a', '#b07bff', '#ff7bd5'] as const
 // T145 → T159: top of the field runs at the player's no-boost cruise —
 // you BEAT them with boost pads and clean lines, not by default
 // T164: tail tightened — back-markers race too; VEKTOR stays the cookie
-const BASE_PACE = [1.62, 1.55, 1.48, 1.4, 1.32] as const
+const BASE_PACE = [1.7, 1.62, 1.5, 1.4, 1.32] as const // T168: VEKTOR is a PRO
 
 export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
   const rng = mulberry32((track.seed ^ 0x4e9c11) >>> 0)
@@ -58,8 +58,8 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
       lanePref: rngRange(rng, -0.7, 0.7),
       wobbleFreq: rngRange(rng, 0.25, 0.7),
       wobbleAmp: rngRange(rng, 0.5, 2),
-      // T145/T159: nobody is hopeless in corners anymore
-      cornerSkill: rngRange(rng, 0.65, 0.95),
+      // T145/T159/T168: top two are guaranteed corner pros
+      cornerSkill: Math.max(rngRange(rng, 0.65, 0.95), i === 0 ? 0.92 : i === 1 ? 0.85 : 0),
       phase: rngRange(rng, 0, Math.PI * 2),
       gridRow: Math.floor(i / 2),
       gridD: i % 2 === 0 ? -5 : 5,
@@ -99,9 +99,9 @@ export function stepNpc(
   // teleporting to top speed; the pack stays a pack.
   // T161: an active boost lifts both the target and the envelope.
   const boosted = state.boost > 0 ? 1 : 0
-  const vRatio = Math.min(1, state.v / Math.max(1, track.avgSpeed * spec.pace * (1 + boosted * 0.18)))
-  const maxA = track.avgSpeed * 0.36 * (1 - Math.pow(vRatio, 1.4)) + 6 + boosted * 60
-  const want = (targetV * (1 + boosted * 0.18) - state.v) * Math.min(1, dt * 1.6)
+  const vRatio = Math.min(1, state.v / Math.max(1, track.avgSpeed * spec.pace * (1 + boosted * 0.14)))
+  const maxA = track.avgSpeed * 0.36 * (1 - Math.pow(vRatio, 1.4)) + 6 + boosted * 50 // T170
+  const want = (targetV * (1 + boosted * 0.14) - state.v) * Math.min(1, dt * 1.6)
   state.v += Math.max(-track.avgSpeed * 0.6 * dt, Math.min(maxA * dt, want))
   state.boost = Math.max(0, state.boost - dt)
 
@@ -113,8 +113,8 @@ export function stepNpc(
     if (state.s >= pad.s - 14 && state.s <= pad.s + 14) {
       const padD = pad.lane * (track.width / 2 - 1.5)
       if (Math.abs(state.d - padD) <= 3.2) {
-        state.boost = 1.1
-        state.v += 22
+        state.boost = 0.9 // T170
+        state.v += 15
       }
       state.lastBoostIdx = bi
     }

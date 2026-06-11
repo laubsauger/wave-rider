@@ -374,7 +374,7 @@ export function WarpStreaks({
     if (!ship || !mesh || !group) return
 
     const v = speed()
-    const vmax = track.avgSpeed * 1.62 + 75
+    const vmax = track.avgSpeed * 3.0 + 100 // T169
     // T111: later onset, subtle ceiling — present at pace, loud never
     const strength = (Math.max(0, (v / vmax - 0.6) / 0.4) + telemetry.beat * 0.08) * fxIntensity
     if (matRef.current) matRef.current.opacity = Math.min(0.34, strength * 0.4)

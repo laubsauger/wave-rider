@@ -101,9 +101,10 @@ const BOOST_HALF_WIDTH = 2.2
 /** arcade gravity, m/s² — heavier than earth so jumps stay snappy */
 const GRAVITY = 34
 
-/** top speed for a track's design pace — single source for sim, fx, tests (V12) */
+/** top speed for a track's design pace — single source for sim, fx, tests (V12).
+ * T169: HYPERSPEED ceiling — ~2000-2600 kph at the top of a boost chain. */
 export function shipVmax(avgSpeed: number, boosted: boolean): number {
-  return avgSpeed * 1.62 + (boosted ? 75 : 0)
+  return avgSpeed * 3.0 + (boosted ? 100 : 0)
 }
 
 /** road slope dy/ds at sample i */
@@ -139,13 +140,15 @@ export function stepShip(
   // longitudinal
   const vRatio = Math.min(1, state.v / vmax)
   let a = input.thrust * accel * (1 - Math.pow(vRatio, 1.4))
-  // B14: engine braking — off throttle the field drag bites hard
-  a -= state.v * (0.05 + (1 - input.thrust) * 0.28)
+  // B14: engine braking — off throttle the field drag bites hard.
+  // T170: quadratic air drag — no-boost cruise settles ~55% of vmax; the
+  // ceiling is reachable ONLY through sustained boost chains (discipline).
+  a -= state.v * (0.05 + (1 - input.thrust) * 0.28) + state.v * state.v * 0.00012
   a -= braking * state.v * 0.35 // airbrake scrub
   // T156: retro brake — reverse thrust, way harder than coasting
   const retro = input.retro ? 1 : 0
   a -= retro * (accel * 0.9 + state.v * 0.12)
-  if (state.boost > 0) a += 90
+  if (state.boost > 0) a += 75 // T170
   state.v = Math.max(0, state.v + a * dt)
   state.boost = Math.max(0, state.boost - dt)
 
@@ -177,8 +180,11 @@ export function stepShip(
   // T65: banked track grips — frame tilt (upY < 1) cuts outward drift
   const upYHere = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
   const bankGrip = Math.max(0.3, 1 - (1 - Math.min(1, Math.abs(upYHere))) * 3)
-  // T143: outward drift eased (0.38→0.31) — the "auto-steer fighting me" feel
-  const drift = k * state.v * state.v * 0.31 * (1 - 0.35 * carveAlign) * bankGrip
+  // T143 → T168: drift back UP (0.36) + carve assist trimmed (0.25) —
+  // drawn-out turns demand sustained steering, not hold-forward
+  // T169: drift grows v² up to 320 m/s then linear — hyperspeed cruising
+  // stays controllable instead of demanding superhuman correction
+  const drift = k * state.v * Math.min(state.v, 320) * 0.36 * (1 - 0.25 * carveAlign) * bankGrip
   // T65 traction: lateral velocity converges toward demand at a grip rate —
   // the ship slides then bites. Airbrakes add bite.
   const tractionRate = 5 + braking * 6 + carveAlign * 2
@@ -305,8 +311,8 @@ export function stepShip(
     if (state.s >= pad.s - BOOST_LEN && state.s <= pad.s + BOOST_LEN) {
       const padD = pad.lane * (track.width / 2 - 1.5)
       if (!state.airborne && Math.abs(state.d - padD) <= BOOST_HALF_WIDTH + SHIP_HALF_WIDTH) {
-        state.boost = 1.1
-        state.v += 25
+        state.boost = 0.9 // T170: smaller punch — chains matter
+        state.v += 15
         state.boostsHit++
         events.boostFired = true
       }

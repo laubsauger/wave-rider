@@ -102,7 +102,7 @@ export function generateTrack(features: AudioFeatures): TrackData {
   // V3: speed scales with bpm + intensity. 70..210 m/s feels WipEout-ish.
   const avgSpeed = 70 + features.intensity * 100 + clamp01((features.bpm - 70) / 110) * 40
   const length = avgSpeed * features.duration
-  const width = 26 - features.intensity * 6 // intense music → narrower, scarier
+  const width = 30 - features.intensity * 6 // T169: wider base for hyperspeed
 
   const { points, segments, rolls, ups } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
@@ -237,7 +237,7 @@ function layoutCourse(
 
   // V20/B10: curvature must scale with design speed — target max lateral
   // accel ~50 m/s² at the reference max curve k of 0.012
-  const kScale = Math.min(1, 50 / (avgSpeed * avgSpeed * 0.012))
+  const kScale = Math.min(1, 42 / (avgSpeed * avgSpeed * 0.012)) // T170: hyperspeed arcs
 
   // T154: spectacle gates are RELATIVE to the song's own dynamics — real
   // analysis yields section energies ~0.2-0.55, half the synthetic scale the
@@ -400,7 +400,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     return {
       type: 'chicane',
       length: rngRange(rng, 360, 560),
-      curvature: rngRange(rng, 0.005, 0.008) * (rng() < 0.5 ? -1 : 1),
+      curvature: rngRange(rng, 0.004, 0.0065) * (rng() < 0.5 ? -1 : 1), // T170
       slope: 0,
       bankGain: 400,
     }
@@ -428,7 +428,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       return {
         type: 'chicane',
         length: rngRange(rng, 120, 220),
-        curvature: rngRange(rng, 0.012, 0.022) * (rng() < 0.5 ? -1 : 1),
+        curvature: rngRange(rng, 0.009, 0.017) * (rng() < 0.5 ? -1 : 1), // T170
         slope: 0,
         bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
       }
@@ -436,27 +436,34 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     if (roll < 0.75) {
       return { type: 'straight', length: rngRange(rng, 250, 450), curvature: 0, slope: rngRange(rng, -0.035, 0.035), widthScale: rngRange(rng, 0.9, 1.4), walls: rng() >= 0.3 } // T163/T164
     }
-    return {
-      type: 'curve',
-      length: rngRange(rng, 220, 420),
-      curvature: rngRange(rng, 0.006, 0.012) * (rng() < 0.5 ? -1 : 1),
-      slope: 0,
-      bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
-      widthScale: rngRange(rng, 0.78, 1.25), // T164: line choice matters
-      walls: rng() >= 0.15,
+    {
+      // T168: LONG sweepers run WIDE (room to be wrong), short curves tight
+      const len = rngRange(rng, 220, 420)
+      return {
+        type: 'curve',
+        length: len,
+        curvature: rngRange(rng, 0.006, 0.012) * (rng() < 0.5 ? -1 : 1),
+        slope: 0,
+        bankGain: 170 + e * 240, // T151
+        widthScale: len > 340 ? rngRange(rng, 1.25, 1.8) : rngRange(rng, 0.85, 1.1), // T170
+        walls: rng() >= 0.15,
+      }
     }
   }
 
   if (e > 0.3) {
     if (roll < 0.5) {
-      return {
-        type: 'curve',
-        length: rngRange(rng, 240, 460),
-        curvature: rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1),
-        slope: rngRange(rng, -0.015, 0.015),
-        bankGain: 170 + e * 240, // T151
-        widthScale: rngRange(rng, 0.78, 1.25), // T164
-        walls: rng() >= 0.15,
+      {
+        const len = rngRange(rng, 240, 460) // T168: long = wide
+        return {
+          type: 'curve',
+          length: len,
+          curvature: rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1),
+          slope: rngRange(rng, -0.015, 0.015),
+          bankGain: 170 + e * 240, // T151
+          widthScale: len > 360 ? rngRange(rng, 1.25, 1.8) : rngRange(rng, 0.85, 1.1), // T170
+          walls: rng() >= 0.15,
+        }
       }
     }
     if (roll < 0.75) {
@@ -542,7 +549,7 @@ function walkSegment(
       // seg.slope carries drop strength: ramp to a crest @ 28%, then a
       // catchable dive (T36 → T158: gentler crest, shallower dive)
       const t = i / steps
-      slopeTarget = t < 0.28 ? 0.05 + seg.slope * 0.025 : -0.085 * seg.slope - 0.04
+      slopeTarget = t < 0.28 ? 0.04 + seg.slope * 0.018 : -0.06 * seg.slope - 0.03 // T170
       ease = 0.45
     }
     cur.heading += k * ds

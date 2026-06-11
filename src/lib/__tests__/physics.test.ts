@@ -169,7 +169,8 @@ describe('airtime (T26, V16)', () => {
       if (ev.takeoff) tookOff = true
       if (ship.airborne) airSteps++
       if (ev.landed) landed = true
-      expect(ship.air).toBeGreaterThanOrEqual(0)
+      // T131/T168: air runs negative during a rail-less plunge by design
+      if (!ship.falling) expect(ship.air).toBeGreaterThanOrEqual(0)
     }
     expect(tookOff).toBe(true)
     expect(landed).toBe(true)

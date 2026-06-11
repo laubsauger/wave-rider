@@ -219,8 +219,11 @@ T162|x|dynamic vignette: always-on base, tightens w/ speed + boost (tunnel visio
 T163|x|elevation amplitude v3: slope bias ↑, steeper hills/straights — ⊥ flat-on-average course|V3,V16
 T164|x|skill ceiling: NPC tail tightened (1.32 floor, VEKTOR stays 1.62 cookie); per-segment width variation (curves 0.78-1.25, straights 0.9-1.4) — line choice matters; rails GONE on ~30% straights, 15% curves, 20% corkscrews|V13,V15,V3,T77,T78
 T165|x|TRUE wall rides: ~30% of wallrides go near-VERTICAL (85°, shorter, slimmer) — coordination test on the wall face|V3,V20,V1
-T166|.|darkness v2: ambient/env floors ↓↓ (quiet = actually DARK), emissive idle floors trimmed; gate casings get support legs + faint edge tint — integrated structures ⊥ scattered dark frames|C11,V3,V19
-T167|.|speed payoff: vignette tunnel ACTUALLY clamps (mask in + max ↑), fov surge ↑, SONIC BOOM @ 93% vmax — shockwave + flash + boom + haptic, re-arms below 85%|V10,C11,V12
+T166|x|darkness v2: ambient/env floors ↓↓ (quiet = actually DARK), emissive idle floors trimmed; gate casings get support legs + faint edge tint — integrated structures ⊥ scattered dark frames|C11,V3,V19
+T167|x|speed payoff: vignette tunnel ACTUALLY clamps (mask in + max ↑), fov surge ↑, SONIC BOOM @ 93% vmax — shockwave + flash + boom + haptic, re-arms below 85%|V10,C11,V12
+T168|x|race feel v4: VEKTOR 1.7 + guaranteed top-2 corner skill (pro tier); drift ↑ 0.36 + carve assist ↓ (turns demand steering); LONG curves run WIDE (1.15-1.6×, room to be wrong) while short stay tight; sonic boom vs BOOSTED vmax (B33: fired on every pad crossing = the blip)|V13,V18,V20,V12
+T169|x|HYPERSPEED: vmax → avgSpeed×3+100 (~2000-2600 kph ceiling); drift v² capped @ 320 m/s (ultra speed controllable); base width ↑; RE-ENTRY HEAT veil 1000→2500 kph (orange edge glow + CA ∝ heat); vignette punched visible; sonic boom = VISUAL only (sound out), threshold rides new ceiling|V12,V20,V10,C11
+T170|.|boost DISCIPLINE = skill ceiling: quadratic drag drops no-boost cruise ~55% vmax, per-boost punch ↓ (kick 15, window 0.9s, accel 75) — holding near max takes sustained chains; gen recalibrated for hyperspeed: jumps gentler, chicane/sbank curvature ↓, global k budget 50→42, long curves wider (1.25-1.8)|V12,V16,V20,V3
 
 ## §B bugs
 
@@ -255,4 +258,5 @@ B28|2026-06-11|ridge cones radius ≤230m placed 170m off-track → faces reache
 B29|2026-06-11|occluded tab suspends rAF → next frame's giant dt skipped countdown + fast-forwarded sim in one burst (B11 lesson, race-loop edition)|dt clamped to 0.1s in RaceScene frame loop
 B30|2026-06-11|start-grid slot pads (6×9m, emissive glow 0.35, ×6) fused into one theme-colored carpet = the "green/red slab @ start" — blamed on apron, road env, ridges before raycast probe found it|slots dimmed to faint outlines (emissive 0.05, opacity 0.45)
 B31|2026-06-11|section boundary truncates corkscrew → walkSegment still rolls FULL 2π over the stub → violent frame twist @ seam, hitch + ship kicked off|shrink to remaining if ≥320m else demote to straight; test pins min corkscrew length
+B33|2026-06-11|sonic boom threshold vs UNBOOSTED vmax → every boost pad crossing re-fired it = random blips|threshold vs shipVmax(boosted) — boom only at the absolute ceiling (T168)
 B32|2026-06-11|walkSegment bank guard (`type !== curve && !== chicane → bank=0`) silently DISCARDED wallride banks since T92 — every "wallride" shipped flat; censuses counted them, nobody ever rode one|guard admits wallride + faster bank ease (0.4); test pins 60°/84° banks + rideability
