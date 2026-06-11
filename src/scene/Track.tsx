@@ -33,13 +33,77 @@ import { telemetry } from '../game/telemetry'
 
 const stripeTarget = new THREE.Color()
 
-function toGeometry(r: RibbonGeometry): THREE.BufferGeometry {
-  const g = new THREE.BufferGeometry()
-  g.setAttribute('position', new THREE.BufferAttribute(r.positions, 3))
-  g.setAttribute('normal', new THREE.BufferAttribute(r.normals, 3))
-  g.setAttribute('uv', new THREE.BufferAttribute(r.uvs, 2))
-  g.setIndex(new THREE.BufferAttribute(r.indices, 1))
-  return g
+interface ExtraAttr {
+  name: string
+  array: Float32Array
+  /** floats per VERTEX (2 verts per sample) */
+  itemSize: number
+}
+
+/**
+ * T173: split a full-track ribbon into ~220-sample chunks (≈0.7-1.3km).
+ * A whole-track mesh has ONE bounding sphere — frustum culling never drops
+ * it and the GPU draws the entire course every frame. Chunks cull properly,
+ * and TrackChunks additionally hides ones beyond the fog wall.
+ */
+function toChunkedGeometries(r: RibbonGeometry, extras: ExtraAttr[] = []): THREE.BufferGeometry[] {
+  const totalSamples = r.uvs.length / 4 // 2 verts × 2 uv floats per sample
+  const CHUNK = 220
+  const out: THREE.BufferGeometry[] = []
+  for (let s0 = 0; s0 < totalSamples - 1; s0 += CHUNK) {
+    const s1 = Math.min(totalSamples - 1, s0 + CHUNK) // overlap 1 sample — no seam
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(r.positions.slice(s0 * 6, (s1 + 1) * 6), 3))
+    g.setAttribute('normal', new THREE.BufferAttribute(r.normals.slice(s0 * 6, (s1 + 1) * 6), 3))
+    g.setAttribute('uv', new THREE.BufferAttribute(r.uvs.slice(s0 * 4, (s1 + 1) * 4), 2))
+    for (const ex of extras) {
+      g.setAttribute(
+        ex.name,
+        new THREE.BufferAttribute(ex.array.slice(s0 * 2 * ex.itemSize, (s1 + 1) * 2 * ex.itemSize), ex.itemSize),
+      )
+    }
+    const n = s1 - s0
+    const idx = new Uint32Array(n * 6)
+    for (let i = 0; i < n; i++) {
+      const a = i * 2
+      idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6)
+    }
+    g.setIndex(new THREE.BufferAttribute(idx, 1))
+    g.computeBoundingSphere()
+    out.push(g)
+  }
+  return out
+}
+
+/** chunk meshes + per-frame fog-distance culling */
+function TrackChunks({
+  chunks,
+  material,
+  fogFar,
+  receiveShadow = false,
+}: {
+  chunks: THREE.BufferGeometry[]
+  material: THREE.Material
+  fogFar: number
+  receiveShadow?: boolean
+}) {
+  const refs = useRef<(THREE.Mesh | null)[]>([])
+  useFrame(({ camera }) => {
+    for (let i = 0; i < chunks.length; i++) {
+      const m = refs.current[i]
+      const bs = chunks[i].boundingSphere
+      if (!m || !bs) continue
+      const reach = fogFar + bs.radius
+      m.visible = bs.center.distanceToSquared(camera.position) < reach * reach
+    }
+  })
+  return (
+    <>
+      {chunks.map((g, i) => (
+        <mesh key={i} ref={(m) => void (refs.current[i] = m)} geometry={g} material={material} receiveShadow={receiveShadow} />
+      ))}
+    </>
+  )
 }
 
 /**
@@ -99,24 +163,23 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
 
   const geo = useMemo(() => {
     const railColors = railSectionColors(track, frames)
-    const railL = toGeometry(buildRail(track, frames, -1))
-    const railR = toGeometry(buildRail(track, frames, 1))
-    railL.setAttribute('color', new THREE.BufferAttribute(railColors, 3))
-    railR.setAttribute('color', new THREE.BufferAttribute(railColors, 3))
-    const road = toGeometry(buildRoad(track, frames))
+    const colorAttr: ExtraAttr = { name: 'color', array: railColors, itemSize: 3 }
     const pat = roadPatternAttrs(track, frames)
-    road.setAttribute('aPhase', new THREE.BufferAttribute(pat.phase, 1))
-    road.setAttribute('aSlant', new THREE.BufferAttribute(pat.slant, 1))
-    road.setAttribute('aVis', new THREE.BufferAttribute(pat.vis, 1))
     return {
-      road,
-      railL,
-      railR,
-      wallL: toGeometry(buildWall(track, frames, -1)),
-      wallR: toGeometry(buildWall(track, frames, 1)),
+      road: toChunkedGeometries(buildRoad(track, frames), [
+        { name: 'aPhase', array: pat.phase, itemSize: 1 },
+        { name: 'aSlant', array: pat.slant, itemSize: 1 },
+        { name: 'aVis', array: pat.vis, itemSize: 1 },
+      ]),
+      railL: toChunkedGeometries(buildRail(track, frames, -1), [colorAttr]),
+      railR: toChunkedGeometries(buildRail(track, frames, 1), [colorAttr]),
+      wallL: toChunkedGeometries(buildWall(track, frames, -1)),
+      wallR: toChunkedGeometries(buildWall(track, frames, 1)),
       pads: buildBoostPads(track, frames),
     }
   }, [track, frames])
+
+  const fogFar = 3 / track.theme.fogDensity
 
   // V19 rails: section-colored vertex attribute × music-pulsed intensity
   const uRail = useMemo(() => uniform(1.8), [])
@@ -318,7 +381,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
 
   return (
     <group>
-      <mesh geometry={geo.road} material={roadMat} receiveShadow />
+      <TrackChunks chunks={geo.road} material={roadMat} fogFar={fogFar} receiveShadow />
       {/* T73/T108/T126: start apron — matte near-black, slimmed flush with
           the road so it reads as deck continuation, not a foreign slab */}
       <mesh name="apron" position={deck.pos} quaternion={deck.q}>
@@ -377,12 +440,10 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
           <meshBasicMaterial color={slotAccents[i] ?? track.theme.glow} toneMapped={false} />
         </mesh>
       ))}
-      {[geo.railL, geo.railR].map((g, i) => (
-        <mesh key={i} geometry={g} material={railMaterial} />
-      ))}
-      {[geo.wallL, geo.wallR].map((g, i) => (
-        <mesh key={i} geometry={g} material={wallMat} />
-      ))}
+      <TrackChunks chunks={geo.railL} material={railMaterial} fogFar={fogFar} />
+      <TrackChunks chunks={geo.railR} material={railMaterial} fogFar={fogFar} />
+      <TrackChunks chunks={geo.wallL} material={wallMat} fogFar={fogFar} />
+      <TrackChunks chunks={geo.wallR} material={wallMat} fogFar={fogFar} />
       <instancedMesh
         ref={(mesh) => {
           padMesh.current = mesh

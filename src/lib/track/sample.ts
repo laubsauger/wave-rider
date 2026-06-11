@@ -145,8 +145,26 @@ export interface FramePose {
   bz: number
 }
 
-/** Interpolated pose at arc length s, lateral offset d, height h above road. */
+/** Interpolated pose at arc length s, lateral offset d, height h above road.
+ * Negative s extrapolates straight back along the start tangent — the launch
+ * grid lives at s<0; clamping used to render every grid ship stacked AT the
+ * line (they share s=0 visually until launch). */
 export function poseAt(frames: TrackFrames, s: number, d: number, h: number, out: FramePose): FramePose {
+  if (s < 0) {
+    out.tx = frames.tangents[0]
+    out.ty = frames.tangents[1]
+    out.tz = frames.tangents[2]
+    out.nx = frames.normals[0]
+    out.ny = frames.normals[1]
+    out.nz = frames.normals[2]
+    out.bx = frames.binormals[0]
+    out.by = frames.binormals[1]
+    out.bz = frames.binormals[2]
+    out.px = frames.positions[0] + out.tx * s + out.bx * d + out.nx * h
+    out.py = frames.positions[1] + out.ty * s + out.by * d + out.ny * h
+    out.pz = frames.positions[2] + out.tz * s + out.bz * d + out.nz * h
+    return out
+  }
   const f = Math.min(frames.count - 1.001, Math.max(0, s / frames.ds))
   const i0 = Math.floor(f)
   const i1 = i0 + 1

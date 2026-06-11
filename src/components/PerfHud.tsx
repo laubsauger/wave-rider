@@ -20,6 +20,21 @@ export function PerfHud() {
     return () => window.removeEventListener('keydown', key)
   }, [])
 
+  // long tasks (>50ms main-thread blocks) — the usual hitch culprit
+  const longTasks = useRef(0)
+  useEffect(() => {
+    if (!on || typeof PerformanceObserver === 'undefined') return
+    try {
+      const obs = new PerformanceObserver((list) => {
+        longTasks.current += list.getEntries().length
+      })
+      obs.observe({ entryTypes: ['longtask'] })
+      return () => obs.disconnect()
+    } catch {
+      /* longtask unsupported — counter stays 0 */
+    }
+  }, [on])
+
   useEffect(() => {
     if (!on) return
     let raf = 0
@@ -40,9 +55,11 @@ export function PerfHud() {
         const mpix = c ? ((c.width * c.height) / 1e6).toFixed(1) : '0'
         // gpu = measured render time on the GPU (timestamp queries), the
         // number that matters — rAF fps just mirrors vsync
-        const gpu = telemetry.gpuMs > 0 ? ` · gpu ${telemetry.gpuMs.toFixed(1)}ms` : ''
+        const gpu = telemetry.gpuMs > 0 ? ` · gpu ${telemetry.gpuMs.toFixed(1)}` : ''
+        const cpu = telemetry.cpuMs > 0 ? ` cpu ${telemetry.cpuMs.toFixed(1)}` : ''
+        const lt = longTasks.current > 0 ? ` lt${longTasks.current}` : ''
         const dc = telemetry.drawCalls > 0 ? ` ${telemetry.drawCalls}dc ${(telemetry.triangles / 1000).toFixed(0)}kt` : ''
-        ref.current.textContent = `${Math.round(1000 / avg)}fps ${avg.toFixed(1)}ms ▲${worst.toFixed(0)}${gpu}${dc} · ${c?.width ?? 0}×${c?.height ?? 0} (${mpix}MP) @${(window.devicePixelRatio || 1).toFixed(1)}x`
+        ref.current.textContent = `${Math.round(1000 / avg)}fps ${avg.toFixed(1)}ms ▲${worst.toFixed(0)}${gpu}${cpu}${lt}${dc} · ${c?.width ?? 0}×${c?.height ?? 0} (${mpix}MP) @${(window.devicePixelRatio || 1).toFixed(1)}x`
         acc = 0
         n = 0
         worst = 0
@@ -56,7 +73,7 @@ export function PerfHud() {
   return (
     <div
       ref={ref}
-      className="pointer-events-none fixed bottom-1 left-1 z-50 rounded bg-black/60 px-1.5 py-0.5 font-mono text-[10px] tracking-tight text-white/70"
+      className="pointer-events-none fixed bottom-1 left-1 z-50 rounded border border-white/15 bg-black px-2 py-1 font-mono text-[11px] tracking-tight text-white/90"
     />
   )
 }

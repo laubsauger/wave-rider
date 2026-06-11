@@ -29,6 +29,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
   /** hull-damage static — ramps in below 35% energy */
   const uDmg = useMemo(() => uniform(0), [])
   const frameN = useRef(0)
+  const lastGpuT = useRef(0)
 
   const post = useMemo(() => {
     if (fxIntensity <= 0) return null
@@ -105,6 +106,12 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     }
   }, [post])
 
+  // T173: earliest hook this frame — stamps the start so the post-render
+  // delta below = total main-thread JS time (sim + scene + render encode)
+  useFrame(() => {
+    telemetry.frameStart = performance.now()
+  }, -100)
+
   useFrame(() => {
     const kph = telemetry.speed * 3.6
     const target =
@@ -146,6 +153,10 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const info = (renderer.info as unknown as GpuInfo).render
     telemetry.drawCalls = info.drawCalls ?? info.calls ?? 0
     telemetry.triangles = info.triangles ?? 0
+    // main-thread busy time this frame (EMA): GPU at 2ms during fps dips
+    // proved the stalls live HERE, not on the GPU
+    const busy = performance.now() - telemetry.frameStart
+    telemetry.cpuMs += (busy - telemetry.cpuMs) * 0.1
     frameN.current++
     if (frameN.current % 20 === 0) {
       type TsRenderer = { resolveTimestampsAsync?: (type?: string) => Promise<unknown> }
@@ -153,7 +164,13 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
         .resolveTimestampsAsync?.('render')
         ?.then(() => {
           const t = (renderer.info as unknown as GpuInfo).render.timestamp
-          if (typeof t === 'number' && t >= 0) telemetry.gpuMs = t
+          if (typeof t !== 'number') return
+          // the counter ACCUMULATES across frames between resolves — report
+          // the per-frame average over the 20-frame window, not the raw sum
+          // (the raw sum read as "150ms gpu" while vsync sat at 79fps)
+          const d = t - lastGpuT.current
+          lastGpuT.current = t
+          if (d > 0) telemetry.gpuMs = d / 20
         })
         .catch(() => {})
     }

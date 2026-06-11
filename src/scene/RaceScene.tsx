@@ -548,7 +548,7 @@ export function RaceScene({
     telemetry.racersXZ[2] = s.pose.pz
     if ((isMultiplayer && s.opponent) || ghostPlayback) {
       const o = isMultiplayer ? s.opponent! : s.ghostReplayPos
-      poseAt(frames, Math.max(0, o.s), o.d, HOVER_HEIGHT, oppPose)
+      poseAt(frames, o.s, o.d, HOVER_HEIGHT, oppPose)
       telemetry.racersXZ[3] = oppPose.px
       telemetry.racersXZ[4] = oppPose.py
       telemetry.racersXZ[5] = oppPose.pz
@@ -703,7 +703,9 @@ export function RaceScene({
           clearExplode: () => void (sim.current.explodePulse = 0),
         })}
       />
-      {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} avgSpeed={track.avgSpeed} />}
+      {!(isMultiplayer || !!ghostPlayback) && (
+        <NpcShips specs={npcSpecs} simRef={sim} frames={frames} avgSpeed={track.avgSpeed} fogFar={3 / track.theme.fogDensity} />
+      )}
       {/* B19: mounted unconditionally — reads live state per frame */}
       {isMultiplayer && (
         <NetworkShip
@@ -851,11 +853,14 @@ function NpcShips({
   simRef,
   frames,
   avgSpeed,
+  fogFar,
 }: {
   specs: NpcSpec[]
   simRef: React.RefObject<{ npcs: NpcState[] }>
   frames: TrackFrames
   avgSpeed: number
+  /** beyond this distance the fog has fully eaten the ship — skip the draw */
+  fogFar: number
 }) {
   const refs = useRef<(THREE.Group | null)[]>([])
   const pose = useRef({} as FramePose)
@@ -865,16 +870,20 @@ function NpcShips({
     [specs],
   )
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     const npcs = simRef.current.npcs
     for (let i = 0; i < specs.length; i++) {
       const g = refs.current[i]
       const st = npcs[i]
       if (!g || !st) continue
-      // wrecked NPCs vanish for the pause — same death drama as the player
-      g.visible = st.wrecked <= 0
-      poseAt(frames, Math.max(0, st.s), st.d, HOVER_HEIGHT, pose.current)
+      poseAt(frames, st.s, st.d, HOVER_HEIGHT, pose.current)
       const p = pose.current
+      // wrecked NPCs vanish for the pause; ships beyond the fog wall are
+      // invisible anyway — skip their draw entirely (T173)
+      const dx = p.px - camera.position.x
+      const dy = p.py - camera.position.y
+      const dz = p.pz - camera.position.z
+      g.visible = st.wrecked <= 0 && dx * dx + dy * dy + dz * dz < fogFar * fogFar
       g.position.set(p.px, p.py, p.pz)
       telemetry.racersXZ[(i + 1) * 3] = p.px
       telemetry.racersXZ[(i + 1) * 3 + 1] = p.py
