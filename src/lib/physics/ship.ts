@@ -143,12 +143,12 @@ export function stepShip(
   // B14: engine braking — off throttle the field drag bites hard.
   // T170: quadratic air drag — no-boost cruise settles ~55% of vmax; the
   // ceiling is reachable ONLY through sustained boost chains (discipline).
-  a -= state.v * (0.05 + (1 - input.thrust) * 0.28) + state.v * state.v * 0.00012
+  a -= state.v * (0.05 + (1 - input.thrust) * 0.28) + state.v * state.v * 0.0001
   a -= braking * state.v * 0.35 // airbrake scrub
   // T156: retro brake — reverse thrust, way harder than coasting
   const retro = input.retro ? 1 : 0
   a -= retro * (accel * 0.9 + state.v * 0.12)
-  if (state.boost > 0) a += 75 // T170
+  if (state.boost > 0) a += 85 // T170
   state.v = Math.max(0, state.v + a * dt)
   state.boost = Math.max(0, state.boost - dt)
 
@@ -259,8 +259,11 @@ export function stepShip(
   }
   if (!state.airborne) {
     const slopeAhead = slopeAt(frames, i + 2)
-    const requiredDvy = state.v * (slopeAhead - slopeHere)
-    if (requiredDvy < -GRAVITY * dt * 3 && state.v > 30 && upY > 0.45) {
+    const dSlope = slopeAhead - slopeHere
+    // T171: takeoff needs a REAL crest — at hyperspeed v amplifies any
+    // undulation past the old gravity threshold, popping the ship airborne
+    // constantly. Absolute slope-break gate keeps ordinary waves grounded.
+    if (dSlope * state.v < -GRAVITY * dt * 3 && dSlope < -0.02 && state.v > 30 && upY > 0.45) {
       state.airborne = true
       state.vy = state.v * slopeHere
       state.air = 0
@@ -268,8 +271,10 @@ export function stepShip(
     }
   } else {
     // T156: retro while airborne pulls you DOWN — dump height to make a
-    // capture gate or shorten a jump
-    state.vy -= (GRAVITY + retro * 30) * dt
+    // capture gate or shorten a jump.
+    // T171: downforce ∝ speed — hyperspeed hops get pressed back to deck
+    const downforce = GRAVITY * (1 + state.v / 500)
+    state.vy -= (downforce + retro * 30) * dt
     state.air += (state.vy - state.v * slopeHere) * dt
     if (state.air <= 0) {
       events.landed = true

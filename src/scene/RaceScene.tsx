@@ -277,6 +277,7 @@ export function RaceScene({
     }
   }, [songBuffer, toggleCamera, isMultiplayer, ghostPlayback])
 
+  // B34: pose writers run at default priority 0; trails/sparks read at 0.5
   useFrame((_, rawDt) => {
     // B29: occluded tab suspends rAF — the next frame arrives with a giant
     // dt that would skip the countdown and fast-forward the sim in one burst
@@ -352,8 +353,8 @@ export function RaceScene({
     // B33: threshold vs UNBOOSTED vmax fired a boom on every pad — blip spam.
     // Boom marks touching the ABSOLUTE ceiling (boosted vmax).
     const vmaxNow = shipVmax(track.avgSpeed, true)
-    if (!s.sonicArmed && s.ship.v < vmaxNow * 0.85) s.sonicArmed = true
-    if (s.sonicArmed && s.ship.v >= vmaxNow * 0.93) {
+    if (!s.sonicArmed && s.ship.v < vmaxNow * 0.78) s.sonicArmed = true
+    if (s.sonicArmed && s.ship.v >= vmaxNow * 0.87) { // T170: top of a real chain
       s.sonicArmed = false
       if (burstRef.current && shipGroup.current) {
         s.burstT = 0

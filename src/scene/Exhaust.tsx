@@ -100,6 +100,9 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
 
   const EMIT_DT = 1 / 90
 
+  // B34: priority 0.5 — pose writers run at default 0;
+  // reading the ship transform BEFORE it updates left the trail head one
+  // frame behind: a v·dt gap, 10m+ at hyperspeed.
   useFrame(({ camera, clock }, dt) => {
     const ship = shipRef.current
     if (!ship) return
@@ -176,7 +179,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity }: Tr
       // B18: frustumCulled=false → no bounding sphere needed; computing it on
       // degenerate first-frame quads spammed NaN warnings
     })
-  })
+  }, 0.5)
 
   return (
     <>

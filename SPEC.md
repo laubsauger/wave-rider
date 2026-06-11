@@ -223,7 +223,9 @@ T166|x|darkness v2: ambient/env floors ↓↓ (quiet = actually DARK), emissive 
 T167|x|speed payoff: vignette tunnel ACTUALLY clamps (mask in + max ↑), fov surge ↑, SONIC BOOM @ 93% vmax — shockwave + flash + boom + haptic, re-arms below 85%|V10,C11,V12
 T168|x|race feel v4: VEKTOR 1.7 + guaranteed top-2 corner skill (pro tier); drift ↑ 0.36 + carve assist ↓ (turns demand steering); LONG curves run WIDE (1.15-1.6×, room to be wrong) while short stay tight; sonic boom vs BOOSTED vmax (B33: fired on every pad crossing = the blip)|V13,V18,V20,V12
 T169|x|HYPERSPEED: vmax → avgSpeed×3+100 (~2000-2600 kph ceiling); drift v² capped @ 320 m/s (ultra speed controllable); base width ↑; RE-ENTRY HEAT veil 1000→2500 kph (orange edge glow + CA ∝ heat); vignette punched visible; sonic boom = VISUAL only (sound out), threshold rides new ceiling|V12,V20,V10,C11
-T170|.|boost DISCIPLINE = skill ceiling: quadratic drag drops no-boost cruise ~55% vmax, per-boost punch ↓ (kick 15, window 0.9s, accel 75) — holding near max takes sustained chains; gen recalibrated for hyperspeed: jumps gentler, chicane/sbank curvature ↓, global k budget 50→42, long curves wider (1.25-1.8)|V12,V16,V20,V3
+T170|x|boost DISCIPLINE = skill ceiling: quadratic drag drops no-boost cruise ~55% vmax, per-boost punch ↓ (kick 15, window 0.9s, accel 75) — holding near max takes sustained chains; gen recalibrated for hyperspeed: jumps gentler, chicane/sbank curvature ↓, global k budget 50→42, long curves wider (1.25-1.8)|V12,V16,V20,V3
+T171|x|airtime @ hyperspeed: takeoff demands REAL crest (Δslope ≤ −0.02, ⊥ speed-amplified undulation pops) + downforce gravity ∝ v (fast hops stay short)|V16,V5
+T172|x|frame-order fix (B34): exhaust/sparks read ship pose AFTER the sim writes it — trail head was one frame stale (gap = v·dt, 10m+ @ hyperspeed)|C11,V5
 
 ## §B bugs
 
@@ -259,4 +261,5 @@ B29|2026-06-11|occluded tab suspends rAF → next frame's giant dt skipped count
 B30|2026-06-11|start-grid slot pads (6×9m, emissive glow 0.35, ×6) fused into one theme-colored carpet = the "green/red slab @ start" — blamed on apron, road env, ridges before raycast probe found it|slots dimmed to faint outlines (emissive 0.05, opacity 0.45)
 B31|2026-06-11|section boundary truncates corkscrew → walkSegment still rolls FULL 2π over the stub → violent frame twist @ seam, hitch + ship kicked off|shrink to remaining if ≥320m else demote to straight; test pins min corkscrew length
 B33|2026-06-11|sonic boom threshold vs UNBOOSTED vmax → every boost pad crossing re-fired it = random blips|threshold vs shipVmax(boosted) — boom only at the absolute ceiling (T168)
+B34|2026-06-11|child useFrame subscribes before parent (bottom-up mount effects) → exhaust/sparks read ship pose ONE FRAME STALE → trail head detached by v·dt (10m+ @ hyperspeed)|readers get useFrame priority 0.5, pose writers stay 0 (T172)
 B32|2026-06-11|walkSegment bank guard (`type !== curve && !== chicane → bank=0`) silently DISCARDED wallride banks since T92 — every "wallride" shipped flat; censuses counted them, nobody ever rode one|guard admits wallride + faster bank ease (0.4); test pins 60°/84° banks + rideability

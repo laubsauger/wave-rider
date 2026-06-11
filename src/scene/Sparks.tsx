@@ -214,7 +214,7 @@ export function Sparks({
     stepStreaks(sparks, sparkMesh.current, 0.022, 0.05, G)
     step(dust, dustMesh.current, (a) => 0.5 + (1 - a) * 1.3, 4)
     stepStreaks(embers, emberMesh.current, 0.016, 0.035, 44)
-  })
+  }, 0.5) // B34: after pose writers
 
   return (
     <group>
