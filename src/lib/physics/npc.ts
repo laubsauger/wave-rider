@@ -42,7 +42,8 @@ const NAMES = ['VEKTOR', 'NYX-7', 'KAIROS', 'BLUR', 'SABLE'] as const
 const ACCENTS = ['#ff5533', '#ffd23d', '#7bff8a', '#b07bff', '#ff7bd5'] as const
 // T145 → T159: top of the field runs at the player's no-boost cruise —
 // you BEAT them with boost pads and clean lines, not by default
-const BASE_PACE = [1.62, 1.52, 1.4, 1.26, 1.12] as const
+// T164: tail tightened — back-markers race too; VEKTOR stays the cookie
+const BASE_PACE = [1.62, 1.55, 1.48, 1.4, 1.32] as const
 
 export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
   const rng = mulberry32((track.seed ^ 0x4e9c11) >>> 0)

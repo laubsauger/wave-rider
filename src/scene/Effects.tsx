@@ -62,7 +62,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
 
     // T162: vignette is ALIVE — always-there base, tightening into tunnel
     // vision as speed climbs (uVig driven per frame)
-    const vig = smoothstep(0.42, 1.05, dir.length()).mul(uVig)
+    const vig = smoothstep(0.34, 1.0, dir.length()).mul(uVig) // T167: ring reaches IN
     const vignetted = toned.mul(vig.oneMinus())
 
     // film grain — B25: seed multipliers must exceed pixel pitch or
@@ -94,7 +94,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const bokehTarget = (0.4 + Math.min(1, kph / 900) * 2.4) * fxIntensity
     uBokeh.value += (bokehTarget - uBokeh.value) * 0.08
     // T162: tunnel vision — base ring always present, clamps in with speed
-    const vigTarget = (0.24 + Math.min(0.34, (kph / 1100) * 0.34) + telemetry.boostFlash * 0.1) * fxIntensity
+    const vigTarget = (0.22 + Math.min(0.55, (kph / 1000) * 0.55) + telemetry.boostFlash * 0.12) * fxIntensity // T167
     uVig.value += (vigTarget - uVig.value) * 0.06
     if (post) post.render()
     else renderer.render(scene, camera)

@@ -24,7 +24,7 @@ import {
   type NpcState,
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
-import { beep, goChord } from '../lib/audio/sfx'
+import { beep, goChord, sonicBoom } from '../lib/audio/sfx'
 import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
@@ -185,6 +185,8 @@ export function RaceScene({
     landPulse: 0,
     /** T153: one-shot wall impact pulse — ember burst */
     wallPulse: 0,
+    /** T167: sonic boom armed when below 85% vmax, fires crossing 93% */
+    sonicArmed: true,
   })
 
   // input + camera toggle + song lifecycle
@@ -344,6 +346,23 @@ export function RaceScene({
     // shake trauma (V10: scaled by fxIntensity at application time)
     if (wallEvent > 0) s.shake.trauma = Math.min(1, s.shake.trauma + 0.25 + wallEvent * 0.02)
     if (boostEvent) s.shake.trauma = Math.min(1, s.shake.trauma + 0.18)
+    // T167: SONIC BOOM — punching through 93% of vmax pops a shockwave,
+    // flash, boom + buzz; re-arms once you fall back under 85%
+    const vmaxNow = track.avgSpeed * 1.62
+    if (!s.sonicArmed && s.ship.v < vmaxNow * 0.85) s.sonicArmed = true
+    if (s.sonicArmed && s.ship.v >= vmaxNow * 0.93) {
+      s.sonicArmed = false
+      if (burstRef.current && shipGroup.current) {
+        s.burstT = 0
+        burstRef.current.position.copy(shipGroup.current.position)
+        burstRef.current.quaternion.copy(shipGroup.current.quaternion)
+      }
+      telemetry.boostFlash = Math.max(telemetry.boostFlash, 0.9)
+      s.shake.trauma = Math.min(1, s.shake.trauma + 0.3)
+      sonicBoom()
+      if (fxIntensity > 0) haptics.boost()
+    }
+
     // T152: haptics on touch devices — fx-gated like every feedback channel
     if (fxIntensity > 0) {
       if (wallEvent >= 35) haptics.wreck()
@@ -495,10 +514,13 @@ export function RaceScene({
     // section energy and the live energy², so quiet passages genuinely dim
     const secEnergy = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
     const eSq = telemetry.energy * telemetry.energy
+    // T166: quiet passages get ACTUALLY dark — but the GRID stays lit until
+    // GO (song silent pre-launch → floors would black out the start)
+    const preGo = telemetry.countdown > -1 ? Math.min(1, Math.max(0, telemetry.countdown + 1)) : 0
     if (ambientRef.current) {
-      ambientRef.current.intensity = 0.1 + secEnergy * 0.28 + eSq * 0.45 * track.theme.pulse
+      ambientRef.current.intensity = Math.max(preGo * 0.32, 0.04 + secEnergy * 0.24 + eSq * 0.55 * track.theme.pulse)
     }
-    scene.environmentIntensity = 0.22 + secEnergy * 0.35 + eSq * 0.3
+    scene.environmentIntensity = Math.max(preGo * 0.4, 0.1 + secEnergy * 0.32 + eSq * 0.42)
 
     // T21/T39: sky breathes with the music AND drifts toward the section tint
     const palette = track.sectionPalettes[telemetry.sectionIndex]
@@ -698,7 +720,7 @@ function updateCamera(
 
   // speed FOV: subtle always, boost kick scaled by fx
   const speedNorm = Math.min(1, ship.v / 280)
-  const targetFov = 62 + speedNorm * 24 + (ship.boost > 0 ? 8 * fxIntensity : 0) + s.pull * 7
+  const targetFov = 62 + speedNorm * 31 + (ship.boost > 0 ? 10 * fxIntensity : 0) + s.pull * 7 // T167
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4)
   camera.updateProjectionMatrix()
 }

@@ -144,17 +144,21 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       }
     }
 
-    // T42: overhead beat-gates on straights, chevrons on curve outsides
+    // T42: overhead beat-gates on straights, chevrons on curve outsides.
+    // T166: gates get LEGS down to the deck — connected structures, not
+    // floating dark frames.
     const gateMatrices: THREE.Matrix4[] = []
     const gateColors: THREE.Color[] = []
     const gateS: number[] = []
+    const gateLegMatrices: THREE.Matrix4[] = []
     const chevronMatrices: THREE.Matrix4[] = []
     const chevronColors: THREE.Color[] = []
     for (const seg of track.segments) {
       if (seg.type === 'straight') {
         for (let s = seg.start + 120; s < seg.end - 40; s += 240) {
           if (gateMatrices.length >= 200) break
-          poseAt(frames, s, 0, halfW * 0.6, pose)
+          const gateH = halfW * 0.6
+          poseAt(frames, s, 0, gateH, pose)
           tangent.set(pose.tx, pose.ty, pose.tz)
           up.set(pose.nx, pose.ny, pose.nz)
           m.lookAt(new THREE.Vector3(0, 0, 0), tangent, up)
@@ -166,6 +170,19 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           gateMatrices.push(obj.matrix.clone())
           gateColors.push(c.set(paletteAt(track, s)).clone())
           gateS.push(s)
+          // legs: deck → bar at both ends
+          for (const side of [-1, 1]) {
+            const lx = side * (track.width / 2 + 2.2)
+            obj.quaternion.copy(q)
+            obj.position.set(
+              pose.px + pose.bx * lx - up.x * (gateH / 2),
+              pose.py + pose.by * lx - up.y * (gateH / 2),
+              pose.pz + pose.bz * lx - up.z * (gateH / 2),
+            )
+            obj.scale.set(0.55, gateH, 0.55)
+            obj.updateMatrix()
+            gateLegMatrices.push(obj.matrix.clone())
+          }
         }
       } else if (seg.type === 'curve' || seg.type === 'chicane') {
         for (let s = seg.start + 30; s < seg.end - 20; s += 60) {
@@ -265,6 +282,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       gateMatrices,
       gateColors,
       gateS,
+      gateLegMatrices,
       chevronMatrices,
       chevronColors,
       biome,
@@ -290,8 +308,8 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     const cRaw = telemetry.centroid * track.theme.pulse
     const c = cRaw * cRaw
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
-    if (glowMat.current) glowMat.current.color.setScalar(0.22 + secE * 0.6 + e * 2.6)
-    if (archMat.current) archMat.current.color.setScalar(0.3 + secE * 0.7 + e * 2.4)
+    if (glowMat.current) glowMat.current.color.setScalar(0.12 + secE * 0.55 + e * 2.8) // T166
+    if (archMat.current) archMat.current.color.setScalar(0.18 + secE * 0.65 + e * 2.6) // T166
     if (ringMat.current) ringMat.current.opacity = 0.08 + secE * 0.12 + e * 0.55
     if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.14 + secE * 0.25 + e * 1.1
     if (chevronMat.current) chevronMat.current.color.setScalar(0.45 + c * 3.2)
@@ -319,7 +337,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         const dist = Math.abs(data.gateS[gi] - playerS)
         const prox = Math.max(0, 1 - dist / 500)
         // T149: dimmer idle, harder beat pop
-        const lit = 0.4 + b * 3.6 * prox * prox + gateFlash.current * 2.8 * prox
+        const lit = 0.28 + b * 3.8 * prox * prox + gateFlash.current * 2.8 * prox // T166
         waveColor.copy(data.gateColors[gi]).multiplyScalar(lit)
         gm.setColorAt(gi, waveColor)
       }
@@ -351,11 +369,15 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         <torusGeometry args={[14, 0.6, 6, 24]} />
         <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive={track.theme.glow} emissiveIntensity={0.35} metalness={0.7} roughness={0.4} />
       </Instanced>
-      {/* T121/T140: MATTE black outer frame (zero glow) + chunkier profile —
-          the beat-lit bar is a slim inset channel inside it */}
+      {/* T121/T140/T166: matte frame + LEGS to the deck — one structure,
+          faint emissive tint so the silhouette reads in the dark */}
       <Instanced matrices={data.gateMatrices}>
-        <boxGeometry args={[1.006, 2.1, 2.1]} />
-        <meshStandardMaterial color="#07090f" metalness={0.15} roughness={0.85} envMapIntensity={0.05} />
+        <boxGeometry args={[1.006, 1.5, 1.5]} />
+        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
+      </Instanced>
+      <Instanced matrices={data.gateLegMatrices}>
+        <boxGeometry args={[1, 1, 1]} />
+        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
       </Instanced>
       <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh}>
         <boxGeometry args={[0.99, 0.55, 0.55]} />
@@ -400,7 +422,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           bright channel; thread it LOW or eat the reset */}
       <Instanced matrices={data.entryMatrices}>
         <torusGeometry args={[10, 0.8, 6, 36]} />
-        <meshStandardMaterial color="#07090f" metalness={0.15} roughness={0.85} envMapIntensity={0.05} />
+        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
       </Instanced>
       <Instanced matrices={data.entryMatrices} colors={data.entryColors}>
         <torusGeometry args={[10, 0.3, 8, 48]} />
@@ -409,7 +431,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       {/* T121/T140: matte ring housing (zero glow), slim lit channel inside */}
       <Instanced matrices={data.ringMatrices}>
         <torusGeometry args={[11, 0.65, 6, 36]} />
-        <meshStandardMaterial color="#07090f" metalness={0.15} roughness={0.85} envMapIntensity={0.05} />
+        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
       </Instanced>
       <Instanced matrices={data.ringMatrices} colors={data.ringColors}>
         <torusGeometry args={[11, 0.22, 8, 48]} />

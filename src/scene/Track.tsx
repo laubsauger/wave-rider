@@ -154,7 +154,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     // whole world so drops have somewhere to go
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
     uEnergy.value = e * (0.25 + secE * 0.85)
-    uRail.value = 0.3 + secE * 0.9 + e * 2.8
+    uRail.value = 0.2 + secE * 0.85 + e * 3.0 // T166
     if (padMat.current) {
       const s = 1.2 + b * 3.8
       padMat.current.color.setRGB(s, s, s)

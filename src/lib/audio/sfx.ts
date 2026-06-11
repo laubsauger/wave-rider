@@ -23,6 +23,13 @@ export function goChord(): void {
   beep(1320, 0.7, 0.12, 'sawtooth')
 }
 
+/** T167: sonic boom — sub thump + descending crack when piercing ~vmax */
+export function sonicBoom(): void {
+  beep(55, 0.5, 0.5, 'sine')
+  beep(220, 0.18, 0.3, 'sawtooth')
+  beep(110, 0.32, 0.25, 'triangle')
+}
+
 export interface EngineSound {
   update(v: number, thrust: number, boost: number): void
   stop(): void

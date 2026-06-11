@@ -217,6 +217,10 @@ T160|x|track vocabulary v2: corkscrews BOTH chiralities; 'spiral' = long descend
 T161|x|NPCs catch boost pads: same geometry as player, once each, boost window lifts their target + accel — fair race|V15,V17
 T162|x|dynamic vignette: always-on base, tightens w/ speed + boost (tunnel vision); scene-wide brightness BREATHES (ambient + env ride section energy²) ⊥ static average|V10,C11,V3
 T163|x|elevation amplitude v3: slope bias ↑, steeper hills/straights — ⊥ flat-on-average course|V3,V16
+T164|x|skill ceiling: NPC tail tightened (1.32 floor, VEKTOR stays 1.62 cookie); per-segment width variation (curves 0.78-1.25, straights 0.9-1.4) — line choice matters; rails GONE on ~30% straights, 15% curves, 20% corkscrews|V13,V15,V3,T77,T78
+T165|x|TRUE wall rides: ~30% of wallrides go near-VERTICAL (85°, shorter, slimmer) — coordination test on the wall face|V3,V20,V1
+T166|.|darkness v2: ambient/env floors ↓↓ (quiet = actually DARK), emissive idle floors trimmed; gate casings get support legs + faint edge tint — integrated structures ⊥ scattered dark frames|C11,V3,V19
+T167|.|speed payoff: vignette tunnel ACTUALLY clamps (mask in + max ↑), fov surge ↑, SONIC BOOM @ 93% vmax — shockwave + flash + boom + haptic, re-arms below 85%|V10,C11,V12
 
 ## §B bugs
 
@@ -251,3 +255,4 @@ B28|2026-06-11|ridge cones radius ≤230m placed 170m off-track → faces reache
 B29|2026-06-11|occluded tab suspends rAF → next frame's giant dt skipped countdown + fast-forwarded sim in one burst (B11 lesson, race-loop edition)|dt clamped to 0.1s in RaceScene frame loop
 B30|2026-06-11|start-grid slot pads (6×9m, emissive glow 0.35, ×6) fused into one theme-colored carpet = the "green/red slab @ start" — blamed on apron, road env, ridges before raycast probe found it|slots dimmed to faint outlines (emissive 0.05, opacity 0.45)
 B31|2026-06-11|section boundary truncates corkscrew → walkSegment still rolls FULL 2π over the stub → violent frame twist @ seam, hitch + ship kicked off|shrink to remaining if ≥320m else demote to straight; test pins min corkscrew length
+B32|2026-06-11|walkSegment bank guard (`type !== curve && !== chicane → bank=0`) silently DISCARDED wallride banks since T92 — every "wallride" shipped flat; censuses counted them, nobody ever rode one|guard admits wallride + faster bank ease (0.4); test pins 60°/84° banks + rideability
