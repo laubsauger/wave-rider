@@ -1,29 +1,60 @@
 # WAVE RIDER
 
-Anti-gravity racing where **your music is the track**. Drop in any audio file — BPM, energy, drops and breakdowns get analyzed client-side and carved into a neon course. Deterministic: same song, same track, every time.
+[![Deploy](https://github.com/laubsauger/wave-rider/actions/workflows/deploy.yml/badge.svg)](https://github.com/laubsauger/wave-rider/actions/workflows/deploy.yml)
+[![Stars](https://img.shields.io/github/stars/laubsauger/wave-rider?style=flat)](https://github.com/laubsauger/wave-rider/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/laubsauger/wave-rider)](https://github.com/laubsauger/wave-rider/commits/main)
+![WebGPU](https://img.shields.io/badge/WebGPU-only-ff6b35)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6)
+
+**[Play it here](https://laubsauger.github.io/wave-rider/)** (needs a WebGPU browser)
+
+Anti-gravity racing game where the track is generated from music. Pick one of the bundled songs or drop in your own file. The audio gets analyzed in the browser and turned into a course. Generation is deterministic, so the same file always produces the same track.
 
 ![menu](docs/menu.jpg)
 
 ![race](docs/race.jpg)
 
-- Audio analysis → track generation, no server, no `Math.random` — every twist is seeded from the song
-- Drops become jumps. Breakdowns become glide tunnels. Onset-dense peaks spawn corkscrews, loops and wall rides
-- WebGPU renderer (three.js + TSL): bloom, depth of field, radial blur, re-entry heat at hyperspeed
-- 5 NPC racers, hull energy, wreck explosions
-- 1v1 multiplayer over WebRTC — the host sends the song file to the joiner, both race the identical generated track
-- Ghost replays shareable as a URL
-- Keyboard + touch, quality tiers, mobile landscape
+## How the music shapes the track
 
-## Run
+- BPM and energy set the pace: track length, curve speed, straights vs chicanes
+- Drops become crest jumps with real airtime
+- Breakdowns become glide sections and tunnels
+- Busy high-energy passages spawn corkscrews, loops, wall rides and banked sweepers
+- Section changes shift the color palette, sky and scenery
+- Rails, pads and the skyline pulse with the live audio
+
+## Features
+
+- Client-side audio analysis (BPM, energy, sections, onsets, mood), no server
+- WebGPU rendering with three.js and TSL, no WebGL fallback
+- Bloom, depth of field, radial blur, heat shimmer at silly speeds
+- 5 NPC racers, hull damage, explosions
+- 1v1 multiplayer over WebRTC: the host sends the song file to the other player, both generate and race the same track
+- Ghost replays you can share as a URL
+- Keyboard and touch controls, quality tiers, phones play in landscape
+
+## Running it
 
 ```sh
 npm install
 npm run dev
 ```
 
-Needs a WebGPU browser (Chrome/Edge 113+, Safari 26+). WASD steer/thrust, `S` retro brake, Shift/Space airbrakes, `C` camera, `Esc` pause.
+You need a browser with WebGPU (recent Chrome/Edge, Safari 26+).
 
 ```sh
-npm test       # deterministic core suite (analysis, gen, physics)
-npm run build  # production bundle
+npm test       # core test suite (analysis, generation, physics)
+npm run build  # production build
 ```
+
+## Controls
+
+| Key | Action |
+| --- | --- |
+| WASD / arrows | steer + thrust |
+| S / down | retro brake |
+| Shift / Space | airbrakes |
+| C | camera toggle |
+| Esc | pause |
+| M | mute |
+| F2 | perf overlay |
