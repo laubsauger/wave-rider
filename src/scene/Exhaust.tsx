@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { attribute, color, float, mix, sin, smoothstep, sub, uniform } from 'three/tsl'
 
-const POINTS = 48 // longer history → the trail reads from a distance at pace
+const DEFAULT_POINTS = 48 // longer history → the trail reads from a distance
 
 interface TrailProps {
   /** ref to the ship group; engine offsets are in its local space */
@@ -14,6 +14,8 @@ interface TrailProps {
   intensity: () => number
   /** ship speed m/s, read per frame — drives the hyperspeed escalation */
   speed?: () => number
+  /** trail resolution — NPCs run lighter ribbons (T173) */
+  points?: number
 }
 
 /**
@@ -22,7 +24,8 @@ interface TrailProps {
  * subtle flicker bands. Geometry rebuilt per frame from a position ring
  * buffer; the look lives in the shader, not vertex colors.
  */
-export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, speed }: TrailProps) {
+export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, speed, points }: TrailProps) {
+  const pts = points ?? DEFAULT_POINTS
   const meshRefs = useRef<(THREE.Mesh | null)[]>([])
   const uPower = useMemo(() => uniform(0), [])
   const uTime = useMemo(() => uniform(0), [])
@@ -75,20 +78,20 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
   const trails = useMemo(
     () =>
       offsets.map(() => {
-        const uvs = new Float32Array(POINTS * 2 * 2)
-        for (let i = 0; i < POINTS; i++) {
-          const v = i / (POINTS - 1)
+        const uvs = new Float32Array(pts * 2 * 2)
+        for (let i = 0; i < pts; i++) {
+          const v = i / (pts - 1)
           uvs.set([0, v, 1, v], i * 4)
         }
-        const idx = new Uint16Array((POINTS - 1) * 6)
-        for (let i = 0; i < POINTS - 1; i++) {
+        const idx = new Uint16Array((pts - 1) * 6)
+        for (let i = 0; i < pts - 1; i++) {
           const a = i * 2
           idx.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6)
         }
         return {
-          history: new Float32Array(POINTS * 3),
+          history: new Float32Array(pts * 3),
           filled: 0,
-          positions: new Float32Array(POINTS * 2 * 3),
+          positions: new Float32Array(pts * 2 * 3),
           uvs,
           indices: idx,
           // T50: fixed-rate emission state — no frame-paced stutter
@@ -99,7 +102,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
           primed: false,
         }
       }),
-    [offsets],
+    [offsets, pts],
   )
 
   const tmp = useMemo(
@@ -155,14 +158,14 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
       let emits = Math.floor(trail.acc / EMIT_DT)
       if (emits > 0) {
         trail.acc -= emits * EMIT_DT
-        emits = Math.min(emits, POINTS)
+        emits = Math.min(emits, pts)
         for (let e = 1; e <= emits; e++) {
           const f = e / emits
-          trail.history.copyWithin(3, 0, (POINTS - 1) * 3)
+          trail.history.copyWithin(3, 0, (pts - 1) * 3)
           trail.history[0] = trail.lastX + (tmp.p.x - trail.lastX) * f
           trail.history[1] = trail.lastY + (tmp.p.y - trail.lastY) * f
           trail.history[2] = trail.lastZ + (tmp.p.z - trail.lastZ) * f
-          if (trail.filled < POINTS) trail.filled++
+          if (trail.filled < pts) trail.filled++
         }
         trail.lastX = tmp.p.x
         trail.lastY = tmp.p.y
@@ -175,7 +178,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
       }
 
       const n = trail.filled
-      for (let i = 0; i < POINTS; i++) {
+      for (let i = 0; i < pts; i++) {
         const j = Math.max(0, Math.min(i, n - 1))
         const x = trail.history[j * 3]
         const y = trail.history[j * 3 + 1]
@@ -188,7 +191,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
         if (len > 1e-6) tmp.side.divideScalar(len)
         else tmp.side.set(0, 1, 0)
 
-        const age = i / POINTS
+        const age = i / pts
         // T127/T141: mach-diamond read — bulge right at the nozzle exit,
         // pinch, then the long taper down the trail. Plume GROWS with speed.
         const bulge = 1 + Math.exp(-i * 0.85) * 0.55

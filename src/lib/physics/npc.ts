@@ -119,15 +119,15 @@ export function stepNpc(
   const hw = (track.width * frames.widths[Math.min(frames.count - 1, i)]) / 2 - 2.4
 
   // ---- racing line: lane preference, pulled INSIDE upcoming corners by
-  // skill, plus the personality wobble. Formation hold for the launch.
-  const formation = Math.min(1, Math.max(0, (state.time - 2) / 4))
+  // skill, plus the personality wobble. No formation choreography — the old
+  // grid-hold + blend read as the field weirdly "pulling back" post-launch.
   const insidePull =
     Math.sign(kAhead) * Math.min(1, Math.abs(kAhead) / 0.004) * hw * 0.45 * spec.cornerSkill
   const raceD =
     spec.lanePref * hw * 0.4 +
     insidePull +
     Math.sin(state.time * spec.wobbleFreq * Math.PI * 2 + spec.phase) * spec.wobbleAmp
-  let targetD = Math.min(hw, Math.max(-hw, spec.gridD * (1 - formation) + raceD * formation))
+  let targetD = Math.min(hw, Math.max(-hw, raceD))
   // split divider ahead: commit to the CURRENT side, aim clear of the island
   const medAhead = frames.medians[Math.min(frames.count - 1, i + la)]
   if (medAhead > 0.3) {
@@ -163,7 +163,9 @@ export function stepNpc(
   // tiny pace spread via throttle ceiling (drag punishes partial throttle).
   // Throttle is SMOOTHED (~0.25s) — the raw over/not flip toggled 0.3↔1.0
   // at 120Hz when kAhead sat near the brake threshold: visible stutter.
-  const thrustTarget = !launched ? 0 : over ? 0.3 : Math.min(1, 0.87 + spec.pace * 0.14)
+  // corner lift is a LIFT, not a stomp (0.3 → 0.5) — the collective slam to
+  // near-idle at the first corner looked like the whole field pulling back
+  const thrustTarget = !launched ? 0 : over ? 0.5 : Math.min(1, 0.87 + spec.pace * 0.14)
   state.aiThrottle += (thrustTarget - state.aiThrottle) * Math.min(1, PHYSICS_DT * 4)
   npcInput.thrust = state.aiThrottle
   npcInput.brakeLeft = wayOver

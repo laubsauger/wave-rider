@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { clamp, convertToTexture, float, hash, mix, pass, smoothstep, time, uniform, uv, vec3, vec4 } from 'three/tsl'
+import { clamp, convertToTexture, hash, mix, pass, smoothstep, time, uniform, uv, vec3, vec4 } from 'three/tsl'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
 import { telemetry } from '../game/telemetry'
@@ -26,8 +26,6 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
   const uVig = useMemo(() => uniform(0.26), [])
   const uVigStart = useMemo(() => uniform(0.46), [])
   const uHeat = useMemo(() => uniform(0), [])
-  /** hull-damage static — ramps in below 35% energy */
-  const uDmg = useMemo(() => uniform(0), [])
   const frameN = useRef(0)
   const lastGpuT = useRef(0)
 
@@ -89,16 +87,12 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     // hash().toUint() quantizes neighbors together → horizontal static
     // streaks crawling the frame. High-frequency 2D seed + low amplitude.
     const grainSeed = uv().x.mul(39163.7).add(uv().y.mul(21717.3)).add(time.mul(127.1))
-    // hull damage: heavy static creeps in from the PERIPHERY below 35%
-    // energy, thickening as the hull empties — the screen itself degrades
-    const dmgMask = smoothstep(0.18, 0.75, dir.length())
-    const grainAmp = float(0.014 * fxIntensity).add(uDmg.mul(dmgMask).mul(0.17))
-    const grain = hash(grainSeed).sub(0.5).mul(grainAmp)
+    const grain = hash(grainSeed).sub(0.5).mul(0.014 * fxIntensity)
 
     const post = new THREE.PostProcessing(renderer)
     post.outputNode = vec4(heated.add(grain), 1)
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uFocus, uRange, uVig, uVigStart, uHeat, uDmg])
+  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uFocus, uRange, uVig, uVigStart, uHeat])
 
   useEffect(() => {
     return () => {
@@ -139,9 +133,6 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     // T169: re-entry heat builds 1000 → 2500 kph
     const heatTarget = Math.min(1, Math.max(0, (kph - 1000) / 1500)) * fxIntensity
     uHeat.value += (heatTarget - uHeat.value) * 0.05
-    // hull-damage static: 35% energy → starts, empty → full peripheral noise
-    const dmgTarget = Math.min(1, Math.max(0, (0.35 - telemetry.hull) / 0.35)) * fxIntensity
-    uDmg.value += (dmgTarget - uDmg.value) * 0.1
     if (post) post.render()
     else renderer.render(scene, camera)
 

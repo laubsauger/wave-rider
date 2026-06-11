@@ -119,7 +119,8 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
       const g = groupRefs.current[i]
       const b = boards[i]
       if (!g) continue
-      const bob = Math.sin(t * 0.9 + b.phase) * 0.5
+      // bob amplitude rides the music — boards FLOAT harder when it pushes
+      const bob = Math.sin(t * 0.9 + b.phase) * 0.5 * (0.6 + telemetry.energy * 1.3)
       const y = bob + drop + rise
       g.position.set(b.position.x + b.up.x * y, b.position.y + b.up.y * y, b.position.z + b.up.z * y)
       // T133: brighter baseline + occasional slow swell — present, not strobing

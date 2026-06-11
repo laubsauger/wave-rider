@@ -7,6 +7,7 @@ import { Hud } from './Hud'
 import { TouchControls } from './TouchControls'
 import { RotateOverlay } from './RotateOverlay'
 import { onGameKey } from '../game/input'
+import { telemetry } from '../game/telemetry'
 import { audioContext, setMuted } from '../lib/audio/playback'
 import { requestFullscreen } from '../lib/fullscreen'
 
@@ -22,22 +23,26 @@ export function Race() {
   const [runId, setRunId] = useState(0)
   const songTitle = useGame((s) => s.songTitle)
 
-  // loading veil: hold black while the scene compiles/warms (the README-text-
-  // on-black second), then fade the world in — no pop-in jank
+  // loading veil: hold black until the scene is ACTUALLY rendering — wait
+  // for N real rendered frames (telemetry.frameStart advances per render),
+  // not a wall-clock guess that mobile compile times blow straight past
   const [revealed, setRevealed] = useState(false)
   useEffect(() => {
     setRevealed(false)
     let raf = 0
-    const t = setTimeout(() => {
-      // two rAFs after the timeout ≈ first real rendered frames
-      raf = requestAnimationFrame(() => {
-        raf = requestAnimationFrame(() => setRevealed(true))
-      })
-    }, 450)
-    return () => {
-      clearTimeout(t)
-      cancelAnimationFrame(raf)
+    let seen = 0
+    let last = -1
+    const t0 = performance.now()
+    const check = () => {
+      if (telemetry.frameStart !== last) {
+        last = telemetry.frameStart
+        seen++
+      }
+      if (seen >= 8 && performance.now() - t0 > 450) setRevealed(true)
+      else raf = requestAnimationFrame(check)
     }
+    raf = requestAnimationFrame(check)
+    return () => cancelAnimationFrame(raf)
   }, [runId])
 
   useEffect(() => {
@@ -97,6 +102,13 @@ export function Race() {
         {muted ? '🔇 MUTED' : '🔊 MUTE'}
       </button>
       <TouchControls />
+      {/* mobile: only way into the pause menu without a keyboard */}
+      <button
+        className="hud-safe absolute top-3 left-3 z-30 hidden rounded border border-white/20 bg-black/40 px-3 py-1 text-xs tracking-widest text-white/60 [@media(pointer:coarse)]:block"
+        onClick={() => setPaused(true)}
+      >
+        ❚❚
+      </button>
       {/* loading veil — fades out once the scene is actually drawing */}
       <div
         className={`pointer-events-none absolute inset-0 z-40 flex items-center justify-center bg-black transition-opacity duration-700 ${revealed ? 'opacity-0' : 'opacity-100'}`}
@@ -107,17 +119,34 @@ export function Race() {
         </div>
       </div>
       {paused && (
-        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 bg-black/70">
-          <h2 className="text-3xl font-bold tracking-[0.4em] text-(--color-neon)">PAUSED</h2>
-          <div className="flex gap-4">
+        <div className="hud-safe absolute inset-0 z-40 flex flex-col items-center justify-center gap-6 overflow-y-auto bg-black/70 p-4 short:gap-3">
+          <h2 className="text-3xl font-bold tracking-[0.4em] text-(--color-neon) short:text-xl">PAUSED</h2>
+          {/* quality switchable mid-race — dpr + effects react live */}
+          <div className="flex items-center gap-2 text-xs tracking-widest text-white/50">
+            QUALITY
+            {(['low', 'medium', 'high'] as const).map((q) => (
+              <button
+                key={q}
+                className={`border px-3 py-1 tracking-widest short:px-2 ${
+                  quality === q
+                    ? 'border-(--color-neon) text-(--color-neon)'
+                    : 'border-white/20 text-white/50 hover:bg-white/10'
+                }`}
+                onClick={() => setSettings({ quality: q })}
+              >
+                {q.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          <div className="flex max-w-full flex-wrap justify-center gap-3 short:gap-2">
             <button
-              className="border border-(--color-neon) px-6 py-2 tracking-widest text-(--color-neon) hover:bg-(--color-neon)/15"
+              className="border border-(--color-neon) px-6 py-2 tracking-widest text-(--color-neon) hover:bg-(--color-neon)/15 short:px-4 short:py-1.5"
               onClick={() => setPaused(false)}
             >
               RESUME
             </button>
             <button
-              className="border border-(--color-amber-hud) px-6 py-2 tracking-widest text-(--color-amber-hud) hover:bg-(--color-amber-hud)/15"
+              className="border border-(--color-amber-hud) px-6 py-2 tracking-widest text-(--color-amber-hud) hover:bg-(--color-amber-hud)/15 short:px-4 short:py-1.5"
               onClick={() => {
                 setRunId((r) => r + 1)
                 setPaused(false)
@@ -126,7 +155,7 @@ export function Race() {
               RESTART
             </button>
             <button
-              className="border border-white/30 px-6 py-2 tracking-widest text-white/60 hover:bg-white/10"
+              className="border border-white/30 px-6 py-2 tracking-widest text-white/60 hover:bg-white/10 short:px-4 short:py-1.5"
               onClick={() => {
                 if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
                 else void requestFullscreen()
@@ -135,7 +164,7 @@ export function Race() {
               ⛶ FULLSCREEN
             </button>
             <button
-              className="border border-white/30 px-6 py-2 tracking-widest text-white/60 hover:bg-white/10"
+              className="border border-white/30 px-6 py-2 tracking-widest text-white/60 hover:bg-white/10 short:px-4 short:py-1.5"
               onClick={() => setScreen('menu')}
             >
               QUIT

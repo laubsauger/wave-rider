@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { abs, cameraPosition, color, fract, positionWorld, smoothstep, uniform } from 'three/tsl'
+import { abs, attribute, cameraPosition, color, exp, fract, positionWorld, sin, smoothstep, time, uniform, uv } from 'three/tsl'
 import { mulberry32, rngRange } from '../lib/prng'
 import type { TrackData } from '../lib/track/generate'
 import { poseAt, type FramePose, type TrackFrames } from '../lib/track/sample'
@@ -17,6 +17,13 @@ import { shipVmax } from '../lib/physics/ship'
  */
 export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFrames }) {
   const uPulse = useMemo(() => uniform(0.4), [])
+  /** under-track light smear strength (bass-fed) */
+  const uSmear = useMemo(() => uniform(0.2), [])
+  /** kick ripple: ring radius + strength, radiating from the player */
+  const uKickR = useMemo(() => uniform(0), [])
+  const uKick = useMemo(() => uniform(0), [])
+  const uPlayer = useMemo(() => uniform(new THREE.Vector2()), [])
+  const kick = useRef({ lastBeat: 0 })
 
   const geometry = useMemo(() => {
     const STEP = 90 // m along track — low res on purpose
@@ -37,6 +44,7 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
       for (let i = 1; i < cy.length - 1; i++) cy[i] = (cy[i - 1] + cy[i] + cy[i + 1]) / 3
     }
     const positions = new Float32Array((n + 1) * LATERAL * 3)
+    const lat = new Float32Array((n + 1) * LATERAL)
     for (let i = 0; i <= n; i++) {
       const i0 = Math.max(0, i - 1)
       const i1 = Math.min(n, i + 1)
@@ -54,6 +62,7 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
         positions[o] = cx[i] + pxd * t * HALF_W
         positions[o + 1] = cy[i] - 85
         positions[o + 2] = cz[i] + pzd * t * HALF_W
+        lat[i * LATERAL + j] = Math.abs(t) // 0 under the track → 1 far edge
       }
     }
     const indices = new Uint32Array(n * (LATERAL - 1) * 6)
@@ -68,6 +77,7 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
     }
     const g = new THREE.BufferGeometry()
     g.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+    g.setAttribute('aLat', new THREE.BufferAttribute(lat, 1))
     g.setIndex(new THREE.BufferAttribute(indices, 1))
     return g
   }, [track, frames])
@@ -84,10 +94,17 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
     const lines = smoothstep(0.03, 0.0, gx).add(smoothstep(0.03, 0.0, gz)).min(1)
     const dist = positionWorld.sub(cameraPosition).length()
     const fade = smoothstep(1600, 150, dist)
+    // under-track light SMEAR: the ribbon's glow pools on the floor below it,
+    // swelling with the bass — grounds the floating track in the space
+    const smear = smoothstep(0.32, 0.0, attribute('aLat')).mul(uSmear)
+    // kick RIPPLE: a grid-line ring radiating from the player on heavy beats
+    const dxz = positionWorld.xz.sub(uPlayer)
+    const ringD = dxz.length().sub(uKickR)
+    const ring = exp(ringD.mul(ringD).div(-2800)).mul(uKick)
     m.colorNode = color(new THREE.Color(track.theme.glow))
-    m.opacityNode = lines.mul(fade).mul(uPulse)
+    m.opacityNode = lines.mul(fade).mul(uPulse.add(smear).add(ring))
     return m
-  }, [track.theme.glow, uPulse])
+  }, [track.theme.glow, uPulse, uSmear, uKick, uKickR, uPlayer])
 
   useFrame((_, dt) => {
     // T118/T149: the floor is BACKDROP — quiet, slow, never competing.
@@ -95,6 +112,19 @@ export function GridFloor({ track, frames }: { track: TrackData; frames: TrackFr
     const e = telemetry.energy
     const target = 0.09 + e * e * 0.14 * track.theme.pulse
     uPulse.value += (target - uPulse.value) * Math.min(1, dt * 0.6)
+    // bass pressure feeds the under-track smear
+    uSmear.value += (0.12 + telemetry.bass * 0.9 - uSmear.value) * Math.min(1, dt * 3)
+    // heavy beat → ripple ring launches at the player, races outward
+    const b = telemetry.beat
+    if (b >= 0.99 && kick.current.lastBeat < 0.5 && telemetry.bass > 0.16) {
+      uKickR.value = 12
+      uKick.value = Math.min(1, telemetry.bass * 1.8) * track.theme.pulse
+    }
+    kick.current.lastBeat = b
+    uKickR.value += dt * 430
+    uKick.value = Math.max(0, uKick.value - uKick.value * dt * 1.4)
+    const p = uPlayer.value as THREE.Vector2
+    p.set(telemetry.racersXZ[0], telemetry.racersXZ[2])
   })
 
   return <mesh geometry={geometry} material={material} frustumCulled={false} />
@@ -329,6 +359,64 @@ export function Ridges({ track, frames }: { track: TrackData; frames: TrackFrame
       <coneGeometry args={[1, 1, 5]} />
       <meshStandardMaterial color="#070a16" metalness={0.2} roughness={0.95} flatShading />
     </instancedMesh>
+  )
+}
+
+/**
+ * AURORA: slow undulating color curtain above the horizon — fills the dead
+ * upper void and makes section development visible at world scale. Hue rides
+ * the section palette, amplitude rides energy, drops make it surge. Follows
+ * the camera like a sky dome; additive, never competes with the track.
+ */
+export function Aurora({ track }: { track: TrackData }) {
+  const groupRef = useRef<THREE.Group>(null)
+  const uAur = useMemo(() => uniform(0), [])
+  const uCol = useMemo(() => uniform(new THREE.Color(track.theme.glow)), [track.theme.glow])
+  const colTarget = useMemo(() => new THREE.Color(), [])
+
+  const material = useMemo(() => {
+    const m = new THREE.MeshBasicNodeMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.BackSide,
+      toneMapped: false,
+    })
+    // vertical band with soft top/bottom, horizontal undulation in two
+    // incommensurate frequencies so it drifts instead of looping
+    const band = smoothstep(0.04, 0.38, uv().y).mul(smoothstep(0.96, 0.55, uv().y))
+    const a = uv().x.mul(Math.PI * 2)
+    const wavesA = sin(a.mul(5).add(time.mul(0.21))).mul(0.5).add(0.5)
+    const wavesB = sin(a.mul(13).sub(time.mul(0.34))).mul(0.5).add(0.5)
+    m.colorNode = uCol
+    m.opacityNode = band.mul(wavesA.mul(0.55).add(wavesB.mul(0.3)).add(0.15)).mul(uAur)
+    return m
+  }, [uAur, uCol])
+
+  useFrame(({ camera }, dt) => {
+    const g = groupRef.current
+    if (!g) return
+    g.position.set(camera.position.x, camera.position.y + 120, camera.position.z)
+    const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
+    const e = telemetry.energy * telemetry.energy
+    const target = (0.05 + secE * 0.16 + e * 0.3 + telemetry.dropPulse * 0.45) * track.theme.pulse
+    uAur.value += (target - uAur.value) * Math.min(1, dt * 1.2)
+    // T173: near-invisible curtain still rasterizes a screen of transparent
+    // fragments — skip the draw entirely when it has nothing to say
+    g.visible = uAur.value > 0.015
+    const pal = track.sectionPalettes[telemetry.sectionIndex]
+    if (pal) {
+      colTarget.set(pal)
+      ;(uCol.value as THREE.Color).lerp(colTarget, Math.min(1, dt * 0.6))
+    }
+  })
+
+  return (
+    <group ref={groupRef}>
+      <mesh material={material} frustumCulled={false}>
+        <cylinderGeometry args={[1750, 1750, 320, 56, 1, true]} />
+      </mesh>
+    </group>
   )
 }
 

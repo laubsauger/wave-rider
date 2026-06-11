@@ -20,6 +20,10 @@ export interface RaceTelemetry {
   countdown: number
   /** T39: onset beat spike 1→0, decays fast */
   beat: number
+  /** low-end proxy ≈ energy·(1−centroid), smoothed — drives floor swell */
+  bass: number
+  /** drop event spike 1→0 (slow decay) — world-scale spectacle hook */
+  dropPulse: number
   /** T57: spectral brightness 0..1 — hats/highs proxy */
   centroid: number
   /** current section index under the player */
@@ -60,6 +64,8 @@ export const telemetry: RaceTelemetry = {
   racers: 1,
   countdown: 9,
   beat: 0,
+  bass: 0,
+  dropPulse: 0,
   centroid: 0,
   sectionIndex: 0,
   oppStatus: '',

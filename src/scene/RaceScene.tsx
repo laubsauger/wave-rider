@@ -30,7 +30,7 @@ import { createGhostRecorder } from '../lib/network/ghost'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
-import { GridFloor, Ridges, SceneEnvironment, WarpStreaks, WaveformHorizon } from './Environment'
+import { Aurora, GridFloor, Ridges, SceneEnvironment, WarpStreaks, WaveformHorizon } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
 import { Sparks } from './Sparks'
@@ -172,6 +172,8 @@ export function RaceScene({
     /** T39: pointers walked monotonically per frame */
     onsetIdx: 0,
     segIdx: 0,
+    /** drop-event pointer — fires telemetry.dropPulse (world spectacle) */
+    dropIdx: 0,
     /** T45: smoothed longitudinal accel → camera pull/fov surge */
     vPrev: 0,
     pull: 0,
@@ -558,6 +560,24 @@ export function RaceScene({
       beat = 1
     }
     telemetry.beat = beat
+    // low-end proxy: loud + dark spectrum = bass pressure (floor swell)
+    const bassRaw = telemetry.energy * (1 - telemetry.centroid)
+    telemetry.bass += (bassRaw - telemetry.bass) * Math.min(1, dt * 6)
+    // drop events → world-scale pulse (fog blows open, nebulae bloom, …)
+    telemetry.dropPulse = Math.max(0, telemetry.dropPulse - dt * 0.6)
+    const evts = features.events
+    while (s.dropIdx < evts.length && evts[s.dropIdx].start <= songTime) {
+      if (evts[s.dropIdx].type === 'drop') telemetry.dropPulse = 1
+      s.dropIdx++
+    }
+    // fog BREATHING: quiet sections close the room in, drops blow it open.
+    // Max stays at the culling cutoff (3/fogDensity) so hidden ≡ culled.
+    if (scene.fog instanceof THREE.Fog) {
+      const baseFar = 3 / track.theme.fogDensity
+      const secEFog = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
+      const farTarget = baseFar * Math.min(1, 0.55 + secEFog * 0.35 + telemetry.dropPulse * 0.35)
+      scene.fog.far += (farTarget - scene.fog.far) * Math.min(1, dt * 0.8)
+    }
 
     // T39: current section under the player → palette drift
     const segs = track.segments
@@ -637,6 +657,8 @@ export function RaceScene({
       <Ridges track={track} frames={frames} />
       {/* T124: the skyline is the song */}
       <WaveformHorizon track={track} energyCurve={features.energy} frameInterval={features.frameInterval} />
+      {/* aurora curtain: section color + energy, surges on drops */}
+      {quality !== 'low' && <Aurora track={track} />}
       {/* T111: subtle warp streaks at the top end */}
       <WarpStreaks shipRef={shipGroup} track={track} speed={() => sim.current.ship.v} fxIntensity={fxIntensity} />
       <group ref={shipGroup}>
@@ -728,6 +750,13 @@ const camTarget = new THREE.Vector3()
 const camPos = new THREE.Vector3()
 const camUp = new THREE.Vector3()
 const camFwd = new THREE.Vector3()
+/** smoothed look-at OFFSET (ship-relative) — raw target jumped with every
+ * tangent/steer change and yanked the view. NOTE: must smooth the offset,
+ * not the absolute point — absolute smoothing lags by v/rate (≈40m @ 280m/s)
+ * which put the target BEHIND the camera: view flipped backwards + thrashed */
+const camLookOff = new THREE.Vector3()
+const camLookPoint = new THREE.Vector3()
+let camLookPrimed = false
 
 function updateCamera(
   camera: THREE.PerspectiveCamera,
@@ -765,10 +794,12 @@ function updateCamera(
       pose.py - pose.ty * back + pose.ny * lift + pose.by * swing,
       pose.pz - pose.tz * back + pose.nz * lift + pose.bz * swing,
     )
-    camera.position.lerp(camPos, 1 - Math.exp(-dt * 9))
+    // gentler chase (9 → 6) + looser tether (3.2 → 4.4): direction changes
+    // sway instead of yank
+    camera.position.lerp(camPos, 1 - Math.exp(-dt * 6))
     // hard tether: cam may lag for feel but never lose the ship at speed (B4)
     const lag = camera.position.distanceTo(camPos)
-    if (lag > 3.2) camera.position.lerp(camPos, 1 - 3.2 / lag)
+    if (lag > 4.4) camera.position.lerp(camPos, 1 - 4.4 / lag)
     // T51/T63: look INTO the corner — damped, not twitchy. During the intro
     // the camera looks over the FIELD ahead instead of the near road.
     const lookIn = s.camSteer * 6 * (1 - intro)
@@ -802,7 +833,17 @@ function updateCamera(
   camFwd.set(pose.tx, pose.ty, pose.tz)
   camUp.applyAxisAngle(camFwd, -s.roll * (mode === 'cockpit' ? 0.9 : 0.55))
   camera.up.copy(camUp)
-  camera.lookAt(camTarget)
+  // look target low-passed in SHIP-RELATIVE space — rotation eases through
+  // direction changes while the point itself rides along with the ship
+  camLookPoint.set(camTarget.x - pose.px, camTarget.y - pose.py, camTarget.z - pose.pz)
+  if (!camLookPrimed || mode === 'cockpit') {
+    camLookOff.copy(camLookPoint)
+    camLookPrimed = true
+  } else {
+    camLookOff.lerp(camLookPoint, 1 - Math.exp(-dt * 7))
+  }
+  camLookPoint.set(pose.px + camLookOff.x, pose.py + camLookOff.y, pose.pz + camLookOff.z)
+  camera.lookAt(camLookPoint)
 
   // speed FOV: subtle always, boost kick scaled by fx — gain trimmed (31→23,
   // pull 7→5): the old stretch shoved the ship too far up the screen at pace
@@ -937,6 +978,7 @@ function NpcShips({
               color={spec.accent}
               intensity={npcPower}
               speed={() => simRef.current.npcs[i]?.v ?? 0}
+              points={30}
             />
           </group>
         )
@@ -969,8 +1011,8 @@ function Starfield({ color, count = 1500 }: { color: string; count?: number }) {
   }, [count])
 
   useFrame(() => {
-    // highs make the near layer shimmer
-    if (nearMat.current) nearMat.current.opacity = 0.45 + telemetry.centroid * 0.5
+    // highs make the near layer shimmer; drops flare the whole field
+    if (nearMat.current) nearMat.current.opacity = 0.45 + telemetry.centroid * 0.5 + telemetry.dropPulse * 0.45
   })
 
   return (
@@ -989,6 +1031,7 @@ function Starfield({ color, count = 1500 }: { color: string; count?: number }) {
 /** T99: three huge soft glow discs — depth + color wash behind everything */
 function Nebulae({ color }: { color: string }) {
   const mats = useRef<(THREE.MeshBasicMaterial | null)[]>([])
+  const meshes = useRef<(THREE.Mesh | null)[]>([])
   const SPOTS: { pos: [number, number, number]; r: number; o: number }[] = [
     { pos: [1400, 250, -900], r: 700, o: 0.07 },
     { pos: [-1100, 80, 1200], r: 550, o: 0.05 },
@@ -996,14 +1039,24 @@ function Nebulae({ color }: { color: string }) {
   ]
   useFrame(() => {
     const e = telemetry.energy
+    // drop spectacle: nebulae BLOOM — opacity surge + visible swell
+    const drop = telemetry.dropPulse
     mats.current.forEach((m, i) => {
-      if (m) m.opacity = SPOTS[i].o * (0.6 + e * 0.8)
+      if (m) m.opacity = SPOTS[i].o * (0.6 + e * 0.8) * (1 + drop * 2.4)
+    })
+    meshes.current.forEach((m) => {
+      if (m) m.scale.setScalar(1 + drop * 0.55)
     })
   })
   return (
     <>
       {SPOTS.map((sp, i) => (
-        <mesh key={i} position={sp.pos} onUpdate={(m) => m.lookAt(0, 0, 0)}>
+        <mesh
+          key={i}
+          ref={(m) => void (meshes.current[i] = m)}
+          position={sp.pos}
+          onUpdate={(m) => m.lookAt(0, 0, 0)}
+        >
           <circleGeometry args={[sp.r, 24]} />
           <meshBasicMaterial
             ref={(m) => void (mats.current[i] = m)}

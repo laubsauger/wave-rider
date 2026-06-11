@@ -1,7 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import { attribute, float, fract, smoothstep, uniform, uv } from 'three/tsl'
+import { attribute, exp, float, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
 import { curvatureAt, poseAt, type FramePose, type TrackFrames } from '../lib/track/sample'
 import { buildBoostPads, buildMedian, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
@@ -195,13 +195,20 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
 
   const fogFar = 3 / track.theme.fogDensity
 
-  // V19 rails: section-colored vertex attribute × music-pulsed intensity
+  // V19 rails: section-colored vertex attribute × music-pulsed intensity.
+  // BEAT WAVE: every onset launches a bright front that races down the
+  // rails away from the player (uv.y·20 = arc meters) — the music travels
+  // THROUGH the world instead of blinking at it.
   const uRail = useMemo(() => uniform(1.8), [])
+  const uWaveS = useMemo(() => uniform(-1e5), [])
+  const uWaveAmp = useMemo(() => uniform(0), [])
   const railMaterial = useMemo(() => {
     const m = new THREE.MeshBasicNodeMaterial({ toneMapped: false })
-    m.colorNode = attribute('color').mul(uRail)
+    const dsArc = uv().y.mul(20).sub(uWaveS)
+    const wave = exp(dsArc.mul(dsArc).div(-1500)).mul(uWaveAmp)
+    m.colorNode = attribute('color').mul(uRail).add(attribute('color').mul(wave).mul(2.4))
     return m
-  }, [uRail])
+  }, [uRail, uWaveS, uWaveAmp])
 
   // T105: glass deck — near-black reflective surface, slightly transparent
   // so the world reads below ("hyperspace racer on a glass plane"). Opacity
@@ -238,11 +245,14 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     // faint neon edge lines where deck meets the rails
     const xDist = uv().x.sub(0.5).abs()
     const edgeLine = smoothstep(0.46, 0.495, xDist)
+    const dsArc = uv().y.mul(20).sub(uWaveS)
+    const wave = exp(dsArc.mul(dsArc).div(-1500)).mul(uWaveAmp)
     m.emissiveNode = glow
       .mul(stripe.mul(uEnergy.mul(1.6).add(0.4)))
       .add(glow.mul(edgeLine.mul(uEnergy.mul(0.5).add(0.25))))
+      .add(glow.mul(wave).mul(0.4))
     return m
-  }, [track.theme, uEnergy, uStripeCol, uOpacity])
+  }, [track.theme, uEnergy, uStripeCol, uOpacity, uWaveS, uWaveAmp])
 
   // T123: walls v2 — gradient glass, dense at the base fading clear at the
   // top, lit top edge riding the section palette, faint scanlines. uv.x is
@@ -266,6 +276,10 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     return m
   }, [uStripeCol, uEnergy])
 
+  /** beat-wave + pad-pop scratch */
+  const fx = useRef({ waveS: -1e5, lastBeat: 0, lastWaveMs: -1e9 })
+  const padObj = useMemo(() => new THREE.Object3D(), [])
+
   // audio-reactive pulse (T21/T39) — V10-safe: brightness only.
   // beat = sharp onset spikes layered on top of the energy floor.
   useFrame((_, dt) => {
@@ -279,7 +293,47 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     // whole world so drops have somewhere to go
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
     uEnergy.value = e * (0.25 + secE * 0.85)
-    uRail.value = 0.2 + secE * 0.85 + e * 3.0 // T166
+    // drops crank the rails for their decay — section-scale punctuation
+    uRail.value = 0.2 + secE * 0.85 + e * 3.0 + telemetry.dropPulse * 1.6 // T166
+
+    // BEAT WAVE — sporadic punctuation, not a strobe: fires only on HEAVY
+    // low-end hits, rate-limited to one wave per ~2s, and dimmer. The track
+    // floor must never read as flashing.
+    const playerArc = telemetry.progress * track.length
+    if (
+      b >= 0.99 &&
+      fx.current.lastBeat < 0.5 &&
+      telemetry.bass > 0.24 &&
+      telemetry.timeMs - fx.current.lastWaveMs > 1900
+    ) {
+      fx.current.waveS = playerArc
+      fx.current.lastWaveMs = telemetry.timeMs
+      uWaveAmp.value = 0.16 + secE * 0.28
+    }
+    fx.current.lastBeat = b
+    fx.current.waveS += dt * 560
+    uWaveS.value = fx.current.waveS
+    uWaveAmp.value = Math.max(0, uWaveAmp.value - dt * 0.45)
+
+    // pad choreography: pads near the player POP on the beat (scale pulse)
+    if (padMesh.current && padData.poses.length > 0) {
+      let dirty = false
+      for (let i = 0; i < padData.poses.length; i++) {
+        const pd = padData.poses[i]
+        const dist = Math.abs(pd.s - playerArc)
+        if (dist > 420 && !pd.popped) continue
+        const prox = Math.max(0, 1 - dist / 420)
+        const scale = 1 + b * 0.45 * prox
+        pd.popped = scale > 1.01
+        padObj.position.copy(pd.pos)
+        padObj.quaternion.copy(pd.quat)
+        padObj.scale.setScalar(scale)
+        padObj.updateMatrix()
+        padMesh.current.setMatrixAt(i, padObj.matrix)
+        dirty = true
+      }
+      if (dirty) padMesh.current.instanceMatrix.needsUpdate = true
+    }
     if (padMat.current) {
       const s = 1.2 + b * 3.8
       padMat.current.color.setRGB(s, s, s)
@@ -303,6 +357,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const c = new THREE.Color()
     const matrices: THREE.Matrix4[] = []
     const colors: THREE.Color[] = []
+    const poses: { pos: THREE.Vector3; quat: THREE.Quaternion; s: number; popped: boolean }[] = []
     geo.pads.forEach((p, i) => {
       obj.position.set(p.x, p.y, p.z)
       const m = new THREE.Matrix4().lookAt(
@@ -315,11 +370,12 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       obj.updateMatrix()
       matrices.push(obj.matrix.clone())
       const padS = track.boosts[i]?.s ?? 0
+      poses.push({ pos: obj.position.clone(), quat: obj.quaternion.clone(), s: padS, popped: false })
       const seg = track.segments.find((sg) => padS >= sg.start && padS < sg.end)
       c.set(track.sectionPalettes[seg?.sectionIndex ?? 0] ?? track.theme.glow)
       colors.push(c.clone())
     })
-    return { matrices, colors }
+    return { matrices, colors, poses }
   }, [geo.pads, track])
 
   // T46/T105: start zone — deck + a 280m lead-in road so the ribbon's cut
