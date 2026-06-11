@@ -24,6 +24,7 @@ export type SegmentType =
   | 'ridge'
   | 'wallride'
   | 'loop'
+  | 'split'
 
 export interface TrackSegment {
   type: SegmentType
@@ -126,6 +127,13 @@ export function generateTrack(features: AudioFeatures): TrackData {
     }
   }
   boosts.sort((a, b) => a.s - b.s)
+  // center-lane pads inside a split would sit ON the divider island —
+  // shove them into a lane (deterministic side from the position bits, V8)
+  for (const pad of boosts) {
+    if (Math.abs(pad.lane) >= 0.3) continue
+    const seg = segments.find((sg) => sg.type === 'split' && pad.s >= sg.start && pad.s < sg.end)
+    if (seg) pad.lane = (Math.round(pad.s) % 2 === 0 ? 1 : -1) * 0.55
+  }
   const theme = pickTheme(features.mood, features.intensity)
 
   return {
@@ -315,7 +323,7 @@ function layoutCourse(
         if (seg.type !== 'loop') seg.slope += slopeBias
       }
       const segLen = Math.min(remaining, seg.length)
-      walkSegment(cur, points, rolls, ups, seg, segLen)
+      walkSegment(cur, points, rolls, ups, seg, segLen, avgSpeed)
       segments.push({
         type: seg.type,
         start: s,
@@ -401,6 +409,18 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       widthScale: vertical ? 0.9 : 1.15,
       walls: true,
       bankAbs: vertical ? 1.48 : 1.05,
+    }
+  }
+  // SPLIT: the lane forks into two around a divider island, the halves weave
+  // through an S and remerge — pick a side, commit, carve it
+  if (eRel > 0.5 && e > 0.24 && special >= 0.5 && special < 0.535) {
+    return {
+      type: 'split',
+      length: rngRange(rng, 440, 680),
+      curvature: rngRange(rng, 0.0035, 0.0055) * (rng() < 0.5 ? -1 : 1),
+      slope: rngRange(rng, -0.015, 0.015),
+      widthScale: 2.0,
+      walls: true,
     }
   }
   // T160: spiral — LONG descending hard-banked sweeper, a serpentine drop
@@ -515,6 +535,7 @@ function walkSegment(
   ups: number[],
   seg: SegmentPlan,
   length: number,
+  avgSpeed: number,
 ): void {
   // R9b: vertical loop — analytic circle in the heading plane, inclined
   // sideways so the exit clears the entry road. Heading/pitch Euler walk
@@ -550,16 +571,22 @@ function walkSegment(
 
   const steps = Math.max(1, Math.round(length / CTRL_SPACING))
   const ds = length / steps
-  const isChicane = seg.type === 'chicane'
+  // split weaves like a chicane: S-flip curvature = the two lanes sway
+  const isChicane = seg.type === 'chicane' || seg.type === 'split'
   const isJump = seg.type === 'jump'
   // T60: corkscrew = exactly one full 2π twist over the segment, ends upright
   const rollStep = seg.type === 'corkscrew' ? ((seg.side ?? 1) * Math.PI * 2) / steps : 0 // T160: chirality
-  // T65: banked corners — roll into the curve like a velodrome
+  // T65 → downforce camber: bank derived from the coordinated-turn angle at
+  // cruise pace — atan(k·v²/g), scaled. Every real corner cambers; perfectly
+  // flat is for straights. Organic, and the bank grip makes corners EASIER.
+  const isBankable =
+    seg.type === 'curve' || seg.type === 'chicane' || seg.type === 'split' || seg.type === 'glide'
+  const vC = avgSpeed * 0.75
   const bankTarget =
     seg.type === 'wallride'
       ? Math.sign(seg.curvature) * (seg.bankAbs ?? 1.05) // T92/T165: 60° or the vertical face
-      : seg.type === 'curve' || seg.type === 'chicane'
-        ? Math.max(-0.78, Math.min(0.78, seg.curvature * (seg.bankGain ?? 200))) // B17/T151
+      : isBankable
+        ? Math.sign(seg.curvature) * Math.min(0.76, Math.atan((Math.abs(seg.curvature) * vC * vC) / 34) * 0.55)
         : 0
 
   for (let i = 0; i < steps; i++) {
@@ -606,7 +633,7 @@ function walkSegment(
       let bank = (isChicane && i >= steps / 2 ? -bankTarget : bankTarget) * edgeWin * flipWin
       // B32: this guard silently zeroed WALLRIDE banks since T92 — every
       // "wallride" shipped as a flat wide curve. Wallrides bank now.
-      if (seg.type !== 'curve' && seg.type !== 'chicane' && seg.type !== 'wallride') bank = 0
+      if (!isBankable && seg.type !== 'wallride') bank = 0
       // wallrides climb onto the face fast — curves ease gently
       const bankEase = seg.type === 'wallride' ? 0.4 : 0.22
       cur.roll += (base + bank - cur.roll) * bankEase

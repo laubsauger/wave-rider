@@ -1,6 +1,7 @@
 import { useGame } from '../game/store'
 import { fmtDuration } from '../lib/audio/waveform'
 import { requestFullscreen } from '../lib/fullscreen'
+import { TrackChips } from './TrackChips'
 
 /** T34: peak bars rendered as one SVG, used as card background */
 function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
@@ -70,7 +71,10 @@ export function TrackSetup() {
         <Waveform peaks={peaks} color="#ff2fd6" />
         <div className="relative">
           <p className="text-[11px] tracking-[0.4em] text-white/35">SELECTED TRACK</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-[0.2em] text-white short:text-lg">{songTitle}</h2>
+          <h2 className="mt-1 text-2xl font-bold tracking-[0.2em] text-white short:text-lg">
+            {songTitle}
+            <TrackChips bpm={Math.round(features.bpm)} mood={features.mood} intensity={features.intensity} />
+          </h2>
           <div className="mt-2 flex justify-between text-xs tabular-nums text-white/40">
             <span>{Math.round(features.bpm)} BPM</span>
             <span>{fmtDuration(features.duration)}</span>

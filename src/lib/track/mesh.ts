@@ -85,6 +85,49 @@ function buildStrip(
   return { positions, normals, uvs, indices }
 }
 
+/** Split divider: raised island slab between the two lanes — verts ride the
+ * per-sample median half-width, so it grows out of the deck at the fork and
+ * sinks away at the merge. Collapsed (≈0) wherever medians are 0. */
+export function buildMedian(frames: TrackFrames): RibbonGeometry {
+  const n = frames.count
+  const positions = new Float32Array(n * 2 * 3)
+  const normals = new Float32Array(n * 2 * 3)
+  const uvs = new Float32Array(n * 2 * 2)
+  const indices = new Uint32Array((n - 1) * 6)
+  for (let i = 0; i < n; i++) {
+    const m = Math.max(0.0001, frames.medians[i] - 0.15)
+    const h = Math.min(0.9, frames.medians[i] * 0.4)
+    const px = frames.positions[i * 3]
+    const py = frames.positions[i * 3 + 1]
+    const pz = frames.positions[i * 3 + 2]
+    const bx = frames.binormals[i * 3]
+    const by = frames.binormals[i * 3 + 1]
+    const bz = frames.binormals[i * 3 + 2]
+    const nx = frames.normals[i * 3]
+    const ny = frames.normals[i * 3 + 1]
+    const nz = frames.normals[i * 3 + 2]
+    positions.set(
+      [
+        px - bx * m + nx * h,
+        py - by * m + ny * h,
+        pz - bz * m + nz * h,
+        px + bx * m + nx * h,
+        py + by * m + ny * h,
+        pz + bz * m + nz * h,
+      ],
+      i * 6,
+    )
+    normals.set([nx, ny, nz, nx, ny, nz], i * 6)
+    const v = (i * frames.ds) / 20
+    uvs.set([0, v, 1, v], i * 4)
+  }
+  for (let i = 0; i < n - 1; i++) {
+    const a = i * 2
+    indices.set([a, a + 1, a + 2, a + 1, a + 3, a + 2], i * 6)
+  }
+  return { positions, normals, uvs, indices }
+}
+
 export interface BoostPadInstance {
   /** world position */
   x: number

@@ -57,6 +57,9 @@ export interface ShipState {
   falling: boolean
   /** T115: arc position where the fall began — respawn sets back from here */
   fallS: number
+  /** NPC controller memory: smoothed commanded throttle — kills the 120Hz
+   * brake-threshold flicker that read as launch stutter. Player path unused. */
+  aiThrottle: number
   /** hull integrity 0..1 — wall hits and bumps drain it; 0 = explode+reset */
   energy: number
   /** seconds since last damage — regen starts after a grace window */
@@ -103,6 +106,7 @@ export function initialShip(): ShipState {
     latVel: 0,
     falling: false,
     fallS: 0,
+    aiThrottle: 0,
     energy: 1,
     damageT: 99,
     wrecked: 0,
@@ -396,15 +400,14 @@ export function stepShip(
     }
   }
 
-  // walls: hard impact penalty on contact, friction while grinding.
-  // T77: limit follows the local width; T78: no clamp where walls are absent
-  const limit = limitHere
-  if (hasWall && Math.abs(state.d) > limit) {
+  // split divider: the median island is a wall — pick a lane, commit
+  const medianHere = frames.medians[Math.min(frames.count - 1, Math.max(0, i))]
+  const medianEdge = medianHere + SHIP_HALF_WIDTH
+  if (medianHere > 0.3 && Math.abs(state.d) < medianEdge && !state.airborne) {
+    const side = state.d === 0 ? 1 : Math.sign(state.d)
     const impact = Math.abs(lateralV)
-    state.d = clamp(state.d, -limit, limit)
+    state.d = side * medianEdge
     if (!state.onWall) {
-      // graded but REAL malus: shallow graze ~10-15%, square slam up to 38% —
-      // walls are the price of a missed line, not a rumble strip
       state.v *= Math.max(0.62, 1 - impact * 0.02)
       state.yaw *= 0.5
       drainEnergy(state, 0.05 + impact * 0.004)
@@ -414,11 +417,39 @@ export function stepShip(
       state.onWall = true
     } else {
       state.v = Math.max(0, state.v - state.v * 0.55 * dt)
-      drainEnergy(state, 0.06 * dt) // grinding sands the hull down
+      drainEnergy(state, 0.06 * dt)
     }
-  } else if (state.onWall && Math.abs(state.d) < limit - 1.2) {
-    // wide release band: brushing along the wall is one impact + grind,
-    // not a machine-gun of impact penalties
+  }
+
+  // walls: hard impact penalty on contact, friction while grinding.
+  // T77: limit follows the local width; T78: no clamp where walls are absent
+  const limit = limitHere
+  if (hasWall && Math.abs(state.d) > limit) {
+    const impact = Math.abs(lateralV)
+    state.d = clamp(state.d, -limit, limit)
+    if (!state.onWall) {
+      // graded but REAL malus: shallow graze ~10-15%, square slam up to 38% —
+      // walls are the price of a missed line, not a rumble strip.
+      // Hull damage scales with BOTH the lateral impact AND forward speed —
+      // a 1500 kph wall kiss is a structural event, not a paint scratch
+      state.v *= Math.max(0.62, 1 - impact * 0.02)
+      state.yaw *= 0.5
+      drainEnergy(state, 0.06 + impact * 0.007 + state.v * 0.0005)
+      events.wallHit = true
+      events.wallImpact = impact
+      state.wallHits++
+      state.onWall = true
+    } else {
+      state.v = Math.max(0, state.v - state.v * 0.55 * dt)
+      drainEnergy(state, (0.08 + state.v * 0.0002) * dt) // grinding sands the hull
+    }
+  } else if (
+    state.onWall &&
+    Math.abs(state.d) < limit - 1.2 &&
+    (medianHere <= 0.3 || Math.abs(state.d) > medianEdge + 1.2)
+  ) {
+    // wide release band: brushing along the wall (or the median) is one
+    // impact + grind, not a machine-gun of impact penalties
     state.onWall = false
   }
 

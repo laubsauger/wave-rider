@@ -155,6 +155,28 @@ describe('collisions (T32, V17)', () => {
     expect(racers[1].v).toBeGreaterThan(120)
   })
 
+  it('collision hull damage scales with closing speed — ramming speed is fatal', () => {
+    // gentle bump: both lose a sliver, rammer loses more
+    const soft = [
+      { s: 100, d: 0, v: 150, energy: 1, damageT: 9 },
+      { s: 103, d: 0.5, v: 130, energy: 1, damageT: 9 },
+    ]
+    resolveCollisions(soft, track)
+    expect(soft[0].energy).toBeLessThan(1)
+    expect(soft[1].energy).toBeLessThan(1)
+    expect(soft[0].energy).toBeLessThan(soft[1].energy) // rear eats more
+    expect(soft[0].energy).toBeGreaterThan(0.8) // a nudge, not a wreck
+
+    // 1000 kph closing ram: rammer's hull is GONE, victim near-dead
+    const slam = [
+      { s: 100, d: 0, v: 320, energy: 1, damageT: 9 },
+      { s: 103, d: 0.5, v: 42, energy: 1, damageT: 9 },
+    ]
+    resolveCollisions(slam, track)
+    expect(slam[0].energy).toBe(0) // explosion next step
+    expect(slam[1].energy).toBeLessThan(0.45)
+  })
+
   it('T112: airborne ship passes clean over a grounded one', () => {
     const racers = [
       { s: 100, d: 0, v: 200, air: 6 }, // flying high

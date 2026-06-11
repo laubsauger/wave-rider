@@ -22,6 +22,8 @@ export interface TrackFrames {
   widths: Float32Array
   /** T78: per-sample wall presence 1|0 */
   walls: Float32Array
+  /** split segments: central divider half-width in meters (smoothed; 0 = none) */
+  medians: Float32Array
 }
 
 export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
@@ -37,6 +39,7 @@ export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
   const positions = new Float32Array(count * 3)
   const widths = new Float32Array(count)
   const walls = new Float32Array(count)
+  const medians = new Float32Array(count)
   const tangents = new Float32Array(count * 3)
   const normals = new Float32Array(count * 3)
   const binormals = new Float32Array(count * 3)
@@ -102,11 +105,16 @@ export function sampleTrack(track: TrackData, ds = 3): TrackFrames {
     while (segIdx < track.segments.length - 1 && sArc >= track.segments[segIdx].end) segIdx++
     widths[i] = track.segments[segIdx]?.widthScale ?? 1
     walls[i] = (track.segments[segIdx]?.walls ?? true) ? 1 : 0
+    // split: a divider island down the middle — eased below, so it grows out
+    // of the deck at the fork and sinks back at the merge
+    medians[i] = track.segments[segIdx]?.type === 'split' ? 2.6 : 0
   }
   for (let i = 1; i < count; i++) widths[i] = widths[i - 1] + (widths[i] - widths[i - 1]) * 0.12
   for (let i = count - 2; i >= 0; i--) widths[i] = widths[i + 1] + (widths[i] - widths[i + 1]) * 0.12
+  for (let i = 1; i < count; i++) medians[i] = medians[i - 1] + (medians[i] - medians[i - 1]) * 0.12
+  for (let i = count - 2; i >= 0; i--) medians[i] = medians[i + 1] + (medians[i] - medians[i + 1]) * 0.12
 
-  return { ds: dsOut, count, positions, tangents, normals, binormals, length, widths, walls }
+  return { ds: dsOut, count, positions, tangents, normals, binormals, length, widths, walls, medians }
 }
 
 /** Signed horizontal curvature (rad/m) at sample i — steers physics drift + camera lean. */

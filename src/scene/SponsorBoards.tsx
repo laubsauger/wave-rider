@@ -11,8 +11,8 @@ import { telemetry } from '../game/telemetry'
  * Soft holo wobble (slow noise, a ghosted blur layer) — no strobing.
  */
 
-const BOARD_W = 13.5
-const BOARD_H = 8
+const BOARD_W = 19
+const BOARD_H = 11
 
 interface BoardSpec {
   s: number
@@ -172,6 +172,17 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
             <boxGeometry args={[BOARD_W * 0.7, 0.22, 0.18]} />
             <meshBasicMaterial color={new THREE.Color(track.theme.glow).multiplyScalar(2.2)} toneMapped={false} />
           </mesh>
+          {/* neon frame: thin accent rails top + sides — billboard, not slab */}
+          <mesh position={[0, BOARD_H / 2 + 0.45, 0]}>
+            <boxGeometry args={[BOARD_W + 0.9, 0.16, 0.16]} />
+            <meshBasicMaterial color={new THREE.Color(track.theme.edge).multiplyScalar(1.6)} toneMapped={false} />
+          </mesh>
+          {[-1, 1].map((side) => (
+            <mesh key={side} position={[side * (BOARD_W / 2 + 0.45), 0, 0]}>
+              <boxGeometry args={[0.16, BOARD_H + 0.9, 0.16]} />
+              <meshBasicMaterial color={new THREE.Color(track.theme.edge).multiplyScalar(1.1)} toneMapped={false} />
+            </mesh>
+          ))}
         </group>
       ))}
     </group>

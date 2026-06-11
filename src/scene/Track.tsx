@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { attribute, float, fract, smoothstep, uniform, uv } from 'three/tsl'
 import type { TrackData } from '../lib/track/generate'
-import { curvatureAt, type TrackFrames } from '../lib/track/sample'
-import { buildBoostPads, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
+import { curvatureAt, poseAt, type FramePose, type TrackFrames } from '../lib/track/sample'
+import { buildBoostPads, buildMedian, buildRail, buildRoad, buildWall, type RibbonGeometry } from '../lib/track/mesh'
 import { makeNpcs } from '../lib/physics/npc'
 import { pickShipAccent } from '../lib/accent'
 
@@ -175,9 +175,23 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       railR: toChunkedGeometries(buildRail(track, frames, 1), [colorAttr]),
       wallL: toChunkedGeometries(buildWall(track, frames, -1)),
       wallR: toChunkedGeometries(buildWall(track, frames, 1)),
+      median: toChunkedGeometries(buildMedian(frames)),
       pads: buildBoostPads(track, frames),
     }
   }, [track, frames])
+
+  // split divider island — dark slab, theme-edge glow so the fork reads early
+  const medianMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#0a0d18',
+        metalness: 0.4,
+        roughness: 0.5,
+        emissive: new THREE.Color(track.theme.edge),
+        emissiveIntensity: 0.55,
+      }),
+    [track.theme.edge],
+  )
 
   const fogFar = 3 / track.theme.fogDensity
 
@@ -356,15 +370,16 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
     const stripL = quad(-halfW - 0.6, -halfW, 0.22)
     const stripR = quad(halfW, halfW + 0.6, 0.22)
 
-    // 3×2 grid-slot outlines behind the line
+    // grid-slot markers: player at the line (back of the grid), the field
+    // staggered AHEAD on the real track — matches initialNpc()
     const slots: { pos: THREE.Vector3; q: THREE.Quaternion }[] = []
-    for (let i = 0; i < 6; i++) {
+    const sp = {} as FramePose
+    slots.push({ pos: p.clone().addScaledVector(up, 0.06), q })
+    for (let i = 0; i < 5; i++) {
       const row = Math.floor(i / 2)
       const col = i % 2 === 0 ? -5 : 5
-      slots.push({
-        pos: p.clone().addScaledVector(t, -(row === 0 ? 0 : 14 * row)).addScaledVector(b, row === 0 && i < 2 ? 0 : col).addScaledVector(up, 0.06),
-        q,
-      })
+      poseAt(frames, 42 - row * 14, col, 0.06, sp)
+      slots.push({ pos: new THREE.Vector3(sp.px, sp.py, sp.pz), q })
     }
     return { pos, q, fwd: t.clone(), col: b, leadRoad, stripL, stripR, slots }
   }, [frames, track.width])
@@ -444,6 +459,7 @@ export function Track({ track, frames }: { track: TrackData; frames: TrackFrames
       <TrackChunks chunks={geo.railR} material={railMaterial} fogFar={fogFar} />
       <TrackChunks chunks={geo.wallL} material={wallMat} fogFar={fogFar} />
       <TrackChunks chunks={geo.wallR} material={wallMat} fogFar={fogFar} />
+      <TrackChunks chunks={geo.median} material={medianMat} fogFar={fogFar} />
       <instancedMesh
         ref={(mesh) => {
           padMesh.current = mesh

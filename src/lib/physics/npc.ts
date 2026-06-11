@@ -74,11 +74,13 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
 }
 
 export function initialNpc(index: number): NpcState {
-  // T46/T55: 2-column grid, 14m rows, ±5m cols — fully clear of HIT_DS/DD
+  // T46/T55: 2-column grid, 14m rows, ±5m cols — fully clear of HIT_DS/DD.
+  // Field lines up AHEAD of the player (pros in front): you start at the
+  // BACK of the grid and see everyone you have to beat.
   const row = Math.floor(index / 2)
   const col = index % 2
   const ship = initialShip()
-  ship.s = -14 - row * 14
+  ship.s = 42 - row * 14
   ship.d = col === 0 ? -5 : 5
   return ship
 }
@@ -125,17 +127,29 @@ export function stepNpc(
     spec.lanePref * hw * 0.4 +
     insidePull +
     Math.sin(state.time * spec.wobbleFreq * Math.PI * 2 + spec.phase) * spec.wobbleAmp
-  const targetD = Math.min(hw, Math.max(-hw, spec.gridD * (1 - formation) + raceD * formation))
+  let targetD = Math.min(hw, Math.max(-hw, spec.gridD * (1 - formation) + raceD * formation))
+  // split divider ahead: commit to the CURRENT side, aim clear of the island
+  const medAhead = frames.medians[Math.min(frames.count - 1, i + la)]
+  if (medAhead > 0.3) {
+    const side = Math.sign(state.d) || Math.sign(targetD) || 1
+    targetD = side * Math.min(hw, Math.max(Math.abs(targetD), medAhead + 3.5))
+  }
 
   // ---- steering: feedforward counters the drift demand exactly like a
-  // human holding a carve, PD on lane error cleans up the rest
+  // human holding a carve, PD on lane error cleans up the rest.
+  // PD gains scale DOWN at low speed — yaw authority is huge near standstill
+  // and full gains made the nose twitch every step at the launch.
   const grip = 1 / (1 + v / 150)
   const yawAuthority = 0.42 * (0.5 + grip)
   const driftDemand = (kNow * v * Math.min(v, 320) * 0.3) / (1 + v / 700)
   const ffYaw = Math.asin(Math.min(0.9, Math.max(-0.9, driftDemand / v)))
   const ff = Math.min(1.1, Math.max(-1.1, ffYaw / yawAuthority))
   const err = targetD - state.d
-  const steer = Math.min(1, Math.max(-1, ff * (0.7 + 0.3 * spec.cornerSkill) + err * 0.05 - state.latVel * 0.018))
+  const gainScale = 0.3 + 0.7 * Math.min(1, v / 140)
+  const steer = Math.min(
+    1,
+    Math.max(-1, ff * (0.7 + 0.3 * spec.cornerSkill) + (err * 0.05 - state.latVel * 0.018) * gainScale),
+  )
 
   // ---- speed management: same carve-authority math as track gen. Skilled
   // drivers commit closer to the limit; everyone airbrakes past it.
@@ -146,8 +160,12 @@ export function stepNpc(
   // T159: rows leave WITH the GO, 0.12s ripple — same physics, just throttle
   const launched = state.time >= spec.gridRow * 0.12
   npcInput.steer = launched ? steer : 0
-  // tiny pace spread via throttle ceiling (drag punishes partial throttle)
-  npcInput.thrust = !launched ? 0 : over ? 0.3 : Math.min(1, 0.87 + spec.pace * 0.14)
+  // tiny pace spread via throttle ceiling (drag punishes partial throttle).
+  // Throttle is SMOOTHED (~0.25s) — the raw over/not flip toggled 0.3↔1.0
+  // at 120Hz when kAhead sat near the brake threshold: visible stutter.
+  const thrustTarget = !launched ? 0 : over ? 0.3 : Math.min(1, 0.87 + spec.pace * 0.14)
+  state.aiThrottle += (thrustTarget - state.aiThrottle) * Math.min(1, PHYSICS_DT * 4)
+  npcInput.thrust = state.aiThrottle
   npcInput.brakeLeft = wayOver
   npcInput.brakeRight = wayOver
 
@@ -169,6 +187,10 @@ export interface Racer {
   v: number
   /** height above the deck while airborne — grounded racers omit it */
   air?: number
+  /** hull energy — racers with one take collision damage (ShipState has it) */
+  energy?: number
+  /** regen grace timer, reset on damage */
+  damageT?: number
 }
 
 const HIT_DS = 5.5
@@ -203,18 +225,30 @@ export function resolveCollisions(
       if (!onCooldown) {
         const rear = a.s <= b.s ? a : b
         const front = rear === a ? b : a
+        // hull damage ∝ closing speed, both parties — the RAMMER eats more.
+        // A 1000 kph (≈280 m/s) closing ram is FATAL for the rammer and
+        // near-fatal for the victim; explosion fires on the next step.
+        const hit = (r: Racer, amt: number) => {
+          if (r.energy === undefined) return
+          r.energy = Math.max(0, r.energy - amt)
+          r.damageT = 0
+        }
         if (rear.v > front.v) {
           const dv = rear.v - front.v
           if (dv > 55) {
             // T79: high-velocity slam — both ships wreck hard
             rear.v *= 0.2
             front.v *= 0.7
+            hit(rear, 0.25 + dv * 0.0035)
+            hit(front, 0.12 + dv * 0.002)
             if (i === 0 || j === 0) playerImpact += 40
           } else {
             // T112: softened — bumps nudge, they don't yank (V17: sum of
             // speeds still never increases)
             rear.v = Math.max(0, rear.v - dv * 0.42)
             front.v += dv * 0.34
+            hit(rear, 0.02 + dv * 0.0025)
+            hit(front, 0.012 + dv * 0.0015)
             if (i === 0 || j === 0) playerImpact += dv * 0.22 + 1.2
           }
         }

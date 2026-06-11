@@ -21,15 +21,26 @@ function paletteAt(track: TrackData, s: number): string {
  * Seeded from track.seed (V8); glow elements take their section's accent (V19).
  */
 export function Scenery({ track, frames }: { track: TrackData; frames: TrackFrames }) {
-  const glowMat = useRef<THREE.MeshBasicMaterial>(null)
-  const archMat = useRef<THREE.MeshBasicMaterial>(null)
-  const ringMat = useRef<THREE.MeshBasicMaterial>(null)
-  const tunnelMat = useRef<THREE.MeshStandardMaterial>(null)
-  const gateMat = useRef<THREE.MeshBasicMaterial>(null)
   const gateMesh = useRef<THREE.InstancedMesh | null>(null)
-  const chevronMat = useRef<THREE.MeshBasicMaterial>(null)
-  const biomeMat = useRef<THREE.MeshStandardMaterial>(null)
-  const entryMat = useRef<THREE.MeshBasicMaterial>(null)
+
+  // T173: shared geometry/material OBJECTS (not JSX) — bucketed culling
+  // renders several meshes per category, all reusing one material so the
+  // music-pulse writes below hit every bucket at once
+  const geoms = useMemo(
+    () => ({
+      box: new THREE.BoxGeometry(1, 1, 1),
+      gateFrame: new THREE.BoxGeometry(1.006, 1.5, 1.5),
+      gateBar: new THREE.BoxGeometry(0.99, 0.55, 0.55),
+      tunnel: new THREE.TorusGeometry(14, 0.6, 6, 24),
+      entryHouse: new THREE.TorusGeometry(10, 0.8, 6, 36),
+      entryChan: new THREE.TorusGeometry(10, 0.3, 8, 48),
+      ringHouse: new THREE.TorusGeometry(11, 0.65, 6, 36),
+      ringChan: new THREE.TorusGeometry(11, 0.22, 8, 48),
+      cone: new THREE.ConeGeometry(0.6, 1, 5),
+      octa: new THREE.OctahedronGeometry(1, 0),
+    }),
+    [],
+  )
 
   const data = useMemo(() => {
     const rng = mulberry32((track.seed ^ 0x777aa1) >>> 0)
@@ -299,6 +310,69 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     }
   }, [track, frames])
 
+  const mats = useMemo(() => {
+    const glow = new THREE.Color(track.theme.glow)
+    const frame = new THREE.MeshStandardMaterial({
+      color: '#0a0d16',
+      metalness: 0.15,
+      roughness: 0.85,
+      emissive: glow,
+      emissiveIntensity: 0.045,
+    })
+    const biome =
+      data.biome === 'cavern'
+        ? new THREE.MeshStandardMaterial({
+            color: '#10142a',
+            metalness: 0.3,
+            roughness: 0.15,
+            emissive: '#ffffff',
+            emissiveIntensity: 0.4,
+            flatShading: true,
+          })
+        : new THREE.MeshStandardMaterial({
+            color: data.biome === 'city' ? '#090c18' : '#120e16',
+            metalness: data.biome === 'city' ? 0.6 : 0.1,
+            roughness: data.biome === 'city' ? 0.45 : 0.9,
+            emissive: glow,
+            emissiveIntensity: data.biome === 'city' ? 0.08 : 0.02,
+            flatShading: true,
+          })
+    return {
+      pylon: new THREE.MeshStandardMaterial({
+        color: '#0c0f1c',
+        metalness: 0.7,
+        roughness: 0.5,
+        emissive: glow,
+        emissiveIntensity: 0.06,
+      }),
+      glow: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
+      arch: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
+      tunnel: new THREE.MeshStandardMaterial({
+        color: '#0a0d18',
+        emissive: glow,
+        emissiveIntensity: 0.35,
+        metalness: 0.7,
+        roughness: 0.4,
+      }),
+      frame,
+      gateBar: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
+      chevron: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
+      biome,
+      entry: new THREE.MeshBasicMaterial({ color: '#ffffff', toneMapped: false }),
+      ring: new THREE.MeshBasicMaterial({
+        color: '#ffffff',
+        transparent: true,
+        opacity: 0.4,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      }),
+    }
+  }, [track.theme.glow, data.biome])
+
+  const fogFar = 3 / track.theme.fogDensity
+
   // beat-reactive glow (T21) — V10-safe: brightness only, no motion
   // T58: gate-pass detection state
   const lastPlayerS = useRef(0)
@@ -316,18 +390,18 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     const secE = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
     // activation, not ambiance: idle floors near-black, the music SWITCHES
     // things on — was idling ~75% lit and only going brighter (eye fatigue)
-    if (glowMat.current) glowMat.current.color.setScalar(0.04 + secE * 0.2 + e * 3.4)
-    if (archMat.current) archMat.current.color.setScalar(0.05 + secE * 0.26 + e * 3.2)
-    if (ringMat.current) ringMat.current.opacity = 0.02 + secE * 0.06 + e * 0.8
-    if (tunnelMat.current) tunnelMat.current.emissiveIntensity = 0.05 + secE * 0.12 + e * 1.5
-    if (chevronMat.current) chevronMat.current.color.setScalar(0.18 + c * 4.0)
+    mats.glow.color.setScalar(0.04 + secE * 0.2 + e * 3.4)
+    mats.arch.color.setScalar(0.05 + secE * 0.26 + e * 3.2)
+    mats.ring.opacity = 0.02 + secE * 0.06 + e * 0.8
+    mats.tunnel.emissiveIntensity = 0.05 + secE * 0.12 + e * 1.5
+    mats.chevron.color.setScalar(0.18 + c * 4.0)
     // R9f: crystal cavern breathes with the section energy
-    if (biomeMat.current && data.biome === 'cavern') {
-      biomeMat.current.emissiveIntensity = 0.06 + secE * 0.16 + e * 1.0
+    if (data.biome === 'cavern') {
+      mats.biome.emissiveIntensity = 0.06 + secE * 0.16 + e * 1.0
     }
     // T155: capture gates pulse on the beat — still the thing to aim for, so
     // a readable floor stays
-    if (entryMat.current) entryMat.current.color.setScalar(0.6 + b * 3.0)
+    mats.entry.color.setScalar(0.6 + b * 3.0)
 
     // T58: threading a gate → big flash + HUD kick
     const playerS = telemetry.progress * track.length
@@ -339,7 +413,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     gateFlash.current = Math.max(0, gateFlash.current - dt * 2.5)
     // T64: beat wave radiates from the player — near gates flash hard in
     // their OWN palette color, far gates idle. No uniform white blink.
-    if (gateMat.current) gateMat.current.color.setScalar(1)
+    mats.gateBar.color.setScalar(1)
     const gm = gateMesh.current
     if (gm) {
       for (let gi = 0; gi < data.gateS.length; gi++) {
@@ -354,140 +428,132 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     }
   })
 
+  // T173: every category bucketed + fog-culled except the gate BARS — their
+  // per-instance beat-wave colors index the flat instance order (gateMesh)
   return (
     <group>
-      <Instanced matrices={data.pylonMatrices}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial
-          color="#0c0f1c"
-          metalness={0.7}
-          roughness={0.5}
-          emissive={track.theme.glow}
-          emissiveIntensity={0.06}
-        />
-      </Instanced>
-      <Instanced matrices={data.glowMatrices} colors={data.glowColors}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial ref={glowMat} color="#ffffff" toneMapped={false} />
-      </Instanced>
-      <Instanced matrices={data.archMatrices} colors={data.archColors}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial ref={archMat} color="#ffffff" toneMapped={false} />
-      </Instanced>
-      <Instanced matrices={data.tunnelMatrices} colors={data.tunnelColors}>
-        <torusGeometry args={[14, 0.6, 6, 24]} />
-        <meshStandardMaterial ref={tunnelMat} color="#0a0d18" emissive={track.theme.glow} emissiveIntensity={0.35} metalness={0.7} roughness={0.4} />
-      </Instanced>
-      {/* T121/T140/T166: matte frame + LEGS to the deck — one structure,
-          faint emissive tint so the silhouette reads in the dark */}
-      <Instanced matrices={data.gateMatrices}>
-        <boxGeometry args={[1.006, 1.5, 1.5]} />
-        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
-      </Instanced>
-      <Instanced matrices={data.gateLegMatrices}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
-      </Instanced>
-      <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh}>
-        <boxGeometry args={[0.99, 0.55, 0.55]} />
-        <meshBasicMaterial ref={gateMat} color="#ffffff" toneMapped={false} />
-      </Instanced>
-      <Instanced matrices={data.chevronMatrices} colors={data.chevronColors}>
-        <boxGeometry args={[1, 1, 1]} />
-        <meshBasicMaterial ref={chevronMat} color="#ffffff" toneMapped={false} />
-      </Instanced>
+      <Instanced matrices={data.pylonMatrices} geometry={geoms.box} material={mats.pylon} cullRange={fogFar} />
+      <Instanced matrices={data.glowMatrices} colors={data.glowColors} geometry={geoms.box} material={mats.glow} cullRange={fogFar} />
+      <Instanced matrices={data.archMatrices} colors={data.archColors} geometry={geoms.box} material={mats.arch} cullRange={fogFar} />
+      <Instanced matrices={data.tunnelMatrices} colors={data.tunnelColors} geometry={geoms.tunnel} material={mats.tunnel} cullRange={fogFar} />
+      {/* T121/T140/T166: matte frame + LEGS to the deck */}
+      <Instanced matrices={data.gateMatrices} geometry={geoms.gateFrame} material={mats.frame} cullRange={fogFar} />
+      <Instanced matrices={data.gateLegMatrices} geometry={geoms.box} material={mats.frame} cullRange={fogFar} />
+      <Instanced matrices={data.gateMatrices} colors={data.gateColors} meshRef={gateMesh} geometry={geoms.gateBar} material={mats.gateBar} />
+      <Instanced matrices={data.chevronMatrices} colors={data.chevronColors} geometry={geoms.box} material={mats.chevron} cullRange={fogFar} />
       {/* R9f: biome layer — geometry + material keyed by mood */}
-      <Instanced matrices={data.biomeMatrices} colors={data.biome === 'cavern' ? data.biomeColors : undefined}>
-        {data.biome === 'city' ? (
-          <boxGeometry args={[1, 1, 1]} />
-        ) : data.biome === 'desert' ? (
-          <coneGeometry args={[0.6, 1, 5]} />
-        ) : (
-          <octahedronGeometry args={[1, 0]} />
-        )}
-        {data.biome === 'cavern' ? (
-          <meshStandardMaterial
-            ref={biomeMat}
-            color="#10142a"
-            metalness={0.3}
-            roughness={0.15}
-            emissive="#ffffff"
-            emissiveIntensity={0.4}
-            flatShading
-          />
-        ) : (
-          <meshStandardMaterial
-            ref={biomeMat}
-            color={data.biome === 'city' ? '#090c18' : '#120e16'}
-            metalness={data.biome === 'city' ? 0.6 : 0.1}
-            roughness={data.biome === 'city' ? 0.45 : 0.9}
-            emissive={track.theme.glow}
-            emissiveIntensity={data.biome === 'city' ? 0.08 : 0.02}
-            flatShading
-          />
-        )}
-      </Instanced>
-      {/* T155: capture gates @ twist-zone entries — matte housing + double
-          bright channel; thread it LOW or eat the reset */}
-      <Instanced matrices={data.entryMatrices}>
-        <torusGeometry args={[10, 0.8, 6, 36]} />
-        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
-      </Instanced>
-      <Instanced matrices={data.entryMatrices} colors={data.entryColors}>
-        <torusGeometry args={[10, 0.3, 8, 48]} />
-        <meshBasicMaterial ref={entryMat} color="#ffffff" toneMapped={false} />
-      </Instanced>
+      <Instanced
+        matrices={data.biomeMatrices}
+        colors={data.biome === 'cavern' ? data.biomeColors : undefined}
+        geometry={data.biome === 'city' ? geoms.box : data.biome === 'desert' ? geoms.cone : geoms.octa}
+        material={mats.biome}
+        cullRange={fogFar}
+      />
+      {/* T155: capture gates @ twist-zone entries */}
+      <Instanced matrices={data.entryMatrices} geometry={geoms.entryHouse} material={mats.frame} cullRange={fogFar} />
+      <Instanced matrices={data.entryMatrices} colors={data.entryColors} geometry={geoms.entryChan} material={mats.entry} cullRange={fogFar} />
       {/* T121/T140: matte ring housing (zero glow), slim lit channel inside */}
-      <Instanced matrices={data.ringMatrices}>
-        <torusGeometry args={[11, 0.65, 6, 36]} />
-        <meshStandardMaterial color="#0a0d16" metalness={0.15} roughness={0.85} emissive={track.theme.glow} emissiveIntensity={0.045} />
-      </Instanced>
-      <Instanced matrices={data.ringMatrices} colors={data.ringColors}>
-        <torusGeometry args={[11, 0.22, 8, 48]} />
-        <meshBasicMaterial
-          ref={ringMat}
-          color="#ffffff"
-          transparent
-          opacity={0.4}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-          side={THREE.DoubleSide}
-          toneMapped={false}
-        />
-      </Instanced>
+      <Instanced matrices={data.ringMatrices} geometry={geoms.ringHouse} material={mats.frame} cullRange={fogFar} />
+      <Instanced matrices={data.ringMatrices} colors={data.ringColors} geometry={geoms.ringChan} material={mats.ring} cullRange={fogFar} />
     </group>
   )
 }
 
 const waveColor = new THREE.Color()
 
+const BUCKET_SPAN = 700
+
+/**
+ * T173: instanced category, optionally split into ~700m world-grid buckets.
+ * One whole-track InstancedMesh always shades every instance — buckets get
+ * real bounds + per-frame fog-distance culling. Material/geometry are SHARED
+ * objects so the music-pulse writes hit all buckets at once.
+ */
 function Instanced({
   matrices,
   colors,
-  children,
+  geometry,
+  material,
   meshRef,
+  cullRange,
 }: {
   matrices: THREE.Matrix4[]
   colors?: THREE.Color[]
-  children: React.ReactNode
+  geometry: THREE.BufferGeometry
+  material: THREE.Material
   meshRef?: React.MutableRefObject<THREE.InstancedMesh | null>
+  /** fog cut distance — omit (or pass meshRef) for one always-on mesh */
+  cullRange?: number
 }) {
-  const count = matrices.length
+  const buckets = useMemo(() => {
+    if (!cullRange || meshRef || matrices.length === 0) return null
+    const map = new Map<string, number[]>()
+    const p = new THREE.Vector3()
+    matrices.forEach((mt, i) => {
+      p.setFromMatrixPosition(mt)
+      const key = `${Math.floor(p.x / BUCKET_SPAN)}:${Math.floor(p.z / BUCKET_SPAN)}`
+      const arr = map.get(key)
+      if (arr) arr.push(i)
+      else map.set(key, [i])
+    })
+    return [...map.values()].map((idx) => {
+      const center = new THREE.Vector3()
+      const q = new THREE.Vector3()
+      for (const i of idx) center.add(q.setFromMatrixPosition(matrices[i]))
+      center.divideScalar(idx.length)
+      let radius = 0
+      for (const i of idx) radius = Math.max(radius, q.setFromMatrixPosition(matrices[i]).distanceTo(center))
+      return { idx, center, radius: radius + 90 }
+    })
+  }, [matrices, cullRange, meshRef])
+
+  const refs = useRef<(THREE.InstancedMesh | null)[]>([])
+  useFrame(({ camera }) => {
+    if (!buckets || !cullRange) return
+    for (let b = 0; b < buckets.length; b++) {
+      const mesh = refs.current[b]
+      if (!mesh) continue
+      const reach = cullRange + buckets[b].radius
+      mesh.visible = buckets[b].center.distanceToSquared(camera.position) < reach * reach
+    }
+  })
+
+  const fill = (mesh: THREE.InstancedMesh | null, idx: number[] | null) => {
+    if (!mesh) return
+    const n = idx ? idx.length : matrices.length
+    for (let i = 0; i < n; i++) {
+      const src = idx ? idx[i] : i
+      mesh.setMatrixAt(i, matrices[src])
+      if (colors && colors[src]) mesh.setColorAt(i, colors[src])
+    }
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+    mesh.frustumCulled = false
+  }
+
+  if (!buckets) {
+    return (
+      <instancedMesh
+        ref={(mesh) => {
+          if (meshRef) meshRef.current = mesh
+          fill(mesh, null)
+        }}
+        args={[geometry, material, Math.max(1, matrices.length)]}
+      />
+    )
+  }
   return (
-    <instancedMesh
-      ref={(mesh) => {
-        if (meshRef) meshRef.current = mesh
-        if (mesh) {
-          for (let i = 0; i < count; i++) mesh.setMatrixAt(i, matrices[i])
-          if (colors) for (let i = 0; i < Math.min(count, colors.length); i++) mesh.setColorAt(i, colors[i])
-          mesh.instanceMatrix.needsUpdate = true
-          if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
-          mesh.frustumCulled = false
-        }
-      }}
-      args={[undefined, undefined, Math.max(1, count)]}
-    >
-      {children}
-    </instancedMesh>
+    <>
+      {buckets.map((b, bi) => (
+        <instancedMesh
+          key={bi}
+          ref={(mesh) => {
+            refs.current[bi] = mesh
+            fill(mesh, b.idx)
+          }}
+          args={[geometry, material, Math.max(1, b.idx.length)]}
+        />
+      ))}
+    </>
   )
 }

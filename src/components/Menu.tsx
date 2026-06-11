@@ -8,6 +8,8 @@ import { BUNDLED_SONGS, getBundledMeta, type BundledMeta, type BundledSong } fro
 import { startBuiltinRace, startBundledRace, startFileRace, startLibraryRace } from '../game/flow'
 import { useGame } from '../game/store'
 import { setMuted } from '../lib/audio/playback'
+import { requestFullscreen } from '../lib/fullscreen'
+import { TrackChips } from './TrackChips'
 
 /** T34: peak bars rendered as one SVG, used as card background */
 function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
@@ -22,37 +24,6 @@ function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
         <rect key={i} x={i + 0.15} y={16 - p * 14} width={0.7} height={Math.max(1, p * 28)} fill={color} />
       ))}
     </svg>
-  )
-}
-
-const MOOD_COLORS: Record<string, string> = {
-  aggressive: '#ff3355',
-  energetic: '#3d7bff',
-  flowing: '#2fffb0',
-  chill: '#b09aff',
-}
-
-/** T94: bpm / mood / intensity chips, shown wherever a track is listed */
-function TrackChips({ bpm, mood, intensity }: { bpm?: number; mood?: string; intensity?: number }) {
-  return (
-    <span className="relative ml-2 inline-flex items-center gap-1.5 align-middle text-[9px] tracking-[0.18em]">
-      {bpm !== undefined && (
-        <span className="rounded-sm border border-white/15 bg-black/60 px-1 py-px text-white/55">{bpm} BPM</span>
-      )}
-      {mood && (
-        <span
-          className="rounded-sm border bg-black/60 px-1 py-px font-bold"
-          style={{ color: MOOD_COLORS[mood] ?? '#fff', borderColor: (MOOD_COLORS[mood] ?? '#fff') + '55' }}
-        >
-          {mood.toUpperCase()}
-        </span>
-      )}
-      {intensity !== undefined && (
-        <span className="rounded-sm border border-white/15 bg-black/60 px-1 py-px text-white/55">
-          INT {Math.round(intensity * 100)}
-        </span>
-      )}
-    </span>
   )
 }
 
@@ -322,6 +293,15 @@ export function Menu() {
               }}
             >
               {settings.muted ? '🔇 MUTED' : '🔊 SOUND'}
+            </button>
+            <button
+              className="border border-white/20 px-2 py-1 tracking-widest hover:bg-white/10"
+              onClick={() => {
+                if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+                else void requestFullscreen()
+              }}
+            >
+              ⛶ FULL
             </button>
             <span className="hidden text-white/30 sm:inline">WASD · SHIFT/SPACE AIRBRAKE · C CAM</span>
           </div>

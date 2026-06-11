@@ -6,7 +6,6 @@ import { telemetry } from '../game/telemetry'
 import { attachKeyboard, onGameKey, readShipInput, resetInput } from '../game/input'
 import {
   computeLean,
-  drainEnergy,
   initialShip,
   shipVmax,
   stepShip,
@@ -347,12 +346,10 @@ export function RaceScene({
       for (let ci = 0; ci < s.cooldowns.length; ci++) {
         s.cooldowns[ci] = Math.max(0, s.cooldowns[ci] - PHYSICS_DT)
       }
+      // hull damage from racer contact happens INSIDE resolveCollisions now —
+      // scaled by closing speed, both parties, fatal at ramming speed
       const bump = resolveCollisions([s.ship, ...s.npcs], track, s.cooldowns)
-      if (bump > 0) {
-        wallEvent = Math.max(wallEvent, bump * 0.6)
-        // racer contact chews the hull like wall contact does
-        drainEnergy(s.ship, 0.03 + bump * 0.003)
-      }
+      if (bump > 0) wallEvent = Math.max(wallEvent, bump * 0.6)
       // T79: wreck-level slam → shockwave ring + max trauma
       if (bump >= 35 && burstRef.current && shipGroup.current) {
         s.burstT = 0
@@ -741,6 +738,7 @@ function updateCamera(
     roll: number
     pull: number
     camSteer: number
+    countdown: number
   },
   mode: 'chase' | 'cockpit',
   fxIntensity: number,
@@ -750,32 +748,41 @@ function updateCamera(
   const speedNorm = Math.min(1, ship.v / 430)
 
   if (mode === 'chase') {
+    // intro dolly: READY holds a wide shot from behind/above the player so
+    // the whole grid ahead is in frame, then the camera glides down into the
+    // racing position as the digits run — locked in by GO
+    const introRaw = Math.min(1, Math.max(0, (s.countdown - 0.4) / 2.6))
+    const intro = introRaw * introRaw * (3 - 2 * introRaw)
     // trail into the corner: camera swings opposite the steer (T36/T63);
     // pulls back under acceleration (T45). At speed the cam creeps slightly
     // CLOSER to offset the FOV stretch — the ship stops receding into the
     // distance at the top end.
-    const swing = -s.camSteer * 2.4
-    const back = 8 + s.pull * 2.0 - speedNorm * 1.1
+    const swing = -s.camSteer * 2.4 * (1 - intro)
+    const back = 8 + s.pull * 2.0 - speedNorm * 1.1 + intro * 17
+    const lift = 2.9 + intro * 5.5
     camPos.set(
-      pose.px - pose.tx * back + pose.nx * 2.9 + pose.bx * swing,
-      pose.py - pose.ty * back + pose.ny * 2.9 + pose.by * swing,
-      pose.pz - pose.tz * back + pose.nz * 2.9 + pose.bz * swing,
+      pose.px - pose.tx * back + pose.nx * lift + pose.bx * swing,
+      pose.py - pose.ty * back + pose.ny * lift + pose.by * swing,
+      pose.pz - pose.tz * back + pose.nz * lift + pose.bz * swing,
     )
     camera.position.lerp(camPos, 1 - Math.exp(-dt * 9))
     // hard tether: cam may lag for feel but never lose the ship at speed (B4)
     const lag = camera.position.distanceTo(camPos)
     if (lag > 3.2) camera.position.lerp(camPos, 1 - 3.2 / lag)
-    // T51/T63: look INTO the corner — damped, not twitchy
-    const lookIn = s.camSteer * 6
+    // T51/T63: look INTO the corner — damped, not twitchy. During the intro
+    // the camera looks over the FIELD ahead instead of the near road.
+    const lookIn = s.camSteer * 6 * (1 - intro)
+    const lookAhead = 12 + intro * 38
     camTarget.set(
-      pose.px + pose.tx * 12 + pose.bx * lookIn,
-      pose.py + pose.ty * 12 + pose.by * lookIn,
-      pose.pz + pose.tz * 12 + pose.bz * lookIn,
+      pose.px + pose.tx * lookAhead + pose.bx * lookIn,
+      pose.py + pose.ty * lookAhead + pose.by * lookIn,
+      pose.pz + pose.tz * lookAhead + pose.bz * lookIn,
     )
   } else {
     // T69 → T109: cockpit cam sits AT the canopy front, ahead of the hull
-    // (the hull itself is hidden in cockpit mode — see ship visible toggle)
-    camPos.set(pose.px + pose.tx * 1.1 + pose.nx * 0.55, pose.py + pose.ty * 1.1 + pose.ny * 0.55, pose.pz + pose.tz * 1.1 + pose.nz * 0.55)
+    // (the hull itself is hidden in cockpit mode — see ship visible toggle).
+    // Lifted 0.55 → 0.85: eye level, not chin-on-asphalt.
+    camPos.set(pose.px + pose.tx * 1.1 + pose.nx * 0.85, pose.py + pose.ty * 1.1 + pose.ny * 0.85, pose.pz + pose.tz * 1.1 + pose.nz * 0.85)
     camera.position.copy(camPos)
     camTarget.set(pose.px + pose.tx * 30, pose.py + pose.ty * 30, pose.pz + pose.tz * 30)
   }

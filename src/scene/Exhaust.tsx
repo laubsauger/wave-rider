@@ -51,9 +51,12 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
     const filament = smoothstep(float(0.92).sub(uVel.mul(0.18)), 1.0, cross)
       .mul(sub(1, v).pow(float(3).sub(uVel.mul(1.6))))
       .mul(uVel)
-    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.5).add(flameHead).min(0.8))
-      .add(color(new THREE.Color(accent)).mul(filament.mul(2.6)))
-      .mul(float(1.05).add(uPower.mul(0.4)).add(flameHead.mul(0.45)).add(uVel.mul(0.5)))
+    // de-blind: white participation CAPPED low — the high end saturates IN
+    // the accent (filament + brightness), never bleaches to staring-at-the-
+    // sun white. Bloom blooms the color, not a white hole.
+    m.colorNode = mix(color(new THREE.Color(accent)), color(new THREE.Color('#ffffff')), core.mul(0.35).add(flameHead).min(0.55))
+      .add(color(new THREE.Color(accent)).mul(filament.mul(2.2)))
+      .mul(float(1.0).add(uPower.mul(0.3)).add(flameHead.mul(0.3)).add(uVel.mul(0.25)))
     // T141: flicker calmed — texture, not strobe; agitates a touch with speed
     const flicker = sin(v.mul(26).sub(uTime.mul(34).add(uVel.mul(18)))).mul(float(0.06).add(uVel.mul(0.05))).add(0.94)
     // T141: soft leading edge — the ribbon blooms out of the nozzle instead
