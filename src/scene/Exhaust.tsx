@@ -117,6 +117,13 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
   useFrame(({ camera, clock }, dt) => {
     const ship = shipRef.current
     if (!ship) return
+    // T173: distant racers don't need ribbon rebuilds — at 350m+ the trail is
+    // sub-pixel anyway. Skip ALL the per-point work, hide the meshes.
+    if (camera.position.distanceToSquared(ship.position) > 350 * 350) {
+      meshRefs.current.forEach((m) => m && (m.visible = false))
+      return
+    }
+    meshRefs.current.forEach((m) => m && (m.visible = true))
     const power = intensity()
     uPower.value += (power - uPower.value) * 0.25
     uTime.value = clock.elapsedTime

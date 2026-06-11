@@ -36,6 +36,11 @@ export interface RaceTelemetry {
   hullFlash: number
   /** current throttle 0..1 (+boost reads above 1) — THRUST bar */
   thrust: number
+  /** T173: measured GPU render time per frame, ms (timestamp queries) */
+  gpuMs: number
+  /** T173: draw calls + triangles last frame (renderer.info) */
+  drawCalls: number
+  triangles: number
 }
 
 export const telemetry: RaceTelemetry = {
@@ -59,4 +64,7 @@ export const telemetry: RaceTelemetry = {
   hull: 1,
   hullFlash: 0,
   thrust: 0,
+  gpuMs: 0,
+  drawCalls: 0,
+  triangles: 0,
 }

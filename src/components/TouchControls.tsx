@@ -24,8 +24,11 @@ export function TouchControls() {
 
     const steerFrom = (clientX: number) => {
       const rect = zone.getBoundingClientRect()
-      const rel = ((clientX - rect.left) / rect.width) * 2 - 1
-      touch.setSteer(rel)
+      const raw = ((clientX - rect.left) / rect.width) * 2 - 1
+      // sensitivity: ~45% of the half-zone = full lock (thumb stays near the
+      // center line), expo curve keeps small offsets fine-grained
+      const g = Math.max(-1, Math.min(1, raw / 0.45))
+      touch.setSteer(Math.sign(g) * Math.pow(Math.abs(g), 1.35))
     }
     const down = (e: PointerEvent) => {
       activeId = e.pointerId
@@ -66,6 +69,9 @@ export function TouchControls() {
   return (
     <div className="absolute inset-0 hidden touch-none select-none [@media(pointer:coarse)]:block">
       <div ref={steerZone} className="absolute top-0 bottom-0 left-0 w-1/2">
+        {/* subtle center-line: neutral steer reference for the thumb */}
+        <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-gradient-to-t from-white/25 via-white/10 to-transparent" />
+        <div className="pointer-events-none absolute bottom-10 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rotate-45 border border-white/30" />
         <div className="absolute bottom-6 left-6 text-xs tracking-[0.3em] text-white/30">◄ STEER ►</div>
         {/* T138: first-run hint — your LEFT THUMB drives */}
         {hint && (

@@ -145,6 +145,15 @@ export function RaceScene({
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
 
   const npcSpecs = useMemo(() => makeNpcs(track), [track])
+  const gl = useThree((s) => s.gl) as unknown as THREE.WebGPURenderer
+
+  // T173: warm EVERY render pipeline while the countdown holds the grid —
+  // lazy first-use compiles (explosion fireball, sparks, heat paths) were
+  // the mid-race "drops to 30fps for a moment" hitches
+  useEffect(() => {
+    type Compilable = { compileAsync?: (scene: THREE.Object3D, camera: THREE.Camera) => Promise<unknown> }
+    void (gl as Compilable).compileAsync?.(scene, camera)?.catch(() => {})
+  }, [gl, scene, camera])
 
 
   const sim = useRef({

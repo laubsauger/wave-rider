@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { clamp, convertToTexture, float, hash, mix, pass, smoothstep, time, uniform, uv, vec3, vec4 } from 'three/tsl'
@@ -28,6 +28,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
   const uHeat = useMemo(() => uniform(0), [])
   /** hull-damage static — ramps in below 35% energy */
   const uDmg = useMemo(() => uniform(0), [])
+  const frameN = useRef(0)
 
   const post = useMemo(() => {
     if (fxIntensity <= 0) return null
@@ -135,6 +136,26 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     uDmg.value += (dmgTarget - uDmg.value) * 0.1
     if (post) post.render()
     else renderer.render(scene, camera)
+
+    // T173: REAL gpu-side numbers for PerfHud — timestamp queries resolve
+    // async every ~20 frames (cheap), draw calls/tris read every frame
+    type GpuInfo = {
+      render: { timestamp?: number; drawCalls?: number; calls?: number; triangles?: number }
+    }
+    const info = (renderer.info as unknown as GpuInfo).render
+    telemetry.drawCalls = info.drawCalls ?? info.calls ?? 0
+    telemetry.triangles = info.triangles ?? 0
+    frameN.current++
+    if (frameN.current % 20 === 0) {
+      type TsRenderer = { resolveTimestampsAsync?: (type?: string) => Promise<unknown> }
+      void (renderer as unknown as TsRenderer)
+        .resolveTimestampsAsync?.('render')
+        ?.then(() => {
+          const t = (renderer.info as unknown as GpuInfo).render.timestamp
+          if (typeof t === 'number' && t >= 0) telemetry.gpuMs = t
+        })
+        .catch(() => {})
+    }
   }, 1)
 
   return null

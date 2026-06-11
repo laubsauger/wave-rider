@@ -10,6 +10,7 @@ import { RotateOverlay } from './components/RotateOverlay'
 import { MultiplayerLobby } from './components/MultiplayerLobby'
 import { TrackSetup } from './components/TrackSetup'
 import { GhostLobby } from './components/GhostLobby'
+import { PerfHud } from './components/PerfHud'
 import { deserializeGhost } from './lib/network/ghost'
 import { GpuCanvas } from './scene/GpuCanvas'
 import { MenuBackdrop } from './scene/MenuBackdrop'
@@ -78,6 +79,8 @@ export default function App() {
       {screen === 'race' && <Race />}
       {screen === 'results' && <Results />}
       {screen !== 'race' && <RotateOverlay />}
+      {/* T173: F2 or ?perf — fps + frame ms + real canvas pixels */}
+      <PerfHud />
     </div>
   )
 }

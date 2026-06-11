@@ -564,13 +564,14 @@ function walkSegment(
 
   for (let i = 0; i < steps; i++) {
     const t = i / steps
-    // transition windows: curvature (and bank, below) ramp in over the first
-    // 12% and out over the last 12% of the segment — entering a sweeper is a
-    // swell, not a step discontinuity in drift; exits unwind before the seam
-    const edgeWin = Math.min(1, t / 0.12, (1 - t) / 0.12)
+    // transition windows: curvature (and bank, below) ramp in/out over the
+    // first/last ~15% — SMOOTHSTEP, not linear: a linear ramp leaves a jerk
+    // discontinuity where the window meets the hold, which read as the
+    // "unsmooth in/out" on sweepers. Ease the ease.
+    const edgeWin = smooth01(Math.min(1, t / 0.15)) * smooth01(Math.min(1, (1 - t) / 0.15))
     // chicane S-flip passes THROUGH flat — no instant sign snap mid-corner;
-    // wide window (≈40% of the segment ramps) so the flip is a breath
-    const flipWin = isChicane ? Math.min(1, Math.abs(t - 0.5) * 5) : 1
+    // wide eased window (≈50% of the segment ramps) so the flip is a breath
+    const flipWin = isChicane ? smooth01(Math.min(1, Math.abs(t - 0.5) * 4)) : 1
     let k = seg.curvature * edgeWin
     if (isChicane) {
       k = (i < steps / 2 ? seg.curvature : -seg.curvature) * edgeWin * flipWin
@@ -616,6 +617,11 @@ function walkSegment(
   }
   // after a jump, level out so the landing is catchable
   if (isJump) cur.pitch *= 0.3
+}
+
+/** classic smoothstep 0..1 — zero slope at both ends */
+function smooth01(x: number): number {
+  return x * x * (3 - 2 * x)
 }
 
 function onsetsPerSecond(features: AudioFeatures, sec: AudioSection): number {

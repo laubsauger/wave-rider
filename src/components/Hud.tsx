@@ -45,6 +45,52 @@ function Minimap({ track, accent }: { track: TrackData; accent: string }) {
     return { pts, scale, ox, oy, hMax, world }
   }, [track.points])
 
+  // T173: the track layer is STATIC — bake it once to an offscreen canvas.
+  // The old per-frame redraw was ~500 beginPath/stroke calls at display rate,
+  // pure main-thread waste competing with the render loop.
+  const staticLayer = useMemo(() => {
+    const off = document.createElement('canvas')
+    off.width = MAP_W
+    off.height = MAP_H
+    const ctx = off.getContext('2d')
+    if (!ctx) return off
+    const { pts, scale, ox, oy, hMax } = proj
+    // ground shadow — flat footprint
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    pts.forEach((p, i) => {
+      const x = p.sx * scale + ox
+      const y = p.gy * scale + oy
+      if (i === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    })
+    ctx.stroke()
+    // altitude struts every ~12th point
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)'
+    ctx.lineWidth = 1
+    for (let i = 0; i < pts.length; i += 12) {
+      const p = pts[i]
+      ctx.beginPath()
+      ctx.moveTo(p.sx * scale + ox, p.gy * scale + oy)
+      ctx.lineTo(p.sx * scale + ox, p.sy * scale + oy)
+      ctx.stroke()
+    }
+    // elevated path, brightness = altitude
+    ctx.lineWidth = 2.2
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]
+      const b = pts[i]
+      const l = 38 + (b.h / hMax) * 52
+      ctx.strokeStyle = `hsl(0 0% ${l}% / 0.85)`
+      ctx.beginPath()
+      ctx.moveTo(a.sx * scale + ox, a.sy * scale + oy)
+      ctx.lineTo(b.sx * scale + ox, b.sy * scale + oy)
+      ctx.stroke()
+    }
+    return off
+  }, [proj])
+
   useEffect(() => {
     const ctx = canvasRef.current?.getContext('2d')
     if (!ctx) return
@@ -52,42 +98,7 @@ function Minimap({ track, accent }: { track: TrackData; accent: string }) {
     const tick = () => {
       raf = requestAnimationFrame(tick)
       ctx.clearRect(0, 0, MAP_W, MAP_H)
-      const { pts, scale, ox, oy, hMax } = proj
-
-      // ground shadow — flat footprint
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)'
-      ctx.lineWidth = 1.5
-      ctx.beginPath()
-      pts.forEach((p, i) => {
-        const x = p.sx * scale + ox
-        const y = p.gy * scale + oy
-        if (i === 0) ctx.moveTo(x, y)
-        else ctx.lineTo(x, y)
-      })
-      ctx.stroke()
-      // altitude struts every ~12th point
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)'
-      ctx.lineWidth = 1
-      for (let i = 0; i < pts.length; i += 12) {
-        const p = pts[i]
-        ctx.beginPath()
-        ctx.moveTo(p.sx * scale + ox, p.gy * scale + oy)
-        ctx.lineTo(p.sx * scale + ox, p.sy * scale + oy)
-        ctx.stroke()
-      }
-      // elevated path, brightness = altitude
-      ctx.lineWidth = 2.2
-      for (let i = 1; i < pts.length; i++) {
-        const a = pts[i - 1]
-        const b = pts[i]
-        const l = 38 + (b.h / proj.hMax) * 52
-        ctx.strokeStyle = `hsl(0 0% ${l}% / 0.85)`
-        ctx.beginPath()
-        ctx.moveTo(a.sx * scale + ox, a.sy * scale + oy)
-        ctx.lineTo(b.sx * scale + ox, b.sy * scale + oy)
-        ctx.stroke()
-      }
-      void hMax
+      ctx.drawImage(staticLayer, 0, 0)
 
       // npc dots, then player glowing on top
       for (let i = 1; i < telemetry.racers; i++) {
@@ -112,7 +123,7 @@ function Minimap({ track, accent }: { track: TrackData; accent: string }) {
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [proj, accent])
+  }, [proj, accent, staticLayer])
 
   return (
     <canvas
@@ -376,7 +387,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
               ))}
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1.5">
+          <div className="flex flex-col items-end gap-1">
             <div className="-skew-x-12 border-r-4 bg-black/50 px-4 py-1.5 text-right short:px-2.5 short:py-1" style={{ borderColor: accent }}>
               <div className="text-[10px] tracking-[0.4em] text-white/40 short:text-[8px]">
                 POS · <span className="text-white/70">{cameraMode === 'chase' ? '3P' : '1P'}</span>
@@ -392,60 +403,67 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
             {/* T67: speed + boost live top-right — clear of mobile thumb zones */}
             {/* T83: LCARS-bold readout — big pills, heavy type */}
             <div
-              className="w-fit self-end rounded-l-2xl border-r-8 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-1.5 pr-3 pl-7 text-right short:border-r-4 short:py-1 short:pr-2.5 short:pl-5"
+              className="w-fit self-end rounded-l-2xl border-r-8 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-1 pr-2.5 pl-5 text-right short:border-r-4 short:py-0.5 short:pr-2 short:pl-4"
               style={{ borderColor: accent }}
             >
-              <div className="flex items-baseline justify-end gap-2">
+              {/* number hugs the bar block — same width story, no air gap */}
+              <div className="-mb-1 flex items-baseline justify-end gap-1.5">
                 <span
                   ref={speedRef}
-                  className="inline-block text-8xl font-black tabular-nums leading-none short:text-4xl"
+                  className="inline-block text-7xl font-black tabular-nums leading-none short:text-4xl"
                   style={{ color: accent, textShadow: `0 0 24px ${accent}` }}
                 >
                   0
                 </span>
-                <span className="text-base font-bold tracking-[0.3em] text-white/70 short:text-xs">KPH</span>
+                <span className="text-sm font-bold tracking-[0.3em] text-white/70 short:text-xs">KPH</span>
               </div>
               {/* HUD v3 (WipEout ref): one flush instrument — THRUST on top
                   (slope rising along its top edge), ENERGY mirrored beneath
                   (slope falling along its bottom edge), labels bracketing */}
-              <div className="mt-1 flex origin-right flex-col items-end short:scale-[0.68]">
-                <div ref={thrustLabelRef} className="text-[11px] font-black tracking-[0.4em] text-(--color-amber-hud)">
-                  THRUST
-                </div>
+              {/* labels live in the dead column LEFT of the bars — no label
+                  rows above/below, the block is exactly number + two bars */}
+              <div className="mt-0.5 flex origin-right flex-col items-end gap-[3px] short:scale-[0.68]">
                 {/* THRUST = speed→ceiling; magenta tail = boost overdrive.
                     Heights ease in: gentle low end, pronounced swell at the top */}
-                <div className="flex items-end gap-[3px]">
-                  {Array.from({ length: THRUST_SEGS }, (_, i) => (
-                    <div
-                      key={i}
-                      ref={(el) => void (thrustCells.current[i] = el)}
-                      className="w-4 -skew-x-12 rounded-[2px] border border-white/15"
-                      style={{
-                        height: `${12 + Math.pow(i / (THRUST_SEGS - 1), 1.9) * 22}px`,
-                        opacity: 0.12,
-                        background: '#ffb13d',
-                      }}
-                    />
-                  ))}
+                <div className="flex items-end gap-2">
+                  <div ref={thrustLabelRef} className="pb-0.5 text-[10px] font-black tracking-[0.3em] text-(--color-amber-hud)">
+                    THRUST
+                  </div>
+                  <div className="flex items-end gap-[3px]">
+                    {Array.from({ length: THRUST_SEGS }, (_, i) => (
+                      <div
+                        key={i}
+                        ref={(el) => void (thrustCells.current[i] = el)}
+                        className="w-4 -skew-x-12 rounded-[2px] border border-white/15"
+                        style={{
+                          height: `${12 + Math.pow(i / (THRUST_SEGS - 1), 1.9) * 22}px`,
+                          opacity: 0.12,
+                          background: '#ffb13d',
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
                 {/* ENERGY: flipped — flat seam against THRUST, slope below.
                     Slimmer than THRUST, softer swell */}
-                <div className="mt-[3px] flex items-start gap-[3px]">
-                  {Array.from({ length: ENERGY_SEGS }, (_, i) => (
-                    <div
-                      key={i}
-                      ref={(el) => void (energyCells.current[i] = el)}
-                      className="w-4 -skew-x-12 rounded-[2px] border border-white/15"
-                      style={{
-                        height: `${8 + Math.pow(i / (ENERGY_SEGS - 1), 1.6) * 9}px`,
-                        opacity: 1,
-                        background: ENERGY_COL,
-                      }}
-                    />
-                  ))}
-                </div>
-                <div ref={energyLabelRef} className="text-[11px] font-black tracking-[0.4em]" style={{ color: ENERGY_COL }}>
-                  ENERGY
+                <div className="flex items-start gap-2">
+                  <div ref={energyLabelRef} className="pt-0.5 text-[10px] font-black tracking-[0.3em]" style={{ color: ENERGY_COL }}>
+                    ENERGY
+                  </div>
+                  <div className="flex items-start gap-[3px]">
+                    {Array.from({ length: ENERGY_SEGS }, (_, i) => (
+                      <div
+                        key={i}
+                        ref={(el) => void (energyCells.current[i] = el)}
+                        className="w-4 -skew-x-12 rounded-[2px] border border-white/15"
+                        style={{
+                          height: `${8 + Math.pow(i / (ENERGY_SEGS - 1), 1.6) * 9}px`,
+                          opacity: 1,
+                          background: ENERGY_COL,
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>

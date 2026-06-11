@@ -42,6 +42,9 @@ export function GpuCanvas({
           antialias: true,
           forceWebGL: false,
           alpha,
+          // T173: GPU timestamp queries — PerfHud reads REAL gpu frame ms,
+          // not rAF pacing (which just mirrors the display's vsync)
+          trackTimestamp: true,
         })
         await renderer.init()
         return renderer

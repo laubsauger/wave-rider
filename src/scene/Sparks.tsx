@@ -43,6 +43,10 @@ interface Pool {
   maxLife: Float32Array
   cursor: number
   count: number
+  /** live particles after the last step — 0 + no spawns ⇒ skip everything */
+  alive: number
+  /** a spawn happened since the last step */
+  dirty: boolean
 }
 
 function makePool(count: number): Pool {
@@ -53,6 +57,8 @@ function makePool(count: number): Pool {
     maxLife: new Float32Array(count),
     cursor: 0,
     count,
+    alive: 0,
+    dirty: false,
   }
 }
 
@@ -89,6 +95,7 @@ export function Sparks({
     pool.vel.set([vx, vy, vz], i * 3)
     pool.life[i] = life
     pool.maxLife[i] = life
+    pool.dirty = true
   }
 
   useFrame((_, dt) => {
@@ -183,10 +190,22 @@ export function Sparks({
       st.clearLand()
     }
 
+    // T173: a pool with nothing alive and nothing spawned is a no-op — skip
+    // the integrate loop AND the draw entirely (matrix writes were running
+    // for all ~360 slots every frame even with zero particles)
+    const idle = (pool: Pool, mesh: THREE.InstancedMesh | null) => {
+      if (pool.alive === 0 && !pool.dirty) {
+        if (mesh) mesh.visible = false
+        return true
+      }
+      return false
+    }
+
     // integrate + write instances — blob mode (dust) for soft puffs
     const step = (pool: Pool, mesh: THREE.InstancedMesh | null, size: (a: number) => number, gravity: number) => {
-      if (!mesh) return
-      mesh.visible = true
+      if (!mesh || idle(pool, mesh)) return
+      pool.dirty = false
+      let alive = 0
       for (let i = 0; i < pool.count; i++) {
         if (pool.life[i] > 0) {
           pool.life[i] -= dt
@@ -198,19 +217,23 @@ export function Sparks({
         const a = Math.max(0, pool.life[i] / Math.max(1e-4, pool.maxLife[i]))
         tmpObj.position.set(pool.pos[i * 3], pool.pos[i * 3 + 1], pool.pos[i * 3 + 2])
         const s = pool.life[i] > 0 ? size(a) : 0
+        if (pool.life[i] > 0) alive++
         tmpObj.scale.set(s, s, s)
         tmpObj.rotation.set(0, 0, 0)
         tmpObj.updateMatrix()
         mesh.setMatrixAt(i, tmpObj.matrix)
       }
+      pool.alive = alive
+      mesh.visible = true
       mesh.instanceMatrix.needsUpdate = true
     }
 
     // T153v2: streak mode — needle-thin, stretched along velocity. Sparks
     // AND embers both; only dust stays a puff (it's dust).
     const stepStreaks = (pool: Pool, mesh: THREE.InstancedMesh | null, thick: number, lenK: number, gravity: number) => {
-      if (!mesh) return
-      mesh.visible = true
+      if (!mesh || idle(pool, mesh)) return
+      pool.dirty = false
+      let alive = 0
       for (let i = 0; i < pool.count; i++) {
         if (pool.life[i] > 0) {
           pool.life[i] -= dt
@@ -229,12 +252,15 @@ export function Sparks({
           tmpVel.set(tmpObj.position.x + vx, tmpObj.position.y + vy, tmpObj.position.z + vz)
           tmpObj.lookAt(tmpVel)
           tmpObj.scale.set(thick, thick, (0.18 + speed * lenK) * a + 0.04)
+          alive++
         } else {
           tmpObj.scale.setScalar(0)
         }
         tmpObj.updateMatrix()
         mesh.setMatrixAt(i, tmpObj.matrix)
       }
+      pool.alive = alive
+      mesh.visible = true
       mesh.instanceMatrix.needsUpdate = true
     }
 
