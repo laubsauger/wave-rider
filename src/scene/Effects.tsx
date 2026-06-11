@@ -118,10 +118,11 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     uBokeh.value += (bokehTarget - uBokeh.value) * 0.08
     // focal plane chases the aim point: FOV stretch at speed pushes "right in
     // front of the ship" deeper in view-Z, so focus moves out and the sharp
-    // band widens with it
+    // band widens with it. Band reaches FAR enough that the next boost pad
+    // (~100-200m) stays readable — blur is for the far world, not the path.
     const speedN = Math.min(1, kph / 1100)
-    uFocus.value += (12 + speedN * 16 - uFocus.value) * 0.08
-    uRange.value += (55 + speedN * 75 - uRange.value) * 0.08
+    uFocus.value += (14 + speedN * 26 - uFocus.value) * 0.08
+    uRange.value += (75 + speedN * 170 - uRange.value) * 0.08
     // T162/T169: tunnel vision — ring DARKENS and CLOSES with speed; boost
     // squeezes it harder for a beat
     const vigTarget = (0.32 + Math.min(0.55, (kph / 1600) * 0.55) + telemetry.boostFlash * 0.18) * fxIntensity

@@ -1,6 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
+import { color, dot, float, max, normalView, normalize, positionView, pow, sub } from 'three/tsl'
 import { buildHullDetail } from './hull/buildHull'
 
 /**
@@ -80,13 +81,36 @@ export function ShipMesh({
   // R9a: panel lines + plates + greebles + livery, merged to 2 draw calls
   const hullDetail = useMemo(() => buildHullDetail(variant), [variant])
 
-  // T125: shiny — low roughness so env reflections actually read, env
-  // intensity tuned so the hull mirrors highlights without soaking up the
-  // theme color as diffuse cast
-  const hull = useMemo(
-    () => ({ metalness: 0.92, roughness: 0.1, clearcoat: 1, clearcoatRoughness: 0.06, envMapIntensity: 0.85, flatShading: true, opacity: opacity ?? 1, transparent: transparent ?? false }),
-    [opacity, transparent],
-  )
+  // T125: shiny — low roughness so env reflections actually read.
+  // Rim light: fresnel-driven accent emissive on every hull material — the
+  // silhouette stays readable in the player color even on pitch black.
+  const hullMats = useMemo(() => {
+    const vDir = normalize(positionView.negate())
+    // tight power — flat-shaded faces grab fresnel wholesale, so a soft
+    // exponent floods the hull in accent instead of trimming the outline
+    const fres = pow(sub(1, max(float(0), dot(normalView, vDir))), 4)
+    const rim = color(new THREE.Color(accent)).mul(fres).mul(0.5)
+    const mk = (hex: string, roughness: number) => {
+      const m = new THREE.MeshPhysicalNodeMaterial({
+        color: new THREE.Color(hex),
+        metalness: 0.92,
+        roughness,
+        clearcoat: 1,
+        clearcoatRoughness: 0.06,
+        flatShading: true,
+        opacity: opacity ?? 1,
+        transparent: transparent ?? false,
+      })
+      m.emissiveNode = rim
+      return m
+    }
+    return {
+      body: mk('#323b52', 0.1),
+      spine: mk('#262e44', 0.1),
+      detail: mk('#3d4860', 0.42),
+      engine: mk('#1b2233', 0.1),
+    }
+  }, [accent, opacity, transparent])
 
   useFrame(({ clock }) => {
     const p = power ? power() : boost
@@ -100,19 +124,16 @@ export function ShipMesh({
 
   return (
     <group>
-      {/* wedge body — dark gunmetal, accents carry the color (C11) */}
-      <mesh castShadow geometry={bodyGeo}>
-        <meshPhysicalMaterial color="#323b52" {...hull} />
-      </mesh>
+      {/* wedge body — dark gunmetal, accents carry the color (C11).
+          T173: ONLY the body casts a shadow — spine/detail/engine shadows
+          live entirely inside the body's, pure shadow-pass waste ×6 ships */}
+      <mesh castShadow geometry={bodyGeo} material={hullMats.body} />
       {/* raised spine plate */}
-      <mesh castShadow position={[0, 0.34, -0.15]} scale={[0.34, 0.09, 2.0]}>
+      <mesh position={[0, 0.34, -0.15]} scale={[0.34, 0.09, 2.0]} material={hullMats.spine}>
         <boxGeometry />
-        <meshPhysicalMaterial color="#262e44" {...hull} />
       </mesh>
       {/* R9a: merged detail pass — panel seams, plates, fins, scoops */}
-      <mesh castShadow geometry={hullDetail.detail}>
-        <meshPhysicalMaterial color="#3d4860" {...hull} roughness={0.42} />
-      </mesh>
+      <mesh geometry={hullDetail.detail} material={hullMats.detail} />
       {/* R9a: merged livery pass — vents + wing slashes in team accent */}
       <mesh geometry={hullDetail.accent}>
         <meshStandardMaterial
@@ -130,9 +151,8 @@ export function ShipMesh({
         <meshPhysicalMaterial color="#060d20" metalness={0.2} roughness={0.05} clearcoat={1} emissive={accent} emissiveIntensity={0.35} transparent={transparent} opacity={opacity ?? 1} />
       </mesh>
       {/* engine block — pod sunk into the pinched tail */}
-      <mesh castShadow position={[0, 0.22, 1.3]} scale={[0.86, 0.24, 0.46]}>
+      <mesh position={[0, 0.22, 1.3]} scale={[0.86, 0.24, 0.46]} material={hullMats.engine}>
         <boxGeometry />
-        <meshPhysicalMaterial color="#1b2233" {...hull} />
       </mesh>
       {/* T125: QUAD tail lights — big outers, small inners */}
       {[-0.3, 0.3].map((x) => (

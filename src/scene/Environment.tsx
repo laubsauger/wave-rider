@@ -390,7 +390,11 @@ export function WarpStreaks({
     travel.current = (travel.current + v * dt) % STREAK_RANGE
     for (let i = 0; i < STREAKS; i++) {
       const sh = shards[i]
-      const z = ((sh.z0 + travel.current) % STREAK_RANGE) - STREAK_RANGE / 2
+      // streaks flow nose→tail past the viewer (world rushing AT you);
+      // additive z read as flying forward — subtract instead
+      let z = (sh.z0 - travel.current) % STREAK_RANGE
+      if (z < 0) z += STREAK_RANGE
+      z -= STREAK_RANGE / 2
       obj.position.set(Math.cos(sh.angle) * sh.radius, Math.sin(sh.angle) * sh.radius, z)
       obj.rotation.set(0, 0, 0)
       obj.scale.set(0.032, 0.032, sh.len * (0.5 + strength * 2.6))
