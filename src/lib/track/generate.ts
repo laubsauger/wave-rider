@@ -231,6 +231,10 @@ function layoutCourse(
   // overall so upcoming segments stack into actual vistas
   const globalTrend = rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1)
 
+  // T157: distance since the last jump ended — twist zones need a clean
+  // run-in, not an airborne arrival off a crest
+  let sinceJump = Infinity
+
   // V20/B10: curvature must scale with design speed — target max lateral
   // accel ~50 m/s² at the reference max curve k of 0.012
   const kScale = Math.min(1, 50 / (avgSpeed * avgSpeed * 0.012))
@@ -248,7 +252,7 @@ function layoutCourse(
     // T38: each section trends up or down — vertical separation where the
     // course crosses itself, and the skyline keeps changing
     // T114: amplitude ↑ — the course should climb and dive, not simmer
-    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.02 + (sec.energy - 0.5) * 0.032 + globalTrend
+    const slopeBias = (si % 2 === 0 ? 1 : -1) * 0.03 + (sec.energy - 0.5) * 0.045 + globalTrend // T163
     let remaining = secLen
 
     while (remaining > 1) {
@@ -257,8 +261,9 @@ function layoutCourse(
       const drop = drops.find((d) => !d.used && s >= d.s - 320 && s <= d.s + 280)
       if (drop && remaining > 120) {
         drop.used = true
-        // crest then cliff — the song slams, the floor disappears (V16)
-        seg = { type: 'jump', length: 300 + drop.strength * 140, curvature: 0, slope: drop.strength }
+        // crest then cliff — the song slams, the floor disappears (V16).
+        // T158: scaled to the track — a hop with hang time, not a ballistic arc
+        seg = { type: 'jump', length: 240 + drop.strength * 90, curvature: 0, slope: drop.strength }
       } else if (breakdowns.some((b) => s >= b.s0 && s < b.s1)) {
         // breakdown → long held glide, wide flowing line, gentle descent
         seg = {
@@ -269,6 +274,11 @@ function layoutCourse(
         }
       } else {
         seg = chooseSegment(sec, onsetDensity, rng, avgSpeed, eRel)
+        // T157: jump → corkscrew/loop is unplayable at pace — you arrive
+        // airborne over the twist entry. Demand 160m of run-in after a jump.
+        if ((seg.type === 'corkscrew' || seg.type === 'loop') && sinceJump < 160) {
+          seg = { type: 'straight', length: Math.min(remaining, 200), curvature: 0, slope: 0 }
+        }
         if (seg.type === 'loop' && seg.length > remaining) {
           // a truncated loop would strand the cursor mid-circle — bail to a straight
           seg = { type: 'straight', length: remaining, curvature: 0, slope: 0 }
@@ -297,6 +307,7 @@ function layoutCourse(
       })
       s += segLen
       remaining -= segLen
+      sinceJump = seg.type === 'jump' ? 0 : sinceJump + segLen
     }
   }
 
@@ -368,6 +379,26 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       walls: true,
     }
   }
+  // T160: spiral — LONG descending hard-banked sweeper, a serpentine drop
+  if (eRel > 0.55 && e > 0.28 && special >= 0.385 && special < 0.43) {
+    return {
+      type: 'curve',
+      length: rngRange(rng, 600, 900),
+      curvature: rngRange(rng, 0.004, 0.006) * (rng() < 0.5 ? -1 : 1),
+      slope: rngRange(rng, -0.06, -0.035),
+      bankGain: 420, // slams the 0.78 cap — riding the wall of the spiral
+    }
+  }
+  // T160: sbank — sustained hard right-bank PULLING into hard left-bank
+  if (eRel > 0.6 && e > 0.3 && onsetDensity > 1.2 && special >= 0.43 && special < 0.5) {
+    return {
+      type: 'chicane',
+      length: rngRange(rng, 360, 560),
+      curvature: rngRange(rng, 0.005, 0.008) * (rng() < 0.5 ? -1 : 1),
+      slope: 0,
+      bankGain: 400,
+    }
+  }
   if (e > 0.3 && special >= 0.09 && special < 0.17) {
     return {
       type: 'ridge',
@@ -382,7 +413,8 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   // T60/T154: barrel-roll the road in above-average sections — was locked
   // behind an absolute e>0.6 no real song ever reached
   if (eRel > 0.68 && e > 0.28 && onsetDensity > 0.8 && roll < 0.3) {
-    return { type: 'corkscrew', length: rngRange(rng, 420, 560), curvature: 0, slope: 0 }
+    // T160: both chiralities — the road barrels left OR right
+    return { type: 'corkscrew', length: rngRange(rng, 420, 640), curvature: 0, slope: 0, side: rng() < 0.5 ? -1 : 1 }
   }
 
   if (e > 0.6 || (eRel > 0.85 && e > 0.3)) {
@@ -396,11 +428,11 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       }
     }
     if (roll < 0.75) {
-      return { type: 'straight', length: rngRange(rng, 250, 450), curvature: 0, slope: rngRange(rng, -0.02, 0.02) }
+      return { type: 'straight', length: rngRange(rng, 250, 450), curvature: 0, slope: rngRange(rng, -0.035, 0.035) } // T163
     }
     return {
       type: 'curve',
-      length: rngRange(rng, 150, 280),
+      length: rngRange(rng, 220, 420),
       curvature: rngRange(rng, 0.006, 0.012) * (rng() < 0.5 ? -1 : 1),
       slope: 0,
       bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
@@ -411,21 +443,21 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     if (roll < 0.5) {
       return {
         type: 'curve',
-        length: rngRange(rng, 180, 320),
+        length: rngRange(rng, 240, 460),
         curvature: rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1),
         slope: rngRange(rng, -0.015, 0.015),
         bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
       }
     }
     if (roll < 0.75) {
-      return { type: 'hill', length: rngRange(rng, 150, 260), curvature: 0, slope: rngRange(rng, 0.06, 0.17) * (rng() < 0.5 ? -1 : 1) }
+      return { type: 'hill', length: rngRange(rng, 170, 300), curvature: 0, slope: rngRange(rng, 0.08, 0.21) * (rng() < 0.5 ? -1 : 1) } // T163
     }
     return { type: 'straight', length: rngRange(rng, 180, 320), curvature: 0, slope: 0 }
   }
 
   return {
     type: 'curve',
-    length: rngRange(rng, 250, 420),
+    length: rngRange(rng, 300, 560),
     curvature: rngRange(rng, 0.002, 0.005) * (rng() < 0.5 ? -1 : 1),
     slope: rngRange(rng, -0.01, 0.01),
     bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
@@ -477,7 +509,7 @@ function walkSegment(
   const isChicane = seg.type === 'chicane'
   const isJump = seg.type === 'jump'
   // T60: corkscrew = exactly one full 2π twist over the segment, ends upright
-  const rollStep = seg.type === 'corkscrew' ? (Math.PI * 2) / steps : 0
+  const rollStep = seg.type === 'corkscrew' ? ((seg.side ?? 1) * Math.PI * 2) / steps : 0 // T160: chirality
   // T65: banked corners — roll into the curve like a velodrome
   const bankTarget =
     seg.type === 'wallride'
@@ -496,9 +528,9 @@ function walkSegment(
     let ease = 0.3
     if (isJump) {
       // seg.slope carries drop strength: ramp to a crest @ 28%, then a
-      // catchable dive (T36: dialed back from cliff)
+      // catchable dive (T36 → T158: gentler crest, shallower dive)
       const t = i / steps
-      slopeTarget = t < 0.28 ? 0.08 + seg.slope * 0.05 : -0.18 * seg.slope - 0.08
+      slopeTarget = t < 0.28 ? 0.05 + seg.slope * 0.025 : -0.085 * seg.slope - 0.04
       ease = 0.45
     }
     cur.heading += k * ds

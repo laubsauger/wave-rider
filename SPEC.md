@@ -209,7 +209,14 @@ T152|x|mobile haptics: vibrate on boost catch / wall hit (impact-scaled) / wreck
 T153|x|wall contact v2: orange EMBER spray layer (hot, heavy, short-lived) on top of spark puffs; impact burst + grind stream|C11,V10
 T154|x|spectacle gates fixed for REAL songs: corkscrew/loop/wallride energy+onset thresholds ↓ (bundled catalog sits mid-energy → gates never fired); verified on builtin analyzed audio|V3,V16
 T155|x|twist-zone entry: airborne into loop/corkscrew → low (≤6.5m) = soft capture (air bleeds over ~0.3s, ⊥ teleport snap); high = crash + reset 30m before zone; glowing capture gate marks every entry|V5,V16,C11
-T156|.|retro brake: S/↓ keyboard + thrust-drag-down touch — hard decel on deck, airborne adds SINK (slower + lower)|I.ctl,V5,C4
+T156|x|retro brake: S/↓ keyboard + thrust-drag-down touch — hard decel on deck, airborne adds SINK (slower + lower)|I.ctl,V5,C4
+T157|x|jump→twist-zone conflict: gen forbids corkscrew/loop within 160m after a jump (NITS double offender); capture also forgives steep-descent entries (vy<−6, air<12 → captured)|V3,V16,V5
+T158|x|jumps dialed to track scale: shorter segments, gentler crest, shallower dive — hops not ballistic arcs|V16,V3
+T159|x|NPC launch v2: off the line WITH the player (accel envelope = player's B8 taper, 0.12s row ripple); pace ↑ to 1.62 top (player must boost to win)|V15,V13
+T160|x|track vocabulary v2: corkscrews BOTH chiralities; 'spiral' = long descending hard-banked sweeper (600-900m); 'sbank' = long hard right-bank→left-bank flip (360-560m); curve lengths ↑ across all bands — sustained pieces|V3,V20,V1
+T161|x|NPCs catch boost pads: same geometry as player, once each, boost window lifts their target + accel — fair race|V15,V17
+T162|x|dynamic vignette: always-on base, tightens w/ speed + boost (tunnel vision); scene-wide brightness BREATHES (ambient + env ride section energy²) ⊥ static average|V10,C11,V3
+T163|x|elevation amplitude v3: slope bias ↑, steeper hills/straights — ⊥ flat-on-average course|V3,V16
 
 ## §B bugs
 

@@ -32,12 +32,17 @@ export interface NpcState {
   v: number
   time: number
   finished: boolean
+  /** T161: seconds of boost remaining */
+  boost: number
+  /** T161: last consumed pad index — each fires once */
+  lastBoostIdx: number
 }
 
 const NAMES = ['VEKTOR', 'NYX-7', 'KAIROS', 'BLUR', 'SABLE'] as const
 const ACCENTS = ['#ff5533', '#ffd23d', '#7bff8a', '#b07bff', '#ff7bd5'] as const
-// T145: top of the field is real competition now
-const BASE_PACE = [1.5, 1.4, 1.28, 1.16, 1.05] as const
+// T145 → T159: top of the field runs at the player's no-boost cruise —
+// you BEAT them with boost pads and clean lines, not by default
+const BASE_PACE = [1.62, 1.52, 1.4, 1.26, 1.12] as const
 
 export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
   const rng = mulberry32((track.seed ^ 0x4e9c11) >>> 0)
@@ -52,8 +57,8 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
       lanePref: rngRange(rng, -0.7, 0.7),
       wobbleFreq: rngRange(rng, 0.25, 0.7),
       wobbleAmp: rngRange(rng, 0.5, 2),
-      // T145: nobody is hopeless in corners anymore
-      cornerSkill: rngRange(rng, 0.55, 0.95),
+      // T145/T159: nobody is hopeless in corners anymore
+      cornerSkill: rngRange(rng, 0.65, 0.95),
       phase: rngRange(rng, 0, Math.PI * 2),
       gridRow: Math.floor(i / 2),
       gridD: i % 2 === 0 ? -5 : 5,
@@ -66,7 +71,7 @@ export function initialNpc(index: number): NpcState {
   // T46/T55: 2-column grid, 14m rows, ±5m cols — fully clear of HIT_DS/DD
   const row = Math.floor(index / 2)
   const col = index % 2
-  return { s: -14 - row * 14, d: col === 0 ? -5 : 5, v: 0, time: 0, finished: false }
+  return { s: -14 - row * 14, d: col === 0 ? -5 : 5, v: 0, time: 0, finished: false, boost: 0, lastBoostIdx: -1 }
 }
 
 /** npc accent colors, exported for the HUD minimap (T48) */
@@ -85,11 +90,34 @@ export function stepNpc(
   const k = Math.abs(curvatureAt(frames, i))
   // corners scare the unskilled
   const cornerFactor = Math.max(0.45, 1 - k * state.v * 0.35 * (1 - spec.cornerSkill))
-  // T135/T145: row-staggered launch — front row releases first, back rows
-  // hold a beat, everyone spools up smoothly. No pileup through the player.
-  const launch = Math.min(1, Math.max(0, state.time - spec.gridRow * 0.45) / 3.5 + 0.12)
+  // T159: HARD launch — everyone leaves WITH the GO, tiny row ripple, hot
+  // spool for the first seconds. The player earns the lead, never gifted it.
+  const launch = Math.min(1, 0.3 + Math.max(0, state.time - spec.gridRow * 0.12) / 3)
   const targetV = track.avgSpeed * spec.pace * cornerFactor * launch
-  state.v += (targetV - state.v) * Math.min(1, dt * 0.9)
+  // T159: NPCs obey the same accel envelope as the player (B8 taper) — no
+  // teleporting to top speed; the pack stays a pack.
+  // T161: an active boost lifts both the target and the envelope.
+  const boosted = state.boost > 0 ? 1 : 0
+  const vRatio = Math.min(1, state.v / Math.max(1, track.avgSpeed * spec.pace * (1 + boosted * 0.18)))
+  const maxA = track.avgSpeed * 0.36 * (1 - Math.pow(vRatio, 1.4)) + 6 + boosted * 60
+  const want = (targetV * (1 + boosted * 0.18) - state.v) * Math.min(1, dt * 1.6)
+  state.v += Math.max(-track.avgSpeed * 0.6 * dt, Math.min(maxA * dt, want))
+  state.boost = Math.max(0, state.boost - dt)
+
+  // T161: NPCs catch pads with the SAME geometry as the player (ship.ts) —
+  // each pad fires once, lane must line up
+  for (let bi = state.lastBoostIdx + 1; bi < track.boosts.length; bi++) {
+    const pad = track.boosts[bi]
+    if (pad.s > state.s + 14) break
+    if (state.s >= pad.s - 14 && state.s <= pad.s + 14) {
+      const padD = pad.lane * (track.width / 2 - 1.5)
+      if (Math.abs(state.d - padD) <= 3.2) {
+        state.boost = 1.1
+        state.v += 22
+      }
+      state.lastBoostIdx = bi
+    }
+  }
 
   const halfW = (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, i))]) / 2 - 1.6
   // T145: hold the formation lane off the line, blend to racing line 2s→6s

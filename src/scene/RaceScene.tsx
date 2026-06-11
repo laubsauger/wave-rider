@@ -138,6 +138,8 @@ export function RaceScene({
   )
   const shipGroup = useRef<THREE.Group>(null)
   const burstRef = useRef<THREE.Mesh>(null)
+  /** T162: scene-wide brightness breathes with the song */
+  const ambientRef = useRef<THREE.AmbientLight>(null)
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
 
   const npcSpecs = useMemo(() => makeNpcs(track), [track])
@@ -489,6 +491,15 @@ export function RaceScene({
     while (s.segIdx < segs.length - 1 && ship.s >= segs[s.segIdx].end) s.segIdx++
     telemetry.sectionIndex = segs[s.segIdx]?.sectionIndex ?? 0
 
+    // T162: the WHOLE scene breathes — ambient + env reflections ride the
+    // section energy and the live energy², so quiet passages genuinely dim
+    const secEnergy = track.sectionEnergies[telemetry.sectionIndex] ?? 0.5
+    const eSq = telemetry.energy * telemetry.energy
+    if (ambientRef.current) {
+      ambientRef.current.intensity = 0.1 + secEnergy * 0.28 + eSq * 0.45 * track.theme.pulse
+    }
+    scene.environmentIntensity = 0.22 + secEnergy * 0.35 + eSq * 0.3
+
     // T21/T39: sky breathes with the music AND drifts toward the section tint
     const palette = track.sectionPalettes[telemetry.sectionIndex]
     if (palette) {
@@ -538,7 +549,7 @@ export function RaceScene({
     <group>
       <color attach="background" args={[track.theme.sky]} />
       <fog attach="fog" args={[track.theme.fog, 60, 3 / track.theme.fogDensity]} />
-      <ambientLight intensity={0.3} color={track.theme.glow} />
+      <ambientLight ref={ambientRef} intensity={0.3} color={track.theme.glow} />
       {/* R9d: env reflections on hulls — skip on low tier (C7) */}
       {quality !== 'low' && <SceneEnvironment track={track} />}
       <ShadowRig shipRef={shipGroup} enabled={quality === 'high'} />

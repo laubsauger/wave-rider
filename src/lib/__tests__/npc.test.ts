@@ -60,7 +60,7 @@ describe('NPC racers (T20, V13, V15)', () => {
   })
 
   it('V13: racePosition counts racers strictly ahead', () => {
-    const mk = (s: number): NpcState => ({ s, d: 0, v: 0, time: 0, finished: false })
+    const mk = (s: number): NpcState => ({ s, d: 0, v: 0, time: 0, finished: false, boost: 0, lastBoostIdx: -1 })
     expect(racePosition(100, [mk(50), mk(99.9), mk(101), mk(500)])).toBe(3)
     expect(racePosition(600, [mk(50), mk(99.9), mk(101), mk(500)])).toBe(1)
     expect(racePosition(0, [mk(1), mk(2), mk(3)])).toBe(4)
@@ -69,7 +69,7 @@ describe('NPC racers (T20, V13, V15)', () => {
 
   it('faster pace specs run ahead of slower ones on open road', () => {
     const specs = makeNpcs(track)
-    const states = specs.map(() => ({ s: 0, d: 0, v: 0, time: 0, finished: false }))
+    const states = specs.map(() => ({ s: 0, d: 0, v: 0, time: 0, finished: false, boost: 0, lastBoostIdx: -1 }))
     for (let step = 0; step < 120 * 30; step++) {
       for (let i = 0; i < states.length; i++) stepNpc(states[i], specs[i], track, frames)
     }

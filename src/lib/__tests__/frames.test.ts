@@ -84,6 +84,26 @@ describe('track frames (R9b/T104)', () => {
     expect(minNy).toBeLessThan(-0.5)
   })
 
+  it('T157: no corkscrew/loop within 160m after a jump', () => {
+    // force jumps into the hot fixture alongside the spectacle
+    const withDrops = generateTrack({
+      ...fakeFeatures(),
+      events: [
+        { type: 'drop', start: 20, end: 21, strength: 1 },
+        { type: 'drop', start: 70, end: 71, strength: 0.8 },
+        { type: 'drop', start: 130, end: 131, strength: 1 },
+      ],
+    })
+    expect(withDrops.segments.some((sg) => sg.type === 'jump')).toBe(true)
+    for (const seg of withDrops.segments) {
+      if (seg.type !== 'corkscrew' && seg.type !== 'loop') continue
+      for (const j of withDrops.segments) {
+        if (j.type !== 'jump' || j.end > seg.start) continue
+        expect(seg.start - j.end).toBeGreaterThanOrEqual(160 - 1e-6)
+      }
+    }
+  })
+
   it('B31: no truncated corkscrews — every barrel roll gets ≥320m of road', () => {
     for (const seg of track.segments) {
       if (seg.type !== 'corkscrew') continue

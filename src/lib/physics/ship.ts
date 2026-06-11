@@ -224,7 +224,10 @@ export function stepShip(
   // smoothly. High = you miss the entry — slammed and reset before the zone.
   const upY = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
   if (state.airborne && upY < 0.45) {
-    if (state.air > 6.5) {
+    // T157: committed descent counts — diving steeply toward the deck
+    // (vy < −6) gets captured up to 12m; only floating HIGH gets the reset
+    const diving = state.vy < -6 && state.air < 12
+    if (state.air > 6.5 && !diving) {
       // missed the capture window
       for (const sg of track.segments) {
         if (state.s >= sg.start && state.s < sg.end) {

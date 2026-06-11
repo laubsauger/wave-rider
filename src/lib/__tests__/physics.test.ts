@@ -210,6 +210,22 @@ describe('vertical loops (R9b/T104)', () => {
     expect(ship.airborne).toBe(false)
   })
 
+  it('T157: DIVING into a loop at 9m → captured, not reset', () => {
+    const track = generateTrack(loopFeatures())
+    const loop = track.segments.find((sg) => sg.type === 'loop')!
+    const frames = sampleTrack(track, 3)
+    const ship = initialShip()
+    const ev = noEvents()
+    ship.s = loop.start + 110
+    ship.v = track.avgSpeed
+    ship.airborne = true
+    ship.air = 9
+    ship.vy = -12 // committed descent
+    stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    expect(ev.respawned).toBe(false)
+    expect(ship.airborne).toBe(false)
+  })
+
   it('T155: airborne LOW into a loop → soft capture, air bleeds (no teleport)', () => {
     const track = generateTrack(loopFeatures())
     const loop = track.segments.find((sg) => sg.type === 'loop')!

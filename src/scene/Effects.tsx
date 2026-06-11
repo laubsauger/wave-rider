@@ -21,6 +21,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
   const uBlur = useMemo(() => uniform(0), [])
   const uCa = useMemo(() => uniform(0), [])
   const uBokeh = useMemo(() => uniform(0.5), [])
+  const uVig = useMemo(() => uniform(0.26), [])
 
   const post = useMemo(() => {
     if (fxIntensity <= 0) return null
@@ -59,8 +60,9 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const sCurve = c01.mul(c01).mul(c01.mul(-2).add(3))
     const toned = mix(rgb, sCurve, 0.22 * fxIntensity)
 
-    // vignette
-    const vig = smoothstep(0.48, 1.05, dir.length()).mul(0.32 * fxIntensity)
+    // T162: vignette is ALIVE — always-there base, tightening into tunnel
+    // vision as speed climbs (uVig driven per frame)
+    const vig = smoothstep(0.42, 1.05, dir.length()).mul(uVig)
     const vignetted = toned.mul(vig.oneMinus())
 
     // film grain — B25: seed multipliers must exceed pixel pitch or
@@ -72,7 +74,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const post = new THREE.PostProcessing(renderer)
     post.outputNode = vec4(vignetted.add(grain), 1)
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh])
+  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uVig])
 
   useEffect(() => {
     return () => {
@@ -91,6 +93,9 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     // T137: bokeh swells with speed — standing still stays crisp
     const bokehTarget = (0.4 + Math.min(1, kph / 900) * 2.4) * fxIntensity
     uBokeh.value += (bokehTarget - uBokeh.value) * 0.08
+    // T162: tunnel vision — base ring always present, clamps in with speed
+    const vigTarget = (0.24 + Math.min(0.34, (kph / 1100) * 0.34) + telemetry.boostFlash * 0.1) * fxIntensity
+    uVig.value += (vigTarget - uVig.value) * 0.06
     if (post) post.render()
     else renderer.render(scene, camera)
   }, 1)
