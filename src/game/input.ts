@@ -11,9 +11,13 @@ interface RawInput {
   thrust: boolean
   brakeLeft: boolean
   brakeRight: boolean
+  /** T156: retro brake (S/↓) */
+  retro: boolean
   /** analog steer from touch, overrides digital when non-null */
   touchSteer: number | null
   touchThrust: boolean
+  /** T156: thrust dragged DOWN on touch */
+  touchRetro: boolean
 }
 
 const raw: RawInput = {
@@ -22,8 +26,10 @@ const raw: RawInput = {
   thrust: false,
   brakeLeft: false,
   brakeRight: false,
+  retro: false,
   touchSteer: null,
   touchThrust: false,
+  touchRetro: false,
 }
 
 type GameKeyEvent = 'camera' | 'pause' | 'mute'
@@ -47,6 +53,10 @@ function setKey(code: string, down: boolean): boolean {
     case 'ArrowUp':
     case 'KeyW':
       raw.thrust = down
+      return true
+    case 'ArrowDown':
+    case 'KeyS':
+      raw.retro = down
       return true
     case 'KeyQ':
     case 'ShiftLeft':
@@ -89,6 +99,9 @@ export const touch = {
   setThrust(on: boolean) {
     raw.touchThrust = on
   },
+  setRetro(on: boolean) {
+    raw.touchRetro = on
+  },
   setBrakeLeft(on: boolean) {
     raw.brakeLeft = on
   },
@@ -108,11 +121,14 @@ export function readShipInput(out: ShipInput): ShipInput {
   out.thrust = raw.thrust || raw.touchThrust ? 1 : 0
   out.brakeLeft = raw.brakeLeft
   out.brakeRight = raw.brakeRight
+  out.retro = raw.retro || raw.touchRetro
   return out
 }
 
 export function resetInput(): void {
   raw.left = raw.right = raw.thrust = raw.brakeLeft = raw.brakeRight = false
+  raw.retro = false
   raw.touchSteer = null
   raw.touchThrust = false
+  raw.touchRetro = false
 }

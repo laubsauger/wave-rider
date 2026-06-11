@@ -7,6 +7,8 @@ import { touch } from '../game/input'
  */
 export function TouchControls() {
   const steerZone = useRef<HTMLDivElement>(null)
+  // T156: thrust-button pointer origin for the pull-back gesture
+  const thrustY = useRef<number | null>(null)
   // T138: first-time hint — fades once the player actually steers (or 8s)
   const [hint, setHint] = useState(true)
 
@@ -90,10 +92,33 @@ export function TouchControls() {
           AB·R
         </button>
         <button
-          className="h-24 w-24 rounded-full border-2 border-(--color-neon) bg-(--color-neon)/15 text-sm font-bold tracking-widest text-(--color-neon) active:bg-(--color-neon)/40"
-          {...hold(touch.setThrust)}
+          className="h-24 w-24 touch-none rounded-full border-2 border-(--color-neon) bg-(--color-neon)/15 text-sm font-bold tracking-widest text-(--color-neon) active:bg-(--color-neon)/40"
+          onPointerDown={(e) => {
+            ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+            thrustY.current = e.clientY
+            touch.setThrust(true)
+            touch.setRetro(false)
+          }}
+          onPointerMove={(e) => {
+            if (thrustY.current === null) return
+            // T156: pull BACK (drag down) past 26px → retro brake
+            const pullingBack = e.clientY - thrustY.current > 26
+            touch.setThrust(!pullingBack)
+            touch.setRetro(pullingBack)
+          }}
+          onPointerUp={() => {
+            thrustY.current = null
+            touch.setThrust(false)
+            touch.setRetro(false)
+          }}
+          onPointerCancel={() => {
+            thrustY.current = null
+            touch.setThrust(false)
+            touch.setRetro(false)
+          }}
         >
           THRUST
+          <span className="block text-[8px] tracking-[0.2em] text-white/50">▼ PULL = BRAKE</span>
         </button>
       </div>
       <button

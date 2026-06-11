@@ -16,6 +16,8 @@ export interface ShipInput {
   thrust: number
   brakeLeft: boolean
   brakeRight: boolean
+  /** T156: retro brake — hard decel; airborne adds downward sink */
+  retro?: boolean
 }
 
 export interface ShipState {
@@ -140,6 +142,9 @@ export function stepShip(
   // B14: engine braking — off throttle the field drag bites hard
   a -= state.v * (0.05 + (1 - input.thrust) * 0.28)
   a -= braking * state.v * 0.35 // airbrake scrub
+  // T156: retro brake — reverse thrust, way harder than coasting
+  const retro = input.retro ? 1 : 0
+  a -= retro * (accel * 0.9 + state.v * 0.12)
   if (state.boost > 0) a += 90
   state.v = Math.max(0, state.v + a * dt)
   state.boost = Math.max(0, state.boost - dt)
@@ -214,13 +219,34 @@ export function stepShip(
 
   // V16 airtime: when the road falls away faster than gravity pulls, fly
   const slopeHere = slopeAt(frames, i)
-  // T60: inside corkscrew twists (track-up tilted off world-up) airtime is
-  // disabled — the field holds you to the deck
+  // T60 → T155: entering a twist zone (loop/corkscrew — track-up tilted off
+  // world-up) while airborne. Low = the field CAPTURES you, air bleeding off
+  // smoothly. High = you miss the entry — slammed and reset before the zone.
   const upY = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
   if (state.airborne && upY < 0.45) {
+    if (state.air > 6.5) {
+      // missed the capture window
+      for (const sg of track.segments) {
+        if (state.s >= sg.start && state.s < sg.end) {
+          state.s = Math.max(0, sg.start - 30)
+          break
+        }
+      }
+      state.airborne = false
+      state.air = 0
+      state.vy = 0
+      state.d = 0
+      state.v *= 0.45
+      events.respawned = true
+      return
+    }
     state.airborne = false
-    state.air = 0
     state.vy = 0
+    // air kept — decays in the grounded branch below (no teleport snap)
+  }
+  // T155: soft capture — residual air rides down to the deck over ~0.3s
+  if (!state.airborne && !state.falling && state.air > 0) {
+    state.air = Math.max(0, state.air - state.air * Math.min(1, dt * 9) - dt * 1.5)
   }
   if (!state.airborne) {
     const slopeAhead = slopeAt(frames, i + 2)
@@ -232,7 +258,9 @@ export function stepShip(
       events.takeoff = true
     }
   } else {
-    state.vy -= GRAVITY * dt
+    // T156: retro while airborne pulls you DOWN — dump height to make a
+    // capture gate or shorten a jump
+    state.vy -= (GRAVITY + retro * 30) * dt
     state.air += (state.vy - state.v * slopeHere) * dt
     if (state.air <= 0) {
       events.landed = true

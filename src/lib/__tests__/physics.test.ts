@@ -192,6 +192,47 @@ describe('vertical loops (R9b/T104)', () => {
     ],
   })
 
+  it('T155: airborne HIGH into a loop → crash-reset 30m before the zone', () => {
+    const track = generateTrack(loopFeatures())
+    const loop = track.segments.find((sg) => sg.type === 'loop')!
+    const frames = sampleTrack(track, 3)
+    const ship = initialShip()
+    const ev = noEvents()
+    // fake a high flight crossing into the twist zone
+    ship.s = loop.start + 110
+    ship.v = track.avgSpeed
+    ship.airborne = true
+    ship.air = 8
+    ship.vy = 0
+    stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    expect(ev.respawned).toBe(true)
+    expect(ship.s).toBeLessThanOrEqual(loop.start - 30 + 1e-6)
+    expect(ship.airborne).toBe(false)
+  })
+
+  it('T155: airborne LOW into a loop → soft capture, air bleeds (no teleport)', () => {
+    const track = generateTrack(loopFeatures())
+    const loop = track.segments.find((sg) => sg.type === 'loop')!
+    const frames = sampleTrack(track, 3)
+    const ship = initialShip()
+    const ev = noEvents()
+    ship.s = loop.start + 110
+    ship.v = track.avgSpeed
+    ship.airborne = true
+    ship.air = 2.5
+    ship.vy = 0
+    stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    expect(ev.respawned).toBe(false)
+    expect(ship.airborne).toBe(false)
+    expect(ship.air).toBeGreaterThan(0) // NOT snapped to deck
+    expect(ship.air).toBeLessThan(2.5) // but bleeding down
+    // a few more steps → settled
+    for (let k = 0; k < 60; k++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    }
+    expect(ship.air).toBeLessThan(0.05)
+  })
+
   it('ship rides a full loop: no fall, no NaN, V12 cap holds', () => {
     const track = generateTrack(loopFeatures())
     const loop = track.segments.find((sg) => sg.type === 'loop')
@@ -218,6 +259,50 @@ describe('vertical loops (R9b/T104)', () => {
       prevS = ship.s
     }
     expect(prevS).toBeGreaterThan(loop!.end) // made it through, no stall
+  })
+})
+
+describe('retro brake (T156)', () => {
+  const track = generateTrack(features())
+  const frames = sampleTrack(track, 3)
+
+  const run = (input: Partial<ShipInput>, prep = 600, steps = 120) => {
+    const ship = initialShip()
+    const ev = noEvents()
+    for (let i = 0; i < prep; i++) {
+      stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
+    }
+    const v0 = ship.v
+    for (let i = 0; i < steps; i++) {
+      stepShip(ship, { steer: 0, thrust: 0, brakeLeft: false, brakeRight: false, ...input }, track, frames, ev)
+    }
+    return { v0, ship }
+  }
+
+  it('decelerates much harder than coasting', () => {
+    const coast = run({})
+    const retro = run({ retro: true })
+    expect(retro.ship.v).toBeLessThan(coast.ship.v * 0.8)
+  })
+
+  it('airborne retro sinks faster (slower AND lower)', () => {
+    const fly = (retro: boolean) => {
+      const ship = initialShip()
+      const ev = noEvents()
+      ship.s = 500
+      ship.v = track.avgSpeed
+      ship.airborne = true
+      ship.air = 10
+      ship.vy = 0
+      for (let i = 0; i < 30 && ship.airborne; i++) {
+        stepShip(ship, { steer: 0, thrust: 0, brakeLeft: false, brakeRight: false, retro }, track, frames, ev)
+      }
+      return ship
+    }
+    const free = fly(false)
+    const sunk = fly(true)
+    expect(sunk.air).toBeLessThan(free.air)
+    expect(sunk.v).toBeLessThan(free.v)
   })
 })
 

@@ -29,6 +29,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
   const gateMesh = useRef<THREE.InstancedMesh | null>(null)
   const chevronMat = useRef<THREE.MeshBasicMaterial>(null)
   const biomeMat = useRef<THREE.MeshStandardMaterial>(null)
+  const entryMat = useRef<THREE.MeshBasicMaterial>(null)
 
   const data = useMemo(() => {
     const rng = mulberry32((track.seed ^ 0x777aa1) >>> 0)
@@ -229,6 +230,28 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       }
     }
 
+    // T155: capture gates — a double ring at every loop/corkscrew entry so
+    // the player has something to AIM for (stay low through it or get reset)
+    const entryMatrices: THREE.Matrix4[] = []
+    const entryColors: THREE.Color[] = []
+    for (const seg of track.segments) {
+      if (seg.type !== 'loop' && seg.type !== 'corkscrew') continue
+      if (entryMatrices.length >= 80) break
+      const s = Math.max(2, seg.start - 12)
+      poseAt(frames, s, 0, 4, pose)
+      tangent.set(pose.tx, pose.ty, pose.tz)
+      up.set(pose.nx, pose.ny, pose.nz)
+      m.lookAt(new THREE.Vector3(0, 0, 0), tangent, up)
+      q.setFromRotationMatrix(m)
+      obj.quaternion.copy(q)
+      obj.position.set(pose.px, pose.py, pose.pz)
+      const r = (track.width / 2 + 4) / 10
+      obj.scale.set(r, r, r)
+      obj.updateMatrix()
+      entryMatrices.push(obj.matrix.clone())
+      entryColors.push(c.set(paletteAt(track, seg.start + 1)).clone())
+    }
+
     return {
       pylonMatrices,
       glowMatrices,
@@ -247,6 +270,8 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       biome,
       biomeMatrices,
       biomeColors,
+      entryMatrices,
+      entryColors,
     }
   }, [track, frames])
 
@@ -274,6 +299,8 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     if (biomeMat.current && data.biome === 'cavern') {
       biomeMat.current.emissiveIntensity = 0.18 + secE * 0.35 + e * 0.7
     }
+    // T155: capture gates pulse on the beat — they're the thing to aim for
+    if (entryMat.current) entryMat.current.color.setScalar(1.1 + b * 2.2)
 
     // T58: threading a gate → big flash + HUD kick
     const playerS = telemetry.progress * track.length
@@ -368,6 +395,16 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
             flatShading
           />
         )}
+      </Instanced>
+      {/* T155: capture gates @ twist-zone entries — matte housing + double
+          bright channel; thread it LOW or eat the reset */}
+      <Instanced matrices={data.entryMatrices}>
+        <torusGeometry args={[10, 0.8, 6, 36]} />
+        <meshStandardMaterial color="#07090f" metalness={0.15} roughness={0.85} envMapIntensity={0.05} />
+      </Instanced>
+      <Instanced matrices={data.entryMatrices} colors={data.entryColors}>
+        <torusGeometry args={[10, 0.3, 8, 48]} />
+        <meshBasicMaterial ref={entryMat} color="#ffffff" toneMapped={false} />
       </Instanced>
       {/* T121/T140: matte ring housing (zero glow), slim lit channel inside */}
       <Instanced matrices={data.ringMatrices}>

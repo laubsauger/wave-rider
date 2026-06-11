@@ -24,8 +24,8 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - input: audio file: mp3, wav, ogg, m4a → decode via `decodeAudioData`.
 - fn: `analyzeAudio(buffer: AudioBuffer) → AudioFeatures` {bpm, energy[], sections[], onsets[], spectralCentroid[], mood}
 - fn: `generateTrack(features: AudioFeatures) → TrackData` {spline, segments[], theme, hazards[]}
-- ctl keyboard: arrows/WASD steer+thrust, `Shift`/`Space` airbrakes, `C` camera toggle, `Esc` pause.
-- ctl touch: left zone steer, right zone thrust/brake buttons, camera button.
+- ctl keyboard: arrows/WASD steer+thrust, `S`/`↓` retro brake (decel; airborne → sink), `Shift`/`Space` airbrakes, `C` camera toggle, `Esc` pause.
+- ctl touch: left zone steer, right zone thrust/brake buttons (drag thrust DOWN = retro brake), camera button.
 
 ## §V invariants
 
@@ -208,6 +208,8 @@ T151|x|track aggression v3: banked curves THE NORM (energy-scaled gain, cap 0.78
 T152|x|mobile haptics: vibrate on boost catch / wall hit (impact-scaled) / wreck — fx-gated|C4,V10
 T153|x|wall contact v2: orange EMBER spray layer (hot, heavy, short-lived) on top of spark puffs; impact burst + grind stream|C11,V10
 T154|x|spectacle gates fixed for REAL songs: corkscrew/loop/wallride energy+onset thresholds ↓ (bundled catalog sits mid-energy → gates never fired); verified on builtin analyzed audio|V3,V16
+T155|x|twist-zone entry: airborne into loop/corkscrew → low (≤6.5m) = soft capture (air bleeds over ~0.3s, ⊥ teleport snap); high = crash + reset 30m before zone; glowing capture gate marks every entry|V5,V16,C11
+T156|.|retro brake: S/↓ keyboard + thrust-drag-down touch — hard decel on deck, airborne adds SINK (slower + lower)|I.ctl,V5,C4
 
 ## §B bugs
 
