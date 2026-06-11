@@ -2,10 +2,14 @@
  * Deterministic track generation (T3). Pure function of AudioFeatures.
  * V1: same features → identical TrackData. V8: no Math.random — all
  * randomness from mulberry32 seeded by feature hash.
- * V2: point-to-point, track length ≅ song duration at design speed.
+ * V2 (reworked): point-to-point, track length ≅ song duration at design
+ * pace, where design pace = a SKILLED rider with good boost discipline.
+ * Physics derives everything from it: no-boost cruise ≈ 0.75×, absolute
+ * ceiling ≈ 1.36× (see ship.ts). Ride the song well → finish with the song.
  * V3: bpm/energy → fast straights + tight chicanes; calm → flowing curves.
  */
 import { hashFeatures, mulberry32, rngRange, type Rng } from '../prng'
+import { maxCarveCurvature } from '../physics/ship'
 import type { AudioFeatures, AudioSection, Mood } from '../audio/analyze'
 
 export type SegmentType =
@@ -99,10 +103,17 @@ export function generateTrack(features: AudioFeatures): TrackData {
   ])
   const rng = mulberry32(seed)
 
-  // V3: speed scales with bpm + intensity. 70..210 m/s feels WipEout-ish.
-  const avgSpeed = 70 + features.intensity * 100 + clamp01((features.bpm - 70) / 110) * 40
+  // V3/V2: design pace = the pace of a SKILLED rider with boost discipline,
+  // scaled by bpm + intensity → ~154..462 m/s (550-1660 kph). The old 70-210
+  // base was a slow reference the ship out-cruised 1.65× by default — races
+  // ended at half the song. The 2.2 factor folds the real ride pace into the
+  // pace itself; ship.ts cruise/ceiling fractions are re-anchored to match
+  // (actual on-track speeds are unchanged).
+  const avgSpeed = (70 + features.intensity * 100 + clamp01((features.bpm - 70) / 110) * 40) * 2.2
   const length = avgSpeed * features.duration
-  const width = 30 - features.intensity * 6 // T169: wider base for hyperspeed
+  // T169 → wider still: carve room is the skill range — the wide road is
+  // survivable everywhere, the FAST line through it is what's earned
+  const width = 34 - features.intensity * 5
 
   const { points, segments, rolls, ups } = layoutCourse(features, length, rng, avgSpeed)
   const boosts = placeBoosts(features, avgSpeed, length)
@@ -214,7 +225,8 @@ function layoutCourse(
   rolls.push(0)
   ups.push(0, 1, 0)
 
-  // T25: map song events into track space at design pace
+  // T25: map song events into track space at design pace — the course is
+  // laid out where a skilled rider will BE when the song hits
   const drops = features.events
     .filter((e) => e.type === 'drop')
     .map((e) => ({ s: e.start * avgSpeed, strength: Math.max(0.5, e.strength), used: false }))
@@ -235,9 +247,12 @@ function layoutCourse(
   // run-in, not an airborne arrival off a crest
   let sinceJump = Infinity
 
-  // V20/B10: curvature must scale with design speed — target max lateral
-  // accel ~50 m/s² at the reference max curve k of 0.012
-  const kScale = Math.min(1, 42 / (avgSpeed * avgSpeed * 0.012)) // T170: hyperspeed arcs
+  // V20/B10 → carve rework: curvature budget comes from the ship's ACTUAL
+  // steering capability at no-boost cruise (~0.75× design pace, the drag
+  // settle point), not a fixed lateral-accel target. Peak curves demand ~70%
+  // of full-carve authority: the good line is a held carve, the lazy line
+  // drifts wide across the (now wider) road, the bad line grinds the wall.
+  const kScale = Math.min(1, (maxCarveCurvature(avgSpeed * 0.75) * 0.7) / 0.012)
 
   // T154: spectacle gates are RELATIVE to the song's own dynamics — real
   // analysis yields section energies ~0.2-0.55, half the synthetic scale the
@@ -268,7 +283,7 @@ function layoutCourse(
         // breakdown → long held glide, wide flowing line, gentle descent
         seg = {
           type: 'glide',
-          length: rngRange(rng, 320, 520),
+          length: rngRange(rng, 420, 660),
           curvature: rngRange(rng, 0.0015, 0.004) * (rng() < 0.5 ? -1 : 1) * kScale,
           slope: rngRange(rng, -0.03, -0.01),
         }
@@ -348,7 +363,7 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   // R9b/T154: full vertical loop in the song's OWN hottest stretches —
   // relative gate + low absolute floor (chill stays chill)
   if (eRel > 0.78 && e > 0.32 && onsetDensity > 0.9 && special >= 0.31 && special < 0.385) {
-    const radius = 42 + avgSpeed * 0.1
+    const radius = 42 + avgSpeed * 0.045 // re-anchored: avgSpeed is 2.2× the old scale
     return {
       type: 'loop',
       length: Math.PI * 2 * radius,
@@ -392,17 +407,18 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
       curvature: rngRange(rng, 0.004, 0.006) * (rng() < 0.5 ? -1 : 1),
       slope: rngRange(rng, -0.06, -0.035),
       bankGain: 420, // slams the 0.78 cap — riding the wall of the spiral
-      widthScale: 0.85, // T164: tight ribbon
+      widthScale: 1.0, // tight-ish ribbon, but rideable at pace
     }
   }
   // T160: sbank — sustained hard right-bank PULLING into hard left-bank
   if (eRel > 0.6 && e > 0.3 && onsetDensity > 1.2 && special >= 0.43 && special < 0.5) {
     return {
       type: 'chicane',
-      length: rngRange(rng, 360, 560),
+      length: rngRange(rng, 480, 720),
       curvature: rngRange(rng, 0.004, 0.0065) * (rng() < 0.5 ? -1 : 1), // T170
       slope: 0,
       bankGain: 400,
+      widthScale: 1.3, // room to swing the S
     }
   }
   if (e > 0.3 && special >= 0.09 && special < 0.17) {
@@ -426,26 +442,31 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   if (e > 0.6 || (eRel > 0.85 && e > 0.3)) {
     if (onsetDensity > 2.5 && roll < 0.52) {
       return {
+        // each half of the S needs ≥2s at ridden pace — 120m halves at
+        // 280 m/s were sub-second jerks, not corners
         type: 'chicane',
-        length: rngRange(rng, 120, 220),
+        length: rngRange(rng, 260, 420),
         curvature: rngRange(rng, 0.009, 0.017) * (rng() < 0.5 ? -1 : 1), // T170
         slope: 0,
         bankGain: 170 + e * 240, // T151 (absolute: calm songs bank gently)
+        widthScale: 1.25,
       }
     }
     if (roll < 0.75) {
-      return { type: 'straight', length: rngRange(rng, 250, 450), curvature: 0, slope: rngRange(rng, -0.035, 0.035), widthScale: rngRange(rng, 0.9, 1.4), walls: rng() >= 0.3 } // T163/T164
+      return { type: 'straight', length: rngRange(rng, 250, 450), curvature: 0, slope: rngRange(rng, -0.035, 0.035), widthScale: rngRange(rng, 1.1, 1.6), walls: rng() >= 0.3 } // T163/T164
     }
     {
-      // T168: LONG sweepers run WIDE (room to be wrong), short curves tight
-      const len = rngRange(rng, 220, 420)
+      // T168 → breathing room: hot sweepers are LONG sustained arcs, and the
+      // long ones run WIDE — inside/middle/outside are genuinely different
+      // lines with meters between them, not a single survivable groove
+      const len = rngRange(rng, 480, 820)
       return {
         type: 'curve',
         length: len,
         curvature: rngRange(rng, 0.006, 0.012) * (rng() < 0.5 ? -1 : 1),
         slope: 0,
         bankGain: 170 + e * 240, // T151
-        widthScale: len > 340 ? rngRange(rng, 1.25, 1.8) : rngRange(rng, 0.85, 1.1), // T170
+        widthScale: len > 600 ? rngRange(rng, 1.6, 2.2) : rngRange(rng, 1.25, 1.6),
         walls: rng() >= 0.15,
       }
     }
@@ -454,14 +475,14 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
   if (e > 0.3) {
     if (roll < 0.5) {
       {
-        const len = rngRange(rng, 240, 460) // T168: long = wide
+        const len = rngRange(rng, 380, 700) // T168: long = wide
         return {
           type: 'curve',
           length: len,
           curvature: rngRange(rng, 0.004, 0.009) * (rng() < 0.5 ? -1 : 1),
           slope: rngRange(rng, -0.015, 0.015),
           bankGain: 170 + e * 240, // T151
-          widthScale: len > 360 ? rngRange(rng, 1.25, 1.8) : rngRange(rng, 0.85, 1.1), // T170
+          widthScale: len > 520 ? rngRange(rng, 1.5, 2.0) : rngRange(rng, 1.15, 1.5),
           walls: rng() >= 0.15,
         }
       }
@@ -469,16 +490,16 @@ function chooseSegment(sec: AudioSection, onsetDensity: number, rng: Rng, avgSpe
     if (roll < 0.75) {
       return { type: 'hill', length: rngRange(rng, 170, 300), curvature: 0, slope: rngRange(rng, 0.08, 0.21) * (rng() < 0.5 ? -1 : 1) } // T163
     }
-    return { type: 'straight', length: rngRange(rng, 180, 320), curvature: 0, slope: 0, widthScale: rngRange(rng, 0.9, 1.35), walls: rng() >= 0.3 } // T164
+    return { type: 'straight', length: rngRange(rng, 180, 320), curvature: 0, slope: 0, widthScale: rngRange(rng, 1.05, 1.5), walls: rng() >= 0.3 } // T164
   }
 
   return {
     type: 'curve',
-    length: rngRange(rng, 300, 560),
+    length: rngRange(rng, 380, 680),
     curvature: rngRange(rng, 0.002, 0.005) * (rng() < 0.5 ? -1 : 1),
     slope: rngRange(rng, -0.01, 0.01),
     bankGain: 170 + e * 240, // T151
-    widthScale: rngRange(rng, 0.85, 1.2), // T164
+    widthScale: rngRange(rng, 1.1, 1.5), // T164
     walls: rng() >= 0.12,
   }
 }

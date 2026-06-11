@@ -49,7 +49,9 @@ describe('NPC racers (T20, V13, V15)', () => {
     const specs = makeNpcs(track)
     const states = specs.map((_, i) => initialNpc(i))
     const halfW = track.width / 2
-    const maxSteps = 120 * 240 // 4 sim-minutes
+    // bound relative to the track, not wall-clock minutes — V2 rework sizes
+    // tracks for play pace, so absolute caps rot
+    const maxSteps = 120 * Math.ceil((track.length / track.avgSpeed) * 2)
     for (let step = 0; step < maxSteps; step++) {
       for (let i = 0; i < states.length; i++) {
         stepNpc(states[i], specs[i], track, frames)

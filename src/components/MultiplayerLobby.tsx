@@ -91,10 +91,10 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
   const shareUrl = peerId ? `${window.location.origin}${window.location.pathname}?join=${peerId}` : ''
 
   return (
-    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center bg-black/35 p-8 text-white">
-      <h1 className="text-4xl font-bold tracking-[0.2em] text-(--color-neon)">MULTIPLAYER LOBBY</h1>
-      
-      <div className="mt-8 flex w-full max-w-lg flex-col gap-6 border border-white/20 bg-white/5 p-6">
+    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center overflow-y-auto bg-black/35 p-8 text-white short:justify-start short:p-3">
+      <h1 className="text-4xl font-bold tracking-[0.2em] text-(--color-neon) short:text-2xl">MULTIPLAYER LOBBY</h1>
+
+      <div className="mt-8 flex w-full max-w-lg flex-col gap-6 border border-white/20 bg-white/5 p-6 short:mt-3 short:gap-3 short:p-4">
         <p className="text-center text-sm tracking-widest text-white/60">
           STATUS: <span className="text-white">{p2pState.toUpperCase()}</span>
         </p>
@@ -130,7 +130,7 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
 
         <button 
           onClick={cancel}
-          className="mt-4 self-center border-b border-white/30 pb-1 text-xs tracking-widest text-white/50 hover:text-white"
+          className="mt-4 self-center border-b border-white/30 pb-1 text-xs tracking-widest text-white/50 hover:text-white short:mt-1"
         >
           CANCEL / LEAVE
         </button>

@@ -21,7 +21,10 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
   const uBlur = useMemo(() => uniform(0), [])
   const uCa = useMemo(() => uniform(0), [])
   const uBokeh = useMemo(() => uniform(0.5), [])
+  const uFocus = useMemo(() => uniform(12), [])
+  const uRange = useMemo(() => uniform(55), [])
   const uVig = useMemo(() => uniform(0.26), [])
+  const uVigStart = useMemo(() => uniform(0.46), [])
   const uHeat = useMemo(() => uniform(0), [])
 
   const post = useMemo(() => {
@@ -30,8 +33,11 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const raw = scenePass.getTextureNode('output')
     // T137 → T148: focus sits ON the ship (~9m from the chase cam) with a
     // wide near band — you and the road ahead stay SHARP, the far world
-    // melts away with speed. Bokeh ∝ speed via uBokeh.
-    const focused = dof(raw, scenePass.getViewZNode(), 12, 55, uBokeh)
+    // melts away with speed. Bokeh ∝ speed via uBokeh. Focus distance and
+    // band ride uniforms: at speed the FOV stretch pushes the aim point
+    // deeper into the frame, so the focal plane chases it (uFocus) and the
+    // sharp band widens (uRange) — the road you steer at never blurs.
+    const focused = dof(raw, scenePass.getViewZNode(), uFocus, uRange, uBokeh)
     const color = convertToTexture(focused)
     const bloomNode = bloom(color, 1.25 * fxIntensity, 0.6, 0.78)
 
@@ -61,9 +67,11 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const sCurve = c01.mul(c01).mul(c01.mul(-2).add(3))
     const toned = mix(rgb, sCurve, 0.22 * fxIntensity)
 
-    // T162/T169: vignette is ALIVE — punched visible, tightening into
-    // tunnel vision as speed climbs (uVig driven per frame)
-    const vig = smoothstep(0.24, 0.85, dir.length()).mul(uVig)
+    // T162/T169: vignette is ALIVE — tightening into tunnel vision as speed
+    // climbs. Both the strength (uVig) AND the inner radius (uVigStart) are
+    // frame-driven: the dark ring closes toward the focal point like a
+    // fighter-jet greyout, not just dimmed corners.
+    const vig = smoothstep(uVigStart, 0.92, dir.length()).mul(uVig)
     const vignetted = toned.mul(vig.oneMinus())
 
     // T169: RE-ENTRY HEAT — past ~1000 kph the screen edges ignite, plasma
@@ -82,7 +90,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const post = new THREE.PostProcessing(renderer)
     post.outputNode = vec4(heated.add(grain), 1)
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uVig, uHeat])
+  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uFocus, uRange, uVig, uVigStart, uHeat])
 
   useEffect(() => {
     return () => {
@@ -99,12 +107,20 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const caTarget = (0.0006 + Math.max(0, kph - 300) / 900 * 0.004 + telemetry.boostFlash * 0.002 + uHeat.value * 0.005) * fxIntensity
     uCa.value += (Math.min(0.011, caTarget) - uCa.value) * 0.12
     // T137: bokeh swells with speed — standing still stays crisp
-    const bokehTarget = (0.4 + Math.min(1, kph / 900) * 2.4) * fxIntensity
+    const bokehTarget = (0.4 + Math.min(1, kph / 900) * 2.2) * fxIntensity
     uBokeh.value += (bokehTarget - uBokeh.value) * 0.08
-    // T162/T169: tunnel vision — base ring always present, clamps with speed
-    // over the hyperspeed range
-    const vigTarget = (0.28 + Math.min(0.6, (kph / 1900) * 0.6) + telemetry.boostFlash * 0.12) * fxIntensity
+    // focal plane chases the aim point: FOV stretch at speed pushes "right in
+    // front of the ship" deeper in view-Z, so focus moves out and the sharp
+    // band widens with it
+    const speedN = Math.min(1, kph / 1100)
+    uFocus.value += (12 + speedN * 16 - uFocus.value) * 0.08
+    uRange.value += (55 + speedN * 75 - uRange.value) * 0.08
+    // T162/T169: tunnel vision — ring DARKENS and CLOSES with speed; boost
+    // squeezes it harder for a beat
+    const vigTarget = (0.32 + Math.min(0.55, (kph / 1600) * 0.55) + telemetry.boostFlash * 0.18) * fxIntensity
     uVig.value += (vigTarget - uVig.value) * 0.06
+    const vigStartTarget = 0.46 - (Math.min(0.26, (kph / 1500) * 0.26) + telemetry.boostFlash * 0.05) * fxIntensity
+    uVigStart.value += (vigStartTarget - uVigStart.value) * 0.06
     // T169: re-entry heat builds 1000 → 2500 kph
     const heatTarget = Math.min(1, Math.max(0, (kph - 1000) / 1500)) * fxIntensity
     uHeat.value += (heatTarget - uHeat.value) * 0.05

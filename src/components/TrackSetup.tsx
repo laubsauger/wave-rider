@@ -70,7 +70,7 @@ export function TrackSetup() {
         <Waveform peaks={peaks} color="#ff2fd6" />
         <div className="relative">
           <p className="text-[11px] tracking-[0.4em] text-white/35">SELECTED TRACK</p>
-          <h2 className="mt-1 text-2xl font-bold tracking-[0.2em] text-white">{songTitle}</h2>
+          <h2 className="mt-1 text-2xl font-bold tracking-[0.2em] text-white short:text-lg">{songTitle}</h2>
           <div className="mt-2 flex justify-between text-xs tabular-nums text-white/40">
             <span>{Math.round(features.bpm)} BPM</span>
             <span>{fmtDuration(features.duration)}</span>

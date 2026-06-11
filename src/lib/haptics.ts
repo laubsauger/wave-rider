@@ -14,7 +14,14 @@ export function buzz(pattern: number | number[]): void {
 }
 
 export const haptics = {
-  boost: () => buzz(35),
-  wall: (impact: number) => buzz(Math.min(90, 25 + impact * 1.5)),
-  wreck: () => buzz([60, 40, 100]),
+  /** rising double-tap — reads as a kick, not a phone notification */
+  boost: () => buzz([12, 24, 30]),
+  wall: (impact: number) => buzz(Math.min(110, 35 + impact * 2)),
+  wreck: () => buzz([70, 30, 110, 40, 60]),
+  /** touchdown thump, scaled by vertical impact */
+  land: (impact: number) => buzz(Math.min(60, 12 + impact * 1.2)),
+  /** short tick — re-fired ~every 150ms while grinding a wall */
+  grind: () => buzz(14),
+  countTick: () => buzz(18),
+  go: () => buzz([24, 30, 50]),
 }

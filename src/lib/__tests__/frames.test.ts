@@ -130,8 +130,10 @@ describe('track frames (R9b/T104)', () => {
     expect(calm.segments.some((s) => s.type === 'loop')).toBe(false)
     const f = sampleTrack(calm, 3)
     for (let i = 0; i < f.count; i++) {
-      // T130: banked corners tilt up to the 0.58 rad cap → cos ≈ 0.83
-      expect(f.normals[i * 3 + 1]).toBeGreaterThan(0.8)
+      // banked corners tilt up to the 0.78 rad clamp (B17/T151) → cos ≈ 0.71;
+      // carve rework lets calm tracks use their full curvature budget, so the
+      // sharpest calm sweepers now actually reach the clamp
+      expect(f.normals[i * 3 + 1]).toBeGreaterThan(0.7)
     }
   })
 })

@@ -102,9 +102,33 @@ const BOOST_HALF_WIDTH = 2.2
 const GRAVITY = 34
 
 /** top speed for a track's design pace — single source for sim, fx, tests (V12).
+ * V2 rework: avgSpeed IS the skilled ride pace now (2.2× the old reference),
+ * so the ceiling fraction re-anchors 3.0 → 1.36 — identical absolute speeds.
  * T169: HYPERSPEED ceiling — ~2000-2600 kph at the top of a boost chain. */
 export function shipVmax(avgSpeed: number, boosted: boolean): number {
-  return avgSpeed * 3.0 + (boosted ? 100 : 0)
+  return avgSpeed * 1.36 + (boosted ? 100 : 0)
+}
+
+/**
+ * Max curvature (rad/m) the ship can hold at speed v with a committed carve —
+ * the inverse of the drift model in stepShip (yaw authority vs outward drift,
+ * carve assist applied). Track gen budgets corner sharpness against THIS so
+ * curves demand real sustained steering at pace instead of flattening into
+ * wobbles (the old fixed lateral-accel target undershot by 2-3×).
+ */
+export function maxCarveCurvature(v: number): number {
+  const grip = 1 / (1 + v / 150)
+  const yawMax = 0.42 * (0.5 + grip)
+  const latCap = Math.sin(yawMax) * v
+  // mirrors the drift model in stepShip exactly (coeff + carve trim)
+  const driftPerK = v * Math.min(v, 320) * driftCoeff(v) * (1 - 0.2)
+  return latCap / Math.max(1, driftPerK)
+}
+
+/** outward-drift coefficient — softens with speed so hyperspeed corners pull
+ * over seconds, not yank the ship across the road in half of one */
+function driftCoeff(v: number): number {
+  return 0.3 / (1 + v / 700)
 }
 
 /** road slope dy/ds at sample i */
@@ -134,7 +158,8 @@ export function stepShip(
 
   const vmax = shipVmax(track.avgSpeed, state.boost > 0)
   // B8: slower spool — accel tapers hard as v climbs, top speed is earned
-  const accel = track.avgSpeed * 0.34
+  // (0.34 → 0.155: re-anchored to the 2.2× design pace, same absolute accel)
+  const accel = track.avgSpeed * 0.155
   const braking = (input.brakeLeft ? 1 : 0) + (input.brakeRight ? 1 : 0)
 
   // longitudinal
@@ -158,7 +183,9 @@ export function stepShip(
     (input.brakeLeft && !input.brakeRight ? -0.6 : 0) + (input.brakeRight && !input.brakeLeft ? 0.6 : 0)
   const steerTarget = clamp(input.steer + steerAssist, -1.2, 1.2)
   const attacking = Math.abs(steerTarget) > Math.abs(state.steerSmooth)
-  const rate = attacking ? 3.2 : 8
+  // player-feel rework: faster attack = stick answers NOW; slower release =
+  // the ship doesn't auto-straighten the moment you ease off
+  const rate = attacking ? 5 : 4
   state.steerSmooth += clamp(steerTarget - state.steerSmooth, -rate * dt, rate * dt)
 
   // T131: steering authority falls off with speed — no hairpin snaps at
@@ -180,14 +207,15 @@ export function stepShip(
   // T65: banked track grips — frame tilt (upY < 1) cuts outward drift
   const upYHere = frames.normals[Math.min(frames.count - 1, Math.max(0, i)) * 3 + 1]
   const bankGrip = Math.max(0.3, 1 - (1 - Math.min(1, Math.abs(upYHere))) * 3)
-  // T143 → T168: drift back UP (0.36) + carve assist trimmed (0.25) —
-  // drawn-out turns demand sustained steering, not hold-forward
-  // T169: drift grows v² up to 320 m/s then linear — hyperspeed cruising
-  // stays controllable instead of demanding superhuman correction
-  const drift = k * state.v * Math.min(state.v, 320) * 0.36 * (1 - 0.25 * carveAlign) * bankGrip
+  // carve feel v2: drift coefficient softens with speed (timescale fix — the
+  // sweeper pulls you outward over seconds, you ride between lines instead of
+  // getting smashed wall-to-wall). Carve assist trimmed to 0.2: a trim, not
+  // an autopilot — holding the line is the player's job.
+  // T169: drift grows v² up to 320 m/s then linear
+  const drift = k * state.v * Math.min(state.v, 320) * driftCoeff(state.v) * (1 - 0.2 * carveAlign) * bankGrip
   // T65 traction: lateral velocity converges toward demand at a grip rate —
-  // the ship slides then bites. Airbrakes add bite.
-  const tractionRate = 5 + braking * 6 + carveAlign * 2
+  // slower base bite = floatier glide between lines; airbrakes still snap it
+  const tractionRate = 3.5 + braking * 6 + carveAlign * 1.5
   const latTarget = (Math.sin(state.yaw) * state.v - drift) * airGrip
   state.latVel += (latTarget - state.latVel) * Math.min(1, tractionRate * dt)
   const lateralV = state.latVel
@@ -292,15 +320,16 @@ export function stepShip(
     const impact = Math.abs(lateralV)
     state.d = clamp(state.d, -limit, limit)
     if (!state.onWall) {
-      // harsher than v1: walls must hurt
-      state.v *= Math.max(0.72, 1 - impact * 0.02)
-      state.yaw *= 0.35
+      // graded but REAL malus: shallow graze ~10-15%, square slam up to 38% —
+      // walls are the price of a missed line, not a rumble strip
+      state.v *= Math.max(0.62, 1 - impact * 0.02)
+      state.yaw *= 0.5
       events.wallHit = true
       events.wallImpact = impact
       state.wallHits++
       state.onWall = true
     } else {
-      state.v = Math.max(0, state.v - state.v * 0.5 * dt)
+      state.v = Math.max(0, state.v - state.v * 0.55 * dt)
     }
   } else if (state.onWall && Math.abs(state.d) < limit - 1.2) {
     // wide release band: brushing along the wall is one impact + grind,

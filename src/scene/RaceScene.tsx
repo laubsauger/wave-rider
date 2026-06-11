@@ -188,6 +188,8 @@ export function RaceScene({
     wallPulse: 0,
     /** T167: sonic boom armed when below 85% vmax, fires crossing 93% */
     sonicArmed: true,
+    /** wall-grind haptic tick cadence */
+    grindT: 0,
   })
 
   // input + camera toggle + song lifecycle
@@ -302,9 +304,11 @@ export function RaceScene({
       if (ci !== s.lastCountInt && ci > 0 && ci <= 3) {
         s.lastCountInt = ci
         beep(550, 0.14, 0.22)
+        if (fxIntensity > 0) haptics.countTick()
       }
       if (prev > 0 && s.countdown <= 0) {
         goChord()
+        if (fxIntensity > 0) haptics.go()
         if (songBuffer && !s.song) s.song = playSong(songBuffer)
       }
     }
@@ -372,6 +376,17 @@ export function RaceScene({
       if (wallEvent >= 35) haptics.wreck()
       else if (wallEvent > 0) haptics.wall(wallEvent)
       else if (boostEvent) haptics.boost()
+      else if (landEvent > 3) haptics.land(landEvent)
+      // sustained grind = ticking rumble, not one buzz then silence
+      if (s.ship.onWall && s.ship.v > 30) {
+        s.grindT -= dt
+        if (s.grindT <= 0) {
+          haptics.grind()
+          s.grindT = 0.15
+        }
+      } else {
+        s.grindT = 0
+      }
     }
     // T153: ember burst feed
     if (wallEvent > 0) s.wallPulse = wallEvent
@@ -675,12 +690,15 @@ function updateCamera(
   dt: number,
 ) {
   const { ship, pose } = s
+  const speedNorm = Math.min(1, ship.v / 430)
 
   if (mode === 'chase') {
     // trail into the corner: camera swings opposite the steer (T36/T63);
-    // pulls back under acceleration (T45)
+    // pulls back under acceleration (T45). At speed the cam creeps slightly
+    // CLOSER to offset the FOV stretch — the ship stops receding into the
+    // distance at the top end.
     const swing = -s.camSteer * 2.4
-    const back = 8 + s.pull * 2.4
+    const back = 8 + s.pull * 2.0 - speedNorm * 1.1
     camPos.set(
       pose.px - pose.tx * back + pose.nx * 2.9 + pose.bx * swing,
       pose.py - pose.ty * back + pose.ny * 2.9 + pose.by * swing,
@@ -722,9 +740,9 @@ function updateCamera(
   camera.up.copy(camUp)
   camera.lookAt(camTarget)
 
-  // speed FOV: subtle always, boost kick scaled by fx
-  const speedNorm = Math.min(1, ship.v / 430) // T169: fov spread over the new range
-  const targetFov = 62 + speedNorm * 31 + (ship.boost > 0 ? 10 * fxIntensity : 0) + s.pull * 7 // T167
+  // speed FOV: subtle always, boost kick scaled by fx — gain trimmed (31→23,
+  // pull 7→5): the old stretch shoved the ship too far up the screen at pace
+  const targetFov = 62 + speedNorm * 23 + (ship.boost > 0 ? 9 * fxIntensity : 0) + s.pull * 5
   camera.fov += (targetFov - camera.fov) * Math.min(1, dt * 4)
   camera.updateProjectionMatrix()
 }
@@ -824,7 +842,7 @@ function NpcShips({
           const st = simRef.current.npcs[i]
           // T150: NPCs read as FULL throttle — power tracks their actual pace
           if (!st || st.finished || st.v <= 1) return 0
-          return Math.min(1.1, 0.5 + st.v / (avgSpeed * 1.4))
+          return Math.min(1.1, 0.5 + st.v / (avgSpeed * 0.64))
         }
         return (
           <group key={spec.name}>

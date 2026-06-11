@@ -37,6 +37,10 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     const obj = new THREE.Object3D()
     const c = new THREE.Color()
     const halfW = track.width / 2
+    // B-class fix: trackside objects must clear the LOCAL road edge —
+    // widthScale runs up to 2.2× now, base halfW put posts mid-road
+    const lhw = (s: number) =>
+      (track.width * frames.widths[Math.min(frames.count - 1, Math.max(0, Math.round(s / frames.ds)))]) / 2
 
     const pylonMatrices: THREE.Matrix4[] = []
     const glowMatrices: THREE.Matrix4[] = []
@@ -45,7 +49,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
     for (let s = 60; s < track.length - 60; s += spacing * rngRange(rng, 0.7, 1.3)) {
       for (const side of [-1, 1]) {
         if (rng() < 0.25) continue
-        const lateral = side * (halfW + rngRange(rng, 8, 28))
+        const lateral = side * (lhw(s) + rngRange(rng, 8, 28))
         const h = rngRange(rng, 8, 36)
         poseAt(frames, s, lateral, 0, pose)
         obj.position.set(pose.px, pose.py + h / 2 - 26, pose.pz)
@@ -71,6 +75,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       const prev = track.segments.find((x) => x.end === seg.start)
       if (!prev || prev.sectionIndex === seg.sectionIndex) continue
       const s = seg.start
+      const hw = lhw(s)
       poseAt(frames, s, 0, 0, pose)
       tangent.set(pose.tx, pose.ty, pose.tz)
       up.set(pose.nx, pose.ny, pose.nz)
@@ -80,18 +85,18 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
       for (const part of [-1, 0, 1]) {
         obj.quaternion.copy(q)
         if (part === 0) {
-          obj.position.set(pose.px + up.x * (halfW + 4), pose.py + up.y * (halfW + 4), pose.pz + up.z * (halfW + 4))
-          obj.scale.set(track.width + 7, 1.1, 1.1)
+          obj.position.set(pose.px + up.x * (hw + 4), pose.py + up.y * (hw + 4), pose.pz + up.z * (hw + 4))
+          obj.scale.set(hw * 2 + 7, 1.1, 1.1)
         } else {
-          const bx = pose.bx * part * (halfW + 2.8)
-          const by = pose.by * part * (halfW + 2.8)
-          const bz = pose.bz * part * (halfW + 2.8)
+          const bx = pose.bx * part * (hw + 2.8)
+          const by = pose.by * part * (hw + 2.8)
+          const bz = pose.bz * part * (hw + 2.8)
           obj.position.set(
-            pose.px + bx + up.x * (halfW + 4) * 0.5,
-            pose.py + by + up.y * (halfW + 4) * 0.5,
-            pose.pz + bz + up.z * (halfW + 4) * 0.5,
+            pose.px + bx + up.x * (hw + 4) * 0.5,
+            pose.py + by + up.y * (hw + 4) * 0.5,
+            pose.pz + bz + up.z * (hw + 4) * 0.5,
           )
-          obj.scale.set(1.1, halfW + 4, 1.1)
+          obj.scale.set(1.1, hw + 4, 1.1)
         }
         obj.updateMatrix()
         archMatrices.push(obj.matrix.clone())
@@ -158,6 +163,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         for (let s = seg.start + 120; s < seg.end - 40; s += 240) {
           if (gateMatrices.length >= 200) break
           const gateH = halfW * 0.6
+          const hw = lhw(s)
           poseAt(frames, s, 0, gateH, pose)
           tangent.set(pose.tx, pose.ty, pose.tz)
           up.set(pose.nx, pose.ny, pose.nz)
@@ -165,14 +171,14 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           q.setFromRotationMatrix(m)
           obj.quaternion.copy(q)
           obj.position.set(pose.px, pose.py, pose.pz)
-          obj.scale.set(track.width + 5, 0.45, 0.45)
+          obj.scale.set(hw * 2 + 5, 0.45, 0.45)
           obj.updateMatrix()
           gateMatrices.push(obj.matrix.clone())
           gateColors.push(c.set(paletteAt(track, s)).clone())
           gateS.push(s)
           // legs: deck → bar at both ends
           for (const side of [-1, 1]) {
-            const lx = side * (track.width / 2 + 2.2)
+            const lx = side * (hw + 2.2)
             obj.quaternion.copy(q)
             obj.position.set(
               pose.px + pose.bx * lx - up.x * (gateH / 2),
@@ -188,7 +194,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         for (let s = seg.start + 30; s < seg.end - 20; s += 60) {
           if (chevronMatrices.length >= 400) break
           for (const side of [-1, 1]) {
-            poseAt(frames, s, side * (halfW + 1.6), 1.4, pose)
+            poseAt(frames, s, side * (lhw(s) + 1.6), 1.4, pose)
             tangent.set(pose.tx, pose.ty, pose.tz)
             up.set(pose.nx, pose.ny, pose.nz)
             m.lookAt(new THREE.Vector3(0, 0, 0), tangent, up)
@@ -218,7 +224,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
         if (rng() < (biome === 'desert' ? 0.45 : 0.3)) continue
         if (biome === 'city') {
           // tower slabs crowding the course into a canyon
-          const lateral = side * (halfW + rngRange(rng, 30, 130))
+          const lateral = side * (lhw(s) + rngRange(rng, 30, 130))
           const h = rngRange(rng, 30, 120)
           poseAt(frames, s, lateral, 0, pose)
           obj.position.set(pose.px, pose.py + h / 2 - 30, pose.pz)
@@ -226,7 +232,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           obj.scale.set(rngRange(rng, 6, 16), h, rngRange(rng, 6, 16))
         } else if (biome === 'desert') {
           // sparse monoliths far off the racing line
-          const lateral = side * (halfW + rngRange(rng, 60, 220))
+          const lateral = side * (lhw(s) + rngRange(rng, 60, 220))
           const h = rngRange(rng, 18, 64)
           poseAt(frames, s, lateral, 0, pose)
           obj.position.set(pose.px, pose.py + h / 2 - 32, pose.pz)
@@ -234,7 +240,7 @@ export function Scenery({ track, frames }: { track: TrackData; frames: TrackFram
           obj.scale.set(rngRange(rng, 14, 38), h, rngRange(rng, 14, 38))
         } else {
           // crystal shards jutting at angles near the track
-          const lateral = side * (halfW + rngRange(rng, 18, 80))
+          const lateral = side * (lhw(s) + rngRange(rng, 18, 80))
           const r = rngRange(rng, 3, 11)
           poseAt(frames, s, lateral, rngRange(rng, -18, 14), pose)
           obj.position.set(pose.px, pose.py, pose.pz)

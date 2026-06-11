@@ -118,7 +118,7 @@ function Minimap({ track, accent }: { track: TrackData; accent: string }) {
       ref={canvasRef}
       width={MAP_W}
       height={MAP_H}
-      className="h-[190px] w-[230px] border border-white/15 bg-black/40 [@media(max-height:499px)]:h-[107px] [@media(max-height:499px)]:w-[130px]"
+      className="h-[190px] w-[230px] border border-white/15 bg-black/40 short:h-[107px] short:w-[130px]"
     />
   )
 }
@@ -192,7 +192,8 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
           chip.style.display = 'inline-block'
           el.className = 'absolute inset-0 flex items-center justify-center text-4xl font-bold tracking-[0.2em] text-white/80 animate-pulse'
         } else {
-          el.className = 'absolute inset-0 flex items-center justify-center text-8xl font-bold italic tracking-widest text-white/80 drop-shadow-[0_0_20px_currentColor] sm:text-[12rem]'
+          // T129: 12rem digits only when BOTH wide and tall — landscape phones stay at 8xl
+          el.className = 'absolute inset-0 flex items-center justify-center text-8xl font-bold italic tracking-widest text-white/80 drop-shadow-[0_0_20px_currentColor] [@media(min-width:640px)_and_(min-height:561px)]:text-[12rem]'
           const c = Math.ceil(telemetry.countdown)
           if (telemetry.countdown > 3) chip.textContent = 'READY'
           else if (c > 0 && c <= 3) chip.textContent = String(c)
@@ -311,21 +312,21 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         />
       </div>
 
-      <div className="hud-safe absolute inset-0 flex flex-col justify-between p-5">
+      <div className="hud-safe absolute inset-0 flex flex-col justify-between p-5 short:p-2.5">
         {/* top: time | waveform progress | pos + speed column (T67) */}
-        <div className="flex items-start gap-5">
-          <div className="-skew-x-12 border-l-4 bg-black/50 px-4 py-1.5" style={{ borderColor: accent }}>
-            <div className="text-[10px] tracking-[0.4em] text-white/40">TIME</div>
+        <div className="flex items-start gap-5 short:gap-3">
+          <div className="-skew-x-12 border-l-4 bg-black/50 px-4 py-1.5 short:px-2.5 short:py-1" style={{ borderColor: accent }}>
+            <div className="text-[10px] tracking-[0.4em] text-white/40 short:text-[8px]">TIME</div>
             <span
               ref={timeRef}
-              className="text-2xl font-bold tabular-nums tracking-wider"
+              className="text-2xl font-bold tabular-nums tracking-wider short:text-lg"
               style={{ color: accent, textShadow: `0 0 12px ${accent}` }}
             >
               0:00.00
             </span>
           </div>
           {/* T67: progress = the song's own waveform, revealed as you ride it */}
-          <div className="relative mt-1 h-12 flex-1 -skew-x-12 overflow-hidden border border-white/15 bg-black/50 px-1">
+          <div className="relative mt-1 h-12 flex-1 -skew-x-12 overflow-hidden border border-white/15 bg-black/50 px-1 short:h-8">
             <div className="absolute inset-x-1 inset-y-0 flex items-center gap-px opacity-20">
               {progPeaks.map((p, i) => (
                 <div key={i} className="flex-1" style={{ height: `${Math.max(8, p * 92)}%`, background: accent }} />
@@ -342,12 +343,12 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            <div className="-skew-x-12 border-r-4 bg-black/50 px-4 py-1.5 text-right" style={{ borderColor: accent }}>
-              <div className="text-[10px] tracking-[0.4em] text-white/40">
+            <div className="-skew-x-12 border-r-4 bg-black/50 px-4 py-1.5 text-right short:px-2.5 short:py-1" style={{ borderColor: accent }}>
+              <div className="text-[10px] tracking-[0.4em] text-white/40 short:text-[8px]">
                 POS · <span className="text-white/70">{cameraMode === 'chase' ? '3P' : '1P'}</span>
               </div>
               <span
-                className="text-2xl font-bold tabular-nums"
+                className="text-2xl font-bold tabular-nums short:text-lg"
                 style={{ color: accent, textShadow: `0 0 12px ${accent}` }}
               >
                 <span ref={posRef}>1</span>
@@ -357,11 +358,11 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
             {/* T67: speed + boost live top-right — clear of mobile thumb zones */}
             {/* T83: LCARS-bold readout — big pills, heavy type */}
             <div
-              className="w-fit self-end rounded-l-2xl border-r-4 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-1.5 pr-3 pl-8 text-right [@media(min-height:500px)]:border-r-8 [@media(min-height:500px)]:py-2.5 [@media(min-height:500px)]:pr-4 [@media(min-height:500px)]:pl-12"
+              className="w-fit self-end rounded-l-2xl border-r-8 bg-gradient-to-l from-black/55 via-black/30 to-transparent py-2.5 pr-4 pl-12 text-right short:border-r-4 short:py-1.5 short:pr-3 short:pl-8"
               style={{ borderColor: accent }}
             >
               <div className="mb-1.5 flex items-center justify-end gap-2.5">
-                <div ref={boostLabelRef} className="text-[9px] font-black tracking-[0.4em] text-(--color-amber-hud) [@media(min-height:500px)]:text-xs">
+                <div ref={boostLabelRef} className="text-xs font-black tracking-[0.4em] text-(--color-amber-hud) short:text-[9px]">
                   BOOST
                 </div>
                 <div className="flex gap-1">
@@ -369,7 +370,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
                     <div
                       key={i}
                       ref={(el) => void (boostCells.current[i] = el)}
-                      className="h-2.5 w-2 rounded-sm bg-(--color-amber-hud) [@media(min-height:500px)]:h-4 [@media(min-height:500px)]:w-3"
+                      className="h-4 w-3 rounded-sm bg-(--color-amber-hud) short:h-2.5 short:w-2"
                       style={{ opacity: 0.13 }}
                     />
                   ))}
@@ -378,19 +379,19 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
               <div className="flex items-baseline justify-end gap-2">
                 <span
                   ref={speedRef}
-                  className="inline-block text-4xl font-black tabular-nums leading-none [@media(min-height:500px)]:text-8xl"
+                  className="inline-block text-8xl font-black tabular-nums leading-none short:text-4xl"
                   style={{ color: accent, textShadow: `0 0 24px ${accent}` }}
                 >
                   0
                 </span>
-                <span className="text-xs font-bold tracking-[0.3em] text-white/70 [@media(min-height:500px)]:text-base">KPH</span>
+                <span className="text-base font-bold tracking-[0.3em] text-white/70 short:text-xs">KPH</span>
               </div>
               <div className="mt-2 flex justify-end gap-1">
                 {Array.from({ length: SPEED_SEGS }, (_, i) => (
                   <div
                     key={i}
                     ref={(el) => void (speedCells.current[i] = el)}
-                    className="h-3 w-2.5 rounded-sm [@media(min-height:500px)]:h-5 [@media(min-height:500px)]:w-4"
+                    className="h-5 w-4 rounded-sm short:h-3 short:w-2.5"
                     style={{
                       opacity: 0.13,
                       background: i >= SPEED_SEGS - 3 ? '#ff3355' : accent,
@@ -408,7 +409,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
             {track && <Minimap track={track} accent={accent} />}
             {/* T82: now-playing strip — live spectrum | title | time, music-video style */}
             <div className="ml-1 flex items-center gap-3">
-              <div className="flex h-7 items-end gap-[3px]" aria-hidden>
+              <div className="flex h-7 items-end gap-[3px] short:h-5" aria-hidden>
                 {Array.from({ length: 14 }, (_, i) => (
                   <div
                     key={i}
@@ -419,7 +420,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
                 ))}
               </div>
               <span
-                className="max-w-[220px] truncate text-[11px] font-bold tracking-[0.2em] text-white"
+                className="max-w-[220px] truncate text-[11px] font-bold tracking-[0.2em] text-white short:max-w-[150px] short:text-[10px]"
                 style={{ textShadow: `0 0 10px ${accent}` }}
               >
                 {songTitle || 'UNKNOWN FREQUENCY'}

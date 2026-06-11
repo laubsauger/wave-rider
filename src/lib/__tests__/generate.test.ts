@@ -48,7 +48,7 @@ describe('generateTrack (T3)', () => {
     expect(() => generateTrack(fakeFeatures())).not.toThrow()
   })
 
-  it('V2: track length matches song duration at design speed', () => {
+  it('V2: track length matches song duration at design pace (skilled ride)', () => {
     const t = generateTrack(fakeFeatures())
     expect(t.length / t.avgSpeed).toBeCloseTo(t.duration, 5)
     // segments cover the whole length without gaps
@@ -93,17 +93,23 @@ describe('generateTrack (T3)', () => {
     expect(cold.segments.some((s) => s.type === 'chicane')).toBe(false)
   })
 
-  it('V20: curvature speed-scaled — p95 lateral demand rideable at design speed', async () => {
+  it('V20: curvature speed-scaled — p95 corner within full-carve authority at cruise', async () => {
     const { sampleTrack, curvatureAt } = await import('../track/sample')
+    const { maxCarveCurvature } = await import('../physics/ship')
     const t = generateTrack(fakeFeatures({ intensity: 0.9, bpm: 175 })) // fastest case
     const frames = sampleTrack(t, 3)
-    const demands: number[] = []
+    const ks: number[] = []
     for (let i = 10; i < frames.count - 10; i += 3) {
-      demands.push(Math.abs(curvatureAt(frames, i)) * t.avgSpeed * t.avgSpeed)
+      ks.push(Math.abs(curvatureAt(frames, i)))
     }
-    demands.sort((a, b) => a - b)
-    const p95 = demands[Math.floor(demands.length * 0.95)]
-    expect(p95).toBeLessThanOrEqual(90)
+    ks.sort((a, b) => a - b)
+    const p95 = ks[Math.floor(ks.length * 0.95)]
+    // carve rework: the corner budget IS the ship's steering authority at
+    // cruise pace (~1.65× design speed). Bulk of the course must be holdable
+    // with a committed carve; only the sharpest chicane peaks may exceed it
+    // (those demand airbrakes — that's the speed-management skill range).
+    // cruise = 0.75× design pace (V2 rework)
+    expect(p95).toBeLessThanOrEqual(maxCarveCurvature(t.avgSpeed * 0.75))
   })
 
   it('different songs → different tracks (seed sensitivity)', () => {

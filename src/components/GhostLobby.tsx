@@ -40,21 +40,21 @@ export function GhostLobby() {
   }
 
   return (
-    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center bg-black/35 p-8 text-white">
-      <h1 className="mb-8 text-4xl font-bold tracking-[0.2em] text-(--color-neon-2)">GHOST DATA FOUND</h1>
+    <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center overflow-y-auto bg-black/35 p-8 text-white short:justify-start short:p-3">
+      <h1 className="mb-8 text-4xl font-bold tracking-[0.2em] text-(--color-neon-2) short:mb-3 short:text-2xl">GHOST DATA FOUND</h1>
 
-      <div className="relative w-full max-w-lg border border-(--color-neon-2)/40 bg-white/5 px-6 py-6 text-center shadow-[0_0_30px_rgba(255,47,214,0.15)]">
+      <div className="relative w-full max-w-lg border border-(--color-neon-2)/40 bg-white/5 px-6 py-6 text-center shadow-[0_0_30px_rgba(255,47,214,0.15)] short:px-4 short:py-3">
         <p className="text-xs tracking-[0.4em] text-white/50">TARGET TRACK</p>
-        <h2 className="mt-2 text-2xl font-bold tracking-widest text-white">{ghost.songTitle}</h2>
-        
-        <p className="mt-6 text-xs tracking-[0.4em] text-white/50">OPPONENT TIME</p>
-        <p className="mt-1 font-mono text-3xl text-(--color-neon-2)">{formatTime(ghost.timeMs ?? 0)}</p>
+        <h2 className="mt-2 text-2xl font-bold tracking-widest text-white short:mt-1 short:text-lg">{ghost.songTitle}</h2>
+
+        <p className="mt-6 text-xs tracking-[0.4em] text-white/50 short:mt-2">OPPONENT TIME</p>
+        <p className="mt-1 font-mono text-3xl text-(--color-neon-2) short:text-xl">{formatTime(ghost.timeMs ?? 0)}</p>
       </div>
 
-      <div className="mt-8 flex w-full max-w-lg flex-col gap-4">
+      <div className="mt-8 flex w-full max-w-lg flex-col gap-4 short:mt-3 short:gap-2">
         {isBuiltin ? (
           <button
-            className="-skew-x-6 border border-solid border-[#2ff3ff]/60 px-6 py-4 tracking-[0.25em] text-[#2ff3ff] transition hover:bg-[#2ff3ff]/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.2)]"
+            className="-skew-x-6 border border-solid border-[#2ff3ff]/60 px-6 py-4 tracking-[0.25em] text-[#2ff3ff] transition hover:bg-[#2ff3ff]/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.2)] short:py-2"
             onClick={() => void handlePlayGhost()}
           >
             ▶ RACE GHOST
@@ -65,7 +65,7 @@ export function GhostLobby() {
               This ghost requires the original audio file. Please select it to race.
             </p>
             <button
-              className="-skew-x-6 border border-solid border-[#ff2fd6]/60 px-6 py-4 tracking-[0.25em] text-[#ff2fd6] transition hover:bg-[#ff2fd6]/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)]"
+              className="-skew-x-6 border border-solid border-[#ff2fd6]/60 px-6 py-4 tracking-[0.25em] text-[#ff2fd6] transition hover:bg-[#ff2fd6]/10 hover:shadow-[0_0_30px_rgba(255,47,214,0.2)] short:py-2"
               onClick={() => fileInput.current?.click()}
             >
               ▲ SELECT MP3
@@ -74,7 +74,7 @@ export function GhostLobby() {
           </div>
         )}
         <button
-          className="-skew-x-6 mt-2 border border-dashed border-white/20 px-6 py-3 text-sm tracking-[0.25em] text-white/40 transition hover:border-white/50 hover:bg-white/5 hover:text-white"
+          className="-skew-x-6 mt-2 border border-dashed border-white/20 px-6 py-3 text-sm tracking-[0.25em] text-white/40 transition hover:border-white/50 hover:bg-white/5 hover:text-white short:mt-0 short:py-1.5"
           onClick={handleCancel}
         >
           CANCEL

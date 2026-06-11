@@ -68,7 +68,7 @@ function BundledCard({ song }: { song: BundledSong }) {
 
   return (
     <button
-      className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left short:px-4 short:py-2 transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
+      className="group relative -skew-x-6 overflow-hidden border border-(--color-neon)/40 bg-black/60 px-6 py-4 text-left short:px-3 short:py-1.5 transition hover:border-(--color-neon) hover:bg-(--color-neon)/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.25)]"
       onPointerEnter={loadMeta}
       onFocus={loadMeta}
       onClick={() => void startBundledRace(song.url, song.artist ? `${song.artist} — ${song.title}` : song.title)}
@@ -78,12 +78,13 @@ function BundledCard({ song }: { song: BundledSong }) {
         {song.title}
       </span>
       {song.artist && (
-        <span className="relative block text-[10px] tracking-[0.35em] text-white/35">
+        <span className="relative block text-[10px] tracking-[0.35em] text-white/35 short:text-[9px] short:tracking-[0.2em]">
           {song.artist}
           <TrackChips bpm={song.meta?.bpm} mood={song.meta?.mood} intensity={song.meta?.intensity} />
         </span>
       )}
-      <span className="relative float-right mt-1 text-sm tabular-nums text-white/40">
+      {/* short: duration overlays right edge — no third text line on phones */}
+      <span className="relative float-right mt-1 text-sm tabular-nums text-white/40 short:absolute short:top-1/2 short:right-3 short:float-none short:mt-0 short:-translate-y-1/2 short:text-xs">
         {meta?.durationLabel ?? '…'}
       </span>
       <div className="absolute bottom-0 left-0 h-0.5 w-0 bg-(--color-neon) transition-all duration-300 group-hover:w-full" />
@@ -202,7 +203,7 @@ export function Menu() {
       {/* T147: short viewports anchor to TOP and scroll — centering tall
           content on a 360px-high phone cut off both ends */}
       <div className="hud-safe absolute inset-0 flex items-center justify-center overflow-y-auto short:items-start">
-        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8 short:my-2 short:max-w-xl short:gap-2 short:px-3 short:py-3">
+        <div className="glass-panel my-6 flex w-full max-w-2xl flex-col gap-5 px-6 py-8 short:my-2 short:max-w-3xl short:gap-2 short:px-3 short:py-3">
           <div className="text-center">
             <h1
               className="text-6xl font-bold tracking-[0.35em] text-(--color-neon) short:text-3xl"
@@ -213,8 +214,9 @@ export function Menu() {
             <p className="mt-2 text-xs tracking-[0.6em] text-(--color-neon-2)/80 short:mt-1 short:text-[10px]">YOUR MUSIC IS THE TRACK</p>
           </div>
 
-          <div className="mt-2 flex flex-col gap-2.5 short:mt-0 short:gap-1.5">
-            <p className="text-[11px] tracking-[0.4em] text-white/35">SELECT FREQUENCY</p>
+          {/* landscape phones: two-up grid — full-width stack is one card per screen */}
+          <div className="mt-2 flex flex-col gap-2.5 short:mt-0 short:grid short:grid-cols-2 short:gap-1.5">
+            <p className="text-[11px] tracking-[0.4em] text-white/35 short:col-span-2">SELECT FREQUENCY</p>
             {BUNDLED_SONGS.map((song) => (
               <BundledCard key={song.id} song={song} />
             ))}
@@ -235,7 +237,7 @@ export function Menu() {
               ▲ UPLOAD OR DROP AUDIO FILE
             </button>
             {ghostPlayback && (
-              <p className="text-center text-xs tracking-widest text-[#2ff3ff]">GHOST REPLAY LOADED</p>
+              <p className="text-center text-xs tracking-widest text-[#2ff3ff] short:col-span-2">GHOST REPLAY LOADED</p>
             )}
             <input
               ref={fileInput}
@@ -244,20 +246,20 @@ export function Menu() {
               className="hidden"
               onChange={(e) => void onFile(e.target.files?.[0])}
             />
-            {error && <p className="text-center text-sm text-red-400">{error}</p>}
+            {error && <p className="text-center text-sm text-red-400 short:col-span-2">{error}</p>}
           </div>
 
           {userSongs.length > 0 && (
-            <div className="flex flex-col gap-2">
-              <p className="text-[11px] tracking-[0.4em] text-white/35">YOUR FREQUENCIES</p>
+            <div className="flex flex-col gap-2 short:grid short:grid-cols-2 short:gap-1.5">
+              <p className="text-[11px] tracking-[0.4em] text-white/35 short:col-span-2">YOUR FREQUENCIES</p>
               {userSongs.map((song) => (
                 <button
                   key={song.id}
-                  className="group relative -skew-x-6 overflow-hidden border border-(--color-neon-2)/40 bg-black/60 px-6 py-3 text-left transition hover:border-(--color-neon-2) hover:bg-(--color-neon-2)/10"
+                  className="group relative -skew-x-6 overflow-hidden border border-(--color-neon-2)/40 bg-black/60 px-6 py-3 text-left transition hover:border-(--color-neon-2) hover:bg-(--color-neon-2)/10 short:px-4 short:py-1.5"
                   onClick={() => void startLibraryRace(song.id)}
                 >
                   <Waveform peaks={song.waveform} color="#ff2fd6" />
-                  <span className="relative text-base font-bold tracking-[0.2em] text-white group-hover:text-(--color-neon-2)">
+                  <span className="relative text-base font-bold tracking-[0.2em] text-white group-hover:text-(--color-neon-2) short:text-sm">
                     {song.title}
                   </span>
                   <span className="relative float-right mt-0.5 text-xs tabular-nums text-white/40">
@@ -287,7 +289,7 @@ export function Menu() {
             </div>
           </details>
 
-          <div className="mt-1 flex items-center justify-between border-t border-white/10 pt-4 text-xs tracking-widest text-white/50">
+          <div className="mt-1 flex items-center justify-between border-t border-white/10 pt-4 text-xs tracking-widest text-white/50 short:mt-0 short:pt-2">
             <label className="flex items-center gap-2">
               FX
               <input
@@ -323,7 +325,7 @@ export function Menu() {
             </button>
             <span className="hidden text-white/30 sm:inline">WASD · SHIFT/SPACE AIRBRAKE · C CAM</span>
           </div>
-          <div className="mt-8 flex justify-center gap-6 text-white/40">
+          <div className="mt-8 flex justify-center gap-6 text-white/40 short:mt-2">
             <a
               href="https://www.instagram.com/floflup"
               target="_blank"

@@ -65,7 +65,9 @@ export function SponsorBoards({ track, frames }: { track: TrackData; frames: Tra
   }, [])
 
   const boards = useMemo(() => {
-    const halfW = track.width / 2
+    // local road edge at the board's s — widthScale can run 2.2× base
+    const halfW =
+      (track.width * frames.widths[Math.min(frames.count - 1, Math.round(55 / frames.ds))]) / 2
     // T133: tilt sign verified against the start frame (b = +x, board normal
     // -t): LEFT board (d<0) rotates POSITIVE around up to face the line
     const specs: BoardSpec[] = [

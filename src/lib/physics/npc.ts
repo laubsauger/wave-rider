@@ -40,10 +40,10 @@ export interface NpcState {
 
 const NAMES = ['VEKTOR', 'NYX-7', 'KAIROS', 'BLUR', 'SABLE'] as const
 const ACCENTS = ['#ff5533', '#ffd23d', '#7bff8a', '#b07bff', '#ff7bd5'] as const
-// T145 → T159: top of the field runs at the player's no-boost cruise —
-// you BEAT them with boost pads and clean lines, not by default
-// T164: tail tightened — back-markers race too; VEKTOR stays the cookie
-const BASE_PACE = [1.7, 1.62, 1.5, 1.4, 1.32] as const // T168: VEKTOR is a PRO
+// T145 → T159/T164: fractions of design pace (V2 rework: design pace = a
+// skilled rider's pace). VEKTOR runs ~93% of a perfect ride — you BEAT him
+// with boost discipline and clean lines, not by default.
+const BASE_PACE = [0.93, 0.87, 0.82, 0.76, 0.72] as const
 
 export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
   const rng = mulberry32((track.seed ^ 0x4e9c11) >>> 0)
@@ -100,9 +100,9 @@ export function stepNpc(
   // T161: an active boost lifts both the target and the envelope.
   const boosted = state.boost > 0 ? 1 : 0
   const vRatio = Math.min(1, state.v / Math.max(1, track.avgSpeed * spec.pace * (1 + boosted * 0.14)))
-  const maxA = track.avgSpeed * 0.36 * (1 - Math.pow(vRatio, 1.4)) + 6 + boosted * 50 // T170
+  const maxA = track.avgSpeed * 0.164 * (1 - Math.pow(vRatio, 1.4)) + 6 + boosted * 50 // T170, re-anchored
   const want = (targetV * (1 + boosted * 0.14) - state.v) * Math.min(1, dt * 1.6)
-  state.v += Math.max(-track.avgSpeed * 0.6 * dt, Math.min(maxA * dt, want))
+  state.v += Math.max(-track.avgSpeed * 0.27 * dt, Math.min(maxA * dt, want))
   state.boost = Math.max(0, state.boost - dt)
 
   // T161: NPCs catch pads with the SAME geometry as the player (ship.ts) —

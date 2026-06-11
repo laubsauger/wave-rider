@@ -6,6 +6,7 @@ import { mulberry32, rngRange } from '../lib/prng'
 import type { TrackData } from '../lib/track/generate'
 import { poseAt, type FramePose, type TrackFrames } from '../lib/track/sample'
 import { telemetry } from '../game/telemetry'
+import { shipVmax } from '../lib/physics/ship'
 
 /**
  * T31 → T107: neon grid floor — low-res ribbon that FOLLOWS the track's
@@ -374,7 +375,7 @@ export function WarpStreaks({
     if (!ship || !mesh || !group) return
 
     const v = speed()
-    const vmax = track.avgSpeed * 3.0 + 100 // T169
+    const vmax = shipVmax(track.avgSpeed, true) // single source (V12) — was a stale 3.0× copy
     // T111: later onset, subtle ceiling — present at pace, loud never
     const strength = (Math.max(0, (v / vmax - 0.6) / 0.4) + telemetry.beat * 0.08) * fxIntensity
     if (matRef.current) matRef.current.opacity = Math.min(0.34, strength * 0.4)
