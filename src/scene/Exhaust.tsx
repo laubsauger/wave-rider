@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
 import { attribute, color, float, mix, sin, smoothstep, sub, uniform } from 'three/tsl'
 
-const POINTS = 38
+const POINTS = 48 // longer history → the trail reads from a distance at pace
 
 interface TrailProps {
   /** ref to the ship group; engine offsets are in its local space */
@@ -62,7 +62,7 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
     m.opacityNode = cross
       .pow(1.6)
       // tail persists longer at speed — the trail READS as longer fire
-      .mul(sub(1, v).pow(float(2.6).sub(uVel.mul(1.0))))
+      .mul(sub(1, v).pow(float(2.6).sub(uVel.mul(1.35))))
       .mul(uPower.min(1.5).add(uVel.mul(0.3)))
       .mul(flicker)
       .mul(headEase)

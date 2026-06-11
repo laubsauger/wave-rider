@@ -1,6 +1,6 @@
-import { Canvas, extend, type ThreeToJSXElements } from '@react-three/fiber'
+import { Canvas, extend, useThree, type ThreeToJSXElements } from '@react-three/fiber'
 import * as THREE from 'three/webgpu'
-import type { ReactNode } from 'react'
+import { useEffect, type ReactNode } from 'react'
 
 declare module '@react-three/fiber' {
   // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -9,8 +9,29 @@ declare module '@react-three/fiber' {
 
 extend(THREE as unknown as Parameters<typeof extend>[0])
 
+/**
+ * T173/B-class perf fix: the r3f `dpr` prop gets LOST during the async
+ * WebGPU renderer init — the canvas came up at pixelRatio 1 and only jumped
+ * to the requested dpr after the first window resize. Resolution (and the
+ * whole quality tier) was effectively random per session. This child applies
+ * it deterministically after mount, capped at the device ratio (rendering
+ * above native is pure waste — invisible by definition).
+ */
+function DprSync({ dpr }: { dpr: number }) {
+  const setDpr = useThree((s) => s.setDpr)
+  useEffect(() => {
+    setDpr(Math.min(dpr, window.devicePixelRatio || 1))
+  }, [dpr, setDpr])
+  return null
+}
+
 /** WebGPU-only canvas (C2). Callers must have passed detectWebGPU first. */
-export function GpuCanvas({ children, alpha = false, ...rest }: { children: ReactNode; alpha?: boolean } & Record<string, unknown>) {
+export function GpuCanvas({
+  children,
+  alpha = false,
+  dpr,
+  ...rest
+}: { children: ReactNode; alpha?: boolean; dpr?: number } & Record<string, unknown>) {
   return (
     <Canvas
       {...rest}
@@ -26,6 +47,7 @@ export function GpuCanvas({ children, alpha = false, ...rest }: { children: Reac
         return renderer
       }}
     >
+      <DprSync dpr={typeof dpr === 'number' ? dpr : 2} />
       {children}
     </Canvas>
   )

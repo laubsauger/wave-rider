@@ -187,6 +187,8 @@ export function RaceScene({
     landPulse: 0,
     /** T153: one-shot wall impact pulse — ember burst */
     wallPulse: 0,
+    /** one-shot hull-explosion pulse — fireball + debris (Sparks consumes) */
+    explodePulse: 0,
     /** T167: sonic boom armed when below 85% vmax, fires crossing 93% */
     sonicArmed: true,
     /** wall-grind haptic tick cadence */
@@ -388,9 +390,11 @@ export function RaceScene({
         burstRef.current.position.copy(shipGroup.current.position)
         burstRef.current.quaternion.copy(shipGroup.current.quaternion)
       }
-      s.wallPulse = Math.max(s.wallPulse, 70)
+      s.explodePulse = 1
       s.shake.trauma = 1
       telemetry.hullFlash = 1
+      // full-screen accent flash — the boom reads even at the screen edge
+      telemetry.boostFlash = Math.max(telemetry.boostFlash, 1)
     }
     // T152: haptics on touch devices — fx-gated like every feedback channel
     if (fxIntensity > 0) {
@@ -686,6 +690,8 @@ export function RaceScene({
           clearLand: () => void (sim.current.landPulse = 0),
           wallPulse: sim.current.wallPulse,
           clearWall: () => void (sim.current.wallPulse = 0),
+          explodePulse: sim.current.explodePulse,
+          clearExplode: () => void (sim.current.explodePulse = 0),
         })}
       />
       {!(isMultiplayer || !!ghostPlayback) && <NpcShips specs={npcSpecs} simRef={sim} frames={frames} avgSpeed={track.avgSpeed} />}

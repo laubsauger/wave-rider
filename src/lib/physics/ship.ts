@@ -379,6 +379,14 @@ export function stepShip(
     const downforce = GRAVITY * (1 + state.v / 500)
     state.vy -= (downforce + retro * 30) * dt
     state.air += (state.vy - state.v * slopeHere) * dt
+    // flying off the SIDE of a rail-less section = off course → plunge
+    // (grounded ships fall at limit+1.2; airborne lateral was unbounded)
+    if (!hasWall && Math.abs(state.d) > limitHere + 4) {
+      state.falling = true
+      state.fallS = state.s
+      state.airborne = false
+      return
+    }
     if (state.air <= 0) {
       events.landed = true
       events.landImpact = Math.max(0, state.v * slopeHere - state.vy)

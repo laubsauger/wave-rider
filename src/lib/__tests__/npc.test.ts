@@ -56,12 +56,13 @@ describe('NPC racers (T20, V13, V15)', () => {
       for (let i = 0; i < states.length; i++) {
         stepNpc(states[i], specs[i], track, frames)
         // unified physics: walls follow the LOCAL width (T77); falling off a
-        // rail-less ridge is legal mid-plunge (T78) — same rules as physics.test
+        // rail-less ridge and the wreck pause are legal off-road states —
+        // same rules as physics.test
         const st = states[i]
-        if (st.falling || st.s < 0) continue
+        if (st.falling || st.wrecked > 0 || st.s < 0) continue
         const fi = Math.min(frames.count - 1, Math.max(0, Math.round(st.s / frames.ds)))
         const limit = (track.width * frames.widths[fi]) / 2
-        const margin = frames.walls[fi] > 0.5 ? 0.5 : 1.8
+        const margin = frames.walls[fi] > 0.5 ? 0.5 : 4.6
         if (!st.airborne) expect(Math.abs(st.d)).toBeLessThanOrEqual(limit + margin)
       }
     }

@@ -14,6 +14,8 @@ const SPARKS = 160
 const DUST = 48
 /** T153: hot orange embers — heavier, shorter-lived, layered over the sparks */
 const EMBERS = 120
+/** explosion fireball blobs — expanding hot spheres, hang then die */
+const FIRE = 36
 const G = 26
 
 export interface SparkSource {
@@ -29,6 +31,9 @@ export interface SparkSource {
   /** T153: wall impact pulse — ember burst; Sparks clears it */
   wallPulse: number
   clearWall: () => void
+  /** hull explosion pulse — full fireball + debris shower; Sparks clears it */
+  explodePulse: number
+  clearExplode: () => void
 }
 
 interface Pool {
@@ -69,9 +74,11 @@ export function Sparks({
   const sparkMesh = useRef<THREE.InstancedMesh>(null)
   const dustMesh = useRef<THREE.InstancedMesh>(null)
   const emberMesh = useRef<THREE.InstancedMesh>(null)
+  const fireMesh = useRef<THREE.InstancedMesh>(null)
   const sparks = useMemo(() => makePool(SPARKS), [])
   const dust = useMemo(() => makePool(DUST), [])
   const embers = useMemo(() => makePool(EMBERS), [])
+  const fire = useMemo(() => makePool(FIRE), [])
   const rng = useMemo(() => mulberry32(0x59a47c1), [])
   const emitAcc = useRef({ grind: 0, brake: 0, ember: 0 })
 
@@ -89,6 +96,7 @@ export function Sparks({
       if (sparkMesh.current) sparkMesh.current.visible = false
       if (dustMesh.current) dustMesh.current.visible = false
       if (emberMesh.current) emberMesh.current.visible = false
+      if (fireMesh.current) fireMesh.current.visible = false
       return
     }
     const ship = shipRef.current
@@ -135,6 +143,25 @@ export function Sparks({
         spawn(embers, p.x, p.y, p.z, side * (2 + rng() * 6) + r() * 3, 2 + rng() * 6, r() * 8, 0.15 + rng() * 0.3)
       }
       st.clearWall()
+    }
+    // hull EXPLOSION — this is the death you're supposed to SEE: a fireball
+    // of expanding hot blobs + a full-sphere shower of fast embers + white
+    // debris streaks. Dwarfs a wall hit by an order of magnitude.
+    if (st.explodePulse > 0) {
+      for (let i = 0; i < FIRE; i++) {
+        const p = local(r() * 1.2, 0.2 + rng() * 0.6, r() * 1.4)
+        spawn(fire, p.x, p.y, p.z, r() * 9, 2 + rng() * 8, r() * 9, 0.45 + rng() * 0.45)
+      }
+      for (let i = 0; i < 100; i++) {
+        const p = local(r() * 0.8, 0.2 + rng() * 0.5, r() * 0.9)
+        // omnidirectional, FAST — debris, not a sprinkle
+        spawn(embers, p.x, p.y, p.z, r() * 26, 4 + rng() * 22, r() * 26, 0.5 + rng() * 0.7)
+      }
+      for (let i = 0; i < 70; i++) {
+        const p = local(r() * 0.6, 0.3 + rng() * 0.4, r() * 0.7)
+        spawn(sparks, p.x, p.y, p.z, r() * 34, 6 + rng() * 26, r() * 34, 0.4 + rng() * 0.6)
+      }
+      st.clearExplode()
     }
     // airbrake scrub at speed: wingtip snaps
     if (st.braking && !st.airborne && st.v > 60) {
@@ -214,6 +241,8 @@ export function Sparks({
     stepStreaks(sparks, sparkMesh.current, 0.022, 0.05, G)
     step(dust, dustMesh.current, (a) => 0.5 + (1 - a) * 1.3, 4)
     stepStreaks(embers, emberMesh.current, 0.016, 0.035, 44)
+    // fireball: blobs EXPAND as they die, light gravity so the cloud hangs
+    step(fire, fireMesh.current, (a) => 0.5 + (1 - a) * 4.2, 6)
   }, 0.5) // B34: after pose writers
 
   return (
@@ -237,6 +266,19 @@ export function Sparks({
           color={new THREE.Color('#ffa040').multiplyScalar(2.4)}
           transparent
           opacity={0.95}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
+          toneMapped={false}
+        />
+      </instancedMesh>
+      {/* explosion fireball — hot expanding spheres, additive so the cluster
+          blooms into one mass */}
+      <instancedMesh ref={fireMesh} args={[undefined, undefined, FIRE]} frustumCulled={false}>
+        <sphereGeometry args={[1, 8, 6]} />
+        <meshBasicMaterial
+          color={new THREE.Color('#ff7a30').multiplyScalar(2.2)}
+          transparent
+          opacity={0.42}
           blending={THREE.AdditiveBlending}
           depthWrite={false}
           toneMapped={false}

@@ -92,12 +92,13 @@ describe('ship physics (T5, V5)', () => {
       // +0.5m transition tolerance (clamp uses the pre-advance sample).
       // T78: rail-less ridges have NO walls — there the edge margin is the
       // falloff threshold (+1.2m) before the ship plunges instead.
-      // T131: while plunging off a ridge the ship is legitimately outside
-      // the road — walls only bind grounded ships
-      if (ship.falling) continue
+      // T131: while plunging off a ridge — or sitting dead in the wreck
+      // pause — the ship is legitimately outside the road
+      if (ship.falling || ship.wrecked > 0) continue
       const fi = Math.min(frames.count - 1, Math.max(0, Math.round(ship.s / frames.ds)))
       const limit = (track.width * frames.widths[fi]) / 2
-      const margin = frames.walls[fi] > 0.5 ? 0.5 : 1.8
+      // no-wall margin = the AIRBORNE side-exit threshold (limit+4) + slop
+      const margin = frames.walls[fi] > 0.5 ? 0.5 : 4.6
       expect(Math.abs(ship.d)).toBeLessThanOrEqual(limit + margin)
     }
   })
@@ -159,24 +160,30 @@ describe('airtime (T26, V16)', () => {
     expect(track.segments.some((sg) => sg.type === 'jump')).toBe(true)
 
     const frames = sampleTrack(track, 3)
+    // approach the jump AT PACE — this tests the jump's airtime, not the
+    // steer-0 bot's ability to survive the 20s of track before it (wrecks
+    // and falls legitimately reset it slow now)
+    const jump = track.segments.find((sg) => sg.type === 'jump')!
     const ship = initialShip()
     const ev = noEvents()
+    ship.s = Math.max(0, jump.start - 60)
+    ship.v = track.avgSpeed * 0.8
     let airSteps = 0
     let tookOff = false
     let landed = false
-    const maxSteps = Math.ceil((track.duration * 4) / PHYSICS_DT)
-    for (let i = 0; i < maxSteps && !ship.finished; i++) {
+    for (let i = 0; i < 120 * 30 && ship.s < jump.end + 200 && !ship.finished; i++) {
+      ship.energy = Math.max(ship.energy, 0.5)
       stepShip(ship, { steer: 0, thrust: 1, brakeLeft: false, brakeRight: false }, track, frames, ev)
       if (ev.takeoff) tookOff = true
       if (ship.airborne) airSteps++
       if (ev.landed) landed = true
-      // T131/T168: air runs negative during a rail-less plunge by design
-      if (!ship.falling) expect(ship.air).toBeGreaterThanOrEqual(0)
+      // T131/T168: air runs negative during a rail-less plunge by design —
+      // and stays there through the wreck pause (explosion at the bottom)
+      if (!ship.falling && ship.wrecked <= 0) expect(ship.air).toBeGreaterThanOrEqual(0)
     }
     expect(tookOff).toBe(true)
     expect(landed).toBe(true)
     expect(airSteps * PHYSICS_DT).toBeGreaterThanOrEqual(0.25)
-    expect(ship.finished).toBe(true)
   })
 })
 

@@ -151,11 +151,7 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
   const vignetteRef = useRef<HTMLDivElement>(null)
   const specBars = useRef<(HTMLDivElement | null)[]>([])
   const nowTimeRef = useRef<HTMLSpanElement>(null)
-  const linesRef = useRef<HTMLDivElement>(null)
-  const linesOff = useRef(0)
-  const linesBucket = useRef(-1)
   const vigBucket = useRef(-1)
-  const lastTs = useRef(0)
   const vigRef = useRef<HTMLDivElement>(null)
   const flashRef = useRef<HTMLDivElement>(null)
   const countdownRef = useRef<HTMLDivElement>(null)
@@ -189,10 +185,8 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
 
   useEffect(() => {
     let raf = 0
-    const tick = (ts: number) => {
+    const tick = () => {
       raf = requestAnimationFrame(tick)
-      const dt = Math.min(0.1, (ts - lastTs.current) / 1000 || 0)
-      lastTs.current = ts
       const kph = telemetry.speed * 3.6
       if (speedRef.current) speedRef.current.textContent = String(Math.round(kph))
       if (timeRef.current) timeRef.current.textContent = fmtTime(telemetry.timeMs)
@@ -261,11 +255,11 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
         thrustLabelRef.current.style.color = telemetry.boost > 0 ? '#ff2fd6' : '#ffb13d'
       }
 
-      // ENERGY: hull integrity — purple base (distinct from theme), amber
-      // warning, red panic; damage flashes the lit cells white
+      // ENERGY: hull integrity — purple base, violet-pink warning, red panic.
+      // No amber anywhere on this bar: amber = THRUST, full stop.
       const hull = telemetry.hull
       const eFill = Math.ceil(hull * ENERGY_SEGS)
-      const eCol = hull < 0.25 ? '#ff3355' : hull < 0.5 ? '#ffb13d' : ENERGY_COL
+      const eCol = hull < 0.25 ? '#ff3355' : hull < 0.5 ? '#e85bff' : ENERGY_COL
       energyCells.current.forEach((cell, i) => {
         if (!cell) return
         const on = i < eFill
@@ -297,25 +291,6 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
       if (nowTimeRef.current) {
         nowTimeRef.current.textContent = fmtDuration(telemetry.songTime)
       }
-      // V10: speed lines + boost flash scale with fxIntensity, 0 → invisible.
-      // Lines v2: they MOVE (mask scrolls with speed) and REACH — the streak
-      // field spreads inward as speed climbs, a building tunnel, not a static
-      // sticker that fades in once and is done
-      if (linesRef.current) {
-        const spN = Math.min(1, Math.max(0, (kph - 280) / 1500))
-        const o = (spN * 1.05 + telemetry.beat * 0.06) * fxRef.current
-        linesRef.current.style.opacity = Math.min(0.85, o).toFixed(3)
-        // scroll: px/s ∝ speed — streaks visibly RUSH past
-        linesOff.current = (linesOff.current + kph * dt * 0.7) % 14
-        linesRef.current.style.maskPosition = `0px ${(-linesOff.current).toFixed(1)}px`
-        // spread: rebuild the gradient only when the (quantized) level moves
-        const bucket = Math.round(spN * 12)
-        if (bucket !== linesBucket.current) {
-          linesBucket.current = bucket
-          const reach = 7 + bucket * 1.6 // % of screen each side
-          linesRef.current.style.background = `linear-gradient(90deg, rgba(255,255,255,0.55) 0%, transparent ${reach}%, transparent ${100 - reach}%, rgba(255,255,255,0.55) 100%)`
-        }
-      }
       // T162 v3: guaranteed BLACK vignette in the DOM — the post-chain one
       // got buried under bloom/heat. Starts breathing at ~400 kph, closes
       // toward a tight tunnel at the top end (fx-gated, V10)
@@ -345,16 +320,6 @@ export function Hud({ accent, track }: { accent: string; track?: TrackData }) {
       <div ref={vignetteRef} className="absolute inset-0" />
       {/* speed tunnel-vision: DOM black vignette, driven from ~400 kph */}
       <div ref={vigRef} className="absolute inset-0" />
-      {/* speed lines: edge streaks that fade in past ~350 kph */}
-      <div
-        ref={linesRef}
-        className="absolute inset-0 opacity-0"
-        style={{
-          background:
-            'linear-gradient(90deg, rgba(255,255,255,0.5) 0%, transparent 12%, transparent 88%, rgba(255,255,255,0.5) 100%)',
-          maskImage: 'repeating-linear-gradient(0deg, black 0px, black 2px, transparent 3px, transparent 14px)',
-        }}
-      />
       <div
         ref={flashRef}
         className="absolute inset-0 opacity-0"
