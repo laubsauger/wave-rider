@@ -125,11 +125,12 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
     if (!ship) return
     // T173: distant racers don't need ribbon rebuilds — at 350m+ the trail is
     // sub-pixel anyway. Skip ALL the per-point work, hide the meshes.
-    if (camera.position.distanceToSquared(ship.position) > 350 * 350) {
-      meshRefs.current.forEach((m) => m && (m.visible = false))
-      return
+    const far = camera.position.distanceToSquared(ship.position) > 350 * 350
+    for (let i = 0; i < meshRefs.current.length; i++) {
+      const m = meshRefs.current[i]
+      if (m) m.visible = !far
     }
-    meshRefs.current.forEach((m) => m && (m.visible = true))
+    if (far) return
     const power = intensity()
     uPower.value += (power - uPower.value) * 0.25
     uTime.value = clock.elapsedTime
@@ -139,11 +140,15 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
     const velN = Math.pow(Math.min(1, Math.max(0, kph / 2000)), 0.8)
     uVel.value += (velN - uVel.value) * 0.06
 
-    trails.forEach((trail, ti) => {
+    // T173: alloc-free hot loop — indexed for-loops, no closures, no array
+    // literals (the old per-point `.set([...])` was ~10k array allocs/s)
+    for (let ti = 0; ti < trails.length; ti++) {
+      const trail = trails[ti]
       const mesh = meshRefs.current[ti]
-      if (!mesh) return
+      if (!mesh) continue
 
-      tmp.p.set(...offsets[ti])
+      const off = offsets[ti]
+      tmp.p.set(off[0], off[1], off[2])
       ship.localToWorld(tmp.p)
       if (!trail.primed) {
         trail.lastX = tmp.p.x
@@ -196,18 +201,24 @@ export function ExhaustTrails({ shipRef, offsets, color: accent, intensity, spee
         // pinch, then the long taper down the trail. Plume GROWS with speed.
         const bulge = 1 + Math.exp(-i * 0.85) * 0.55
         const w = 0.22 * (1 - age * 0.72) * (0.3 + Math.min(1.5, power) * 0.65) * bulge * (1 + uVel.value * 0.85)
-        trail.positions.set(
-          [x + tmp.side.x * w, y + tmp.side.y * w, z + tmp.side.z * w, x - tmp.side.x * w, y - tmp.side.y * w, z - tmp.side.z * w],
-          i * 6,
-        )
+        const o = i * 6
+        const wx = tmp.side.x * w
+        const wy = tmp.side.y * w
+        const wz = tmp.side.z * w
+        trail.positions[o] = x + wx
+        trail.positions[o + 1] = y + wy
+        trail.positions[o + 2] = z + wz
+        trail.positions[o + 3] = x - wx
+        trail.positions[o + 4] = y - wy
+        trail.positions[o + 5] = z - wz
       }
 
       const geo = mesh.geometry
-      geo.attributes.position.array.set(trail.positions)
+      ;(geo.attributes.position.array as Float32Array).set(trail.positions)
       geo.attributes.position.needsUpdate = true
       // B18: frustumCulled=false → no bounding sphere needed; computing it on
       // degenerate first-frame quads spammed NaN warnings
-    })
+    }
   }, 0.5)
 
   return (

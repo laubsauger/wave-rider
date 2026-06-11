@@ -10,6 +10,7 @@ import { onGameKey } from '../game/input'
 import { telemetry } from '../game/telemetry'
 import { audioContext, setMuted } from '../lib/audio/playback'
 import { requestFullscreen } from '../lib/fullscreen'
+import { saveSongToDevice } from '../lib/recents'
 
 export function Race() {
   const track = useGame((s) => s.track)
@@ -22,6 +23,10 @@ export function Race() {
   // restart = remount the scene: fresh sim, countdown, song
   const [runId, setRunId] = useState(0)
   const songTitle = useGame((s) => s.songTitle)
+  // T181: session bytes exist for uploads AND for songs received over MP —
+  // the joiner can keep the host's track
+  const songBytes = useGame((s) => s.userSongs.find((u) => u.title === s.songTitle)?.bytes)
+  const [songSaved, setSongSaved] = useState(false)
 
   // loading veil: hold black until the scene is ACTUALLY rendering — wait
   // for N real rendered frames (telemetry.frameStart advances per render),
@@ -165,6 +170,17 @@ export function Race() {
             >
               ⛶ FULLSCREEN
             </button>
+            {songBytes && (
+              <button
+                className="border border-(--color-neon-2)/50 px-6 py-2 tracking-widest text-(--color-neon-2) hover:bg-(--color-neon-2)/15 short:px-4 short:py-1.5"
+                onClick={() => {
+                  saveSongToDevice(songTitle, songBytes)
+                  setSongSaved(true)
+                }}
+              >
+                {songSaved ? '✓ SAVED' : '⬇ SAVE SONG'}
+              </button>
+            )}
             <button
               className="border border-white/30 px-6 py-2 tracking-widest text-white/60 hover:bg-white/10 short:px-4 short:py-1.5"
               onClick={() => setScreen('menu')}

@@ -106,6 +106,7 @@ export function Effects({ fxIntensity, dof: dofEnabled = true }: { fxIntensity: 
   // delta below = total main-thread JS time (sim + scene + render encode)
   useFrame(() => {
     telemetry.frameStart = performance.now()
+    telemetry.chunksDrawn = 0 // TrackChunks instances add their visible counts
   }, -100)
 
   useFrame(() => {

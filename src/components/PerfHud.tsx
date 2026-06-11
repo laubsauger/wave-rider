@@ -59,7 +59,13 @@ export function PerfHud() {
         const cpu = telemetry.cpuMs > 0 ? ` cpu ${telemetry.cpuMs.toFixed(1)}` : ''
         const lt = longTasks.current > 0 ? ` lt${longTasks.current}` : ''
         const dc = telemetry.drawCalls > 0 ? ` ${telemetry.drawCalls}dc ${(telemetry.triangles / 1000).toFixed(0)}kt` : ''
-        ref.current.textContent = `${Math.round(1000 / avg)}fps ${avg.toFixed(1)}ms ▲${worst.toFixed(0)}${gpu}${cpu}${lt}${dc} · ${c?.width ?? 0}×${c?.height ?? 0} (${mpix}MP) @${(window.devicePixelRatio || 1).toFixed(1)}x`
+        const ck = telemetry.chunksDrawn > 0 ? ` ${telemetry.chunksDrawn}ck` : ''
+        // T173: JS heap (Chrome incl. Android) — a sawtooth here during the
+        // "sometimes choppy" moments = GC pressure, not GPU
+        type PerfMem = { memory?: { usedJSHeapSize: number } }
+        const heap = (performance as unknown as PerfMem).memory
+        const mem = heap ? ` ${(heap.usedJSHeapSize / 1048576).toFixed(0)}MB` : ''
+        ref.current.textContent = `${Math.round(1000 / avg)}fps ${avg.toFixed(1)}ms ▲${worst.toFixed(0)}${gpu}${cpu}${lt}${dc}${ck}${mem} · ${c?.width ?? 0}×${c?.height ?? 0} (${mpix}MP) @${(window.devicePixelRatio || 1).toFixed(1)}x`
         acc = 0
         n = 0
         worst = 0

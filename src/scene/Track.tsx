@@ -89,13 +89,18 @@ function TrackChunks({
 }) {
   const refs = useRef<(THREE.Mesh | null)[]>([])
   useFrame(({ camera }) => {
+    let drawn = 0
     for (let i = 0; i < chunks.length; i++) {
       const m = refs.current[i]
       const bs = chunks[i].boundingSphere
       if (!m || !bs) continue
       const reach = fogFar + bs.radius
       m.visible = bs.center.distanceToSquared(camera.position) < reach * reach
+      if (m.visible) drawn++
     }
+    // T173: visible-chunk telemetry — proves whether fog culling actually
+    // drops work and whether chunk size is in a sane band (PerfHud `ck`)
+    telemetry.chunksDrawn += drawn
   })
   return (
     <>

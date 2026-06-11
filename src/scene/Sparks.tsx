@@ -91,8 +91,14 @@ export function Sparks({
   const spawn = (pool: Pool, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number) => {
     const i = pool.cursor
     pool.cursor = (pool.cursor + 1) % pool.count
-    pool.pos.set([x, y, z], i * 3)
-    pool.vel.set([vx, vy, vz], i * 3)
+    // T173: indexed writes — `.set([x,y,z])` allocated 2 arrays per particle
+    const o = i * 3
+    pool.pos[o] = x
+    pool.pos[o + 1] = y
+    pool.pos[o + 2] = z
+    pool.vel[o] = vx
+    pool.vel[o + 1] = vy
+    pool.vel[o + 2] = vz
     pool.life[i] = life
     pool.maxLife[i] = life
     pool.dirty = true

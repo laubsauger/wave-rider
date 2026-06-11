@@ -33,7 +33,7 @@ import { Scenery } from './Scenery'
 import { Aurora, GridFloor, Ridges, SceneEnvironment, WarpStreaks, WaveformHorizon } from './Environment'
 import { ShipMesh } from './ShipMesh'
 import { ExhaustTrails } from './Exhaust'
-import { Sparks } from './Sparks'
+import { Sparks, type SparkSource } from './Sparks'
 import { SponsorBoards } from './SponsorBoards'
 import { NetworkShip } from './NetworkShip'
 import type { TrackData } from '../lib/track/generate'
@@ -179,6 +179,8 @@ export function RaceScene({
     pull: 0,
     /** T52: per-racer collision impulse cooldowns, [0]=player */
     cooldowns: new Float32Array(6),
+    /** T173: reused racers list — `[ship, ...npcs]` was a fresh array per 120Hz step */
+    racers: [] as Parameters<typeof resolveCollisions>[0],
     /** T63: slow-filtered steer for camera pivots */
     camSteer: 0,
     /** T72: boost shockwave ring timer */
@@ -204,6 +206,50 @@ export function RaceScene({
     /** wall-grind haptic tick cadence */
     grindT: 0,
   })
+
+  // T173: stable spark-source — the old inline `source={() => ({...})}`
+  // built a fresh object + 3 closures EVERY frame; this mutates one object
+  const sparkSource = useMemo(() => {
+    const st: SparkSource = {
+      onWall: false,
+      braking: false,
+      airborne: false,
+      v: 0,
+      d: 0,
+      landPulse: 0,
+      clearLand: () => void (sim.current.landPulse = 0),
+      wallPulse: 0,
+      clearWall: () => void (sim.current.wallPulse = 0),
+      explodePulse: 0,
+      clearExplode: () => void (sim.current.explodePulse = 0),
+    }
+    return () => {
+      const s = sim.current
+      st.onWall = s.ship.onWall
+      st.braking = s.input.brakeLeft || s.input.brakeRight
+      st.airborne = s.ship.airborne
+      st.v = s.ship.v
+      st.d = s.ship.d
+      st.landPulse = s.landPulse
+      st.wallPulse = s.wallPulse
+      st.explodePulse = s.explodePulse
+      return st
+    }
+  }, [])
+
+  // T173: same treatment for the ghost feed (was a spread per frame)
+  const ghostSource = useMemo(() => {
+    const o = { s: 0, d: 0, v: 0, yaw: 0, finished: false }
+    return () => {
+      const g = sim.current.ghostReplayPos
+      o.s = g.s
+      o.d = g.d
+      o.v = g.v
+      o.yaw = g.yaw
+      o.finished = sim.current.ship.finished
+      return o
+    }
+  }, [])
 
   // input + camera toggle + song lifecycle
   useEffect(() => {
@@ -340,6 +386,12 @@ export function RaceScene({
     let finishedEvent = false
     let landEvent = 0
     let explodedEvent = false
+    // T173: refill the persistent racers array in place (no per-step alloc);
+    // membership can't change mid-frame
+    const racers = s.racers
+    racers.length = s.npcs.length + 1
+    racers[0] = s.ship
+    for (let ni = 0; ni < s.npcs.length; ni++) racers[ni + 1] = s.npcs[ni]
     for (let i = 0; i < steps; i++) {
       stepShip(s.ship, s.input, track, frames, s.events)
       if (s.events.exploded) explodedEvent = true
@@ -350,7 +402,7 @@ export function RaceScene({
       }
       // hull damage from racer contact happens INSIDE resolveCollisions now —
       // scaled by closing speed, both parties, fatal at ramming speed
-      const bump = resolveCollisions([s.ship, ...s.npcs], track, s.cooldowns)
+      const bump = resolveCollisions(racers, track, s.cooldowns)
       if (bump > 0) wallEvent = Math.max(wallEvent, bump * 0.6)
       // T79: wreck-level slam → shockwave ring + max trauma
       if (bump >= 35 && burstRef.current && shipGroup.current) {
@@ -656,7 +708,12 @@ export function RaceScene({
       <GridFloor track={track} frames={frames} />
       <Ridges track={track} frames={frames} />
       {/* T124: the skyline is the song */}
-      <WaveformHorizon track={track} energyCurve={features.energy} frameInterval={features.frameInterval} />
+      <WaveformHorizon
+        track={track}
+        energyCurve={features.energy}
+        frameInterval={features.frameInterval}
+        bars={quality === 'low' ? 48 : 96}
+      />
       {/* aurora curtain: section color + energy, surges on drops */}
       {quality !== 'low' && <Aurora track={track} />}
       {/* T111: subtle warp streaks at the top end */}
@@ -702,28 +759,20 @@ export function RaceScene({
               (sim.current.ship.boost > 0 ? 0.35 : 0)
         }
         speed={() => sim.current.ship.v}
+        // T173: ribbon resolution per tier — CPU per-point work scales linearly
+        points={quality === 'high' ? 48 : quality === 'medium' ? 36 : 28}
       />
       {/* R9e: grind/airbrake sparks + landing dust */}
-      <Sparks
-        shipRef={shipGroup}
-        accent={track.theme.glow}
-        fxIntensity={fxIntensity}
-        source={() => ({
-          onWall: sim.current.ship.onWall,
-          braking: sim.current.input.brakeLeft || sim.current.input.brakeRight,
-          airborne: sim.current.ship.airborne,
-          v: sim.current.ship.v,
-          d: sim.current.ship.d,
-          landPulse: sim.current.landPulse,
-          clearLand: () => void (sim.current.landPulse = 0),
-          wallPulse: sim.current.wallPulse,
-          clearWall: () => void (sim.current.wallPulse = 0),
-          explodePulse: sim.current.explodePulse,
-          clearExplode: () => void (sim.current.explodePulse = 0),
-        })}
-      />
+      <Sparks shipRef={shipGroup} accent={track.theme.glow} fxIntensity={fxIntensity} source={sparkSource} />
       {!(isMultiplayer || !!ghostPlayback) && (
-        <NpcShips specs={npcSpecs} simRef={sim} frames={frames} avgSpeed={track.avgSpeed} fogFar={3 / track.theme.fogDensity} />
+        <NpcShips
+          specs={npcSpecs}
+          simRef={sim}
+          frames={frames}
+          avgSpeed={track.avgSpeed}
+          fogFar={3 / track.theme.fogDensity}
+          trailPoints={quality === 'high' ? 30 : 18}
+        />
       )}
       {/* B19: mounted unconditionally — reads live state per frame */}
       {isMultiplayer && (
@@ -734,12 +783,7 @@ export function RaceScene({
         />
       )}
       {ghostPlayback && (
-        <NetworkShip
-          source={() => ({ ...sim.current.ghostReplayPos, finished: sim.current.ship.finished })}
-          frames={frames}
-          accent="#2ff3ff"
-          isGhost
-        />
+        <NetworkShip source={ghostSource} frames={frames} accent="#2ff3ff" isGhost />
       )}
       <Starfield color={track.theme.glow} count={quality === 'low' ? 400 : 1500} />
     </group>
@@ -902,6 +946,7 @@ function NpcShips({
   frames,
   avgSpeed,
   fogFar,
+  trailPoints = 30,
 }: {
   specs: NpcSpec[]
   simRef: React.RefObject<{ npcs: NpcState[] }>
@@ -909,6 +954,8 @@ function NpcShips({
   avgSpeed: number
   /** beyond this distance the fog has fully eaten the ship — skip the draw */
   fogFar: number
+  /** T173: exhaust ribbon resolution per quality tier */
+  trailPoints?: number
 }) {
   const refs = useRef<(THREE.Group | null)[]>([])
   const pose = useRef({} as FramePose)
@@ -978,7 +1025,7 @@ function NpcShips({
               color={spec.accent}
               intensity={npcPower}
               speed={() => simRef.current.npcs[i]?.v ?? 0}
-              points={30}
+              points={trailPoints}
             />
           </group>
         )

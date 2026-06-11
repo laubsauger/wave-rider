@@ -54,6 +54,7 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V23: NPCs run stepShip — ONE physics rulebook (vmax, drag, drift, pads, walls, energy). NPC-ness = controller only: steer ff+PD (speed-scaled gains), smoothed throttle ceiling, brake margin ∝ cornerSkill. ⊥ parallel movement model. (V15 determinism unchanged.)
 - V24: corners CAMBER ∝ coordinated-turn angle atan(k·vC²/g)·0.55, cap 0.76 rad (curve/chicane/split/glide; wallride keeps bankAbs). Flat = straights/speedways only. Transitions: smoothstep edge windows (~15%) + chicane/split S-flip through flat.
 - V25: trackside spawns (pylons, biome) must clear the WHOLE course corridor — spatial-hash check, reject when horizontally within objR+34m AND vertically overlapping a non-own track section. Course crosses its own footprint; own-segment clearance is not enough.
+- V26: localStorage = META RECORDS only (settings, recents, acks) — audio bytes ⊥ localStorage (quota blowup). Song bytes live in session memory | on user's disk via explicit save.
 
 ## §T tasks
 
@@ -230,7 +231,7 @@ T169|x|HYPERSPEED: vmax → avgSpeed×3+100 (~2000-2600 kph ceiling); drift v² 
 T170|x|boost DISCIPLINE = skill ceiling: quadratic drag drops no-boost cruise ~55% vmax, per-boost punch ↓ (kick 15, window 0.9s, accel 75) — holding near max takes sustained chains; gen recalibrated for hyperspeed: jumps gentler, chicane/sbank curvature ↓, global k budget 50→42, long curves wider (1.25-1.8)|V12,V16,V20,V3
 T171|x|airtime @ hyperspeed: takeoff demands REAL crest (Δslope ≤ −0.02, ⊥ speed-amplified undulation pops) + downforce gravity ∝ v (fast hops stay short)|V16,V5
 T172|x|frame-order fix (B34): exhaust/sparks read ship pose AFTER the sim writes it — trail head was one frame stale (gap = v·dt, 10m+ @ hyperspeed)|C11,V5
-T173|.|perf passes REMAINING: TSL shader cost @ retina (post chain), per-frame alloc/GC audit (chase CPU dips w/ cpu+lt meters), geometry+effect LOD per quality tier|C7,C11
+T173|x|perf passes REMAINING: TSL shader cost @ retina (post chain), per-frame alloc/GC audit (chase CPU dips w/ cpu+lt meters), geometry+effect LOD per quality tier|C7,C11
 T174|x|carve/track rework: V2 skilled-pace re-anchor (vmax 3.0→1.36, accel 0.34→0.155, NPC pace → fractions); V20 carve-authority kScale; width 29-34 + widthScale floors ↑; wall malus graded; smoothstep transition windows + S-flip through flat; V24 downforce camber everywhere|V2,V20,V24,V3
 T175|x|ENERGY system: hull drain (walls ∝ impact+speed, grind, ship-ship ∝ closing speed BOTH parties), 2s-grace regen, 0 → explosion (fireball+debris+flash) + 1.3s wreck pause + reset; damage film grain < 35% hull; ENERGY bar (purple tiers)|V22,V10
 T176|x|NPC unification: stepNpc = controller over stepShip (ff+PD steer speed-scaled, smoothed aiThrottle, brake margins); grid FLIPPED (field ahead, player last) + poseAt negative-s extrapolation (B35); intro camera dolly READY→GO|V23,V15,V13
@@ -238,6 +239,7 @@ T177|x|SPLIT segments: lane forks 2× width around divider island (median = wall
 T178|x|perf round 1: dpr deterministic+capped (B36), pipeline warmup @ countdown, chunked track ribbons + fog-distance culling, bucketed scenery instancing, minimap offscreen bake, trail distance cull, spark idle skip, gpu/cpu/longtask instrumentation (PerfHud F2/?perf)|C7,C11,T173
 T179|x|UX round: HUD v3 (THRUST=speed story w/ overdrive zone + flush ENERGY bar, eased segment heights), road signage patterns (slant→turn ahead, ticks→technical), restart in pause, fullscreen buttons, loading veil, TrackChips on setup, sponsor boards XL + neon rails, exhaust escalation w/ accent core (de-blinded), progressive kb steering, touch steer gain+centerline|V10,V6,C11
 T180|x|scenery clearance vs WHOLE course (B37): spatial hash + corridor rejection for pylons/biome|V25
+T181|x|song keep: SAVE SONG (pause + results) downloads session bytes, ext via magic-byte sniff; RECENTS in menu — localStorage meta records (V26), session bytes → instant replay, post-reload → re-import picker|I.ui,V26
 
 ## §B bugs
 

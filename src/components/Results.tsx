@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useGame } from '../game/store'
 import { serializeGhost } from '../lib/network/ghost'
 import { network } from '../lib/network/p2p'
+import { saveSongToDevice } from '../lib/recents'
 
 function fmtTime(ms: number): string {
   const m = Math.floor(ms / 60000)
@@ -18,8 +19,13 @@ export function Results() {
   const opponentFinished = useGame((s) => s.opponentFinished)
   const opponentTimeMs = useGame((s) => s.opponentTimeMs)
   const ghostData = useGame((s) => s.ghostData)
-  
+  // T181: keep the track — bytes live in the session library for uploads and
+  // for the song the host streamed over (the joiner's only copy)
+  const songTitle = useGame((s) => s.songTitle)
+  const songBytes = useGame((s) => s.userSongs.find((u) => u.title === s.songTitle)?.bytes)
+
   const [copied, setCopied] = useState(false)
+  const [songSaved, setSongSaved] = useState(false)
 
   if (!result || !track) return null
 
@@ -77,6 +83,17 @@ export function Results() {
         >
           MENU
         </button>
+        {songBytes && (
+          <button
+            className="border border-(--color-neon-2)/50 px-6 py-2 tracking-widest text-(--color-neon-2) transition hover:bg-(--color-neon-2)/15"
+            onClick={() => {
+              saveSongToDevice(songTitle, songBytes)
+              setSongSaved(true)
+            }}
+          >
+            {songSaved ? '✓ SAVED' : '⬇ SAVE SONG'}
+          </button>
+        )}
         {typeof navigator !== 'undefined' && !!navigator.share && (
           <button
             className="flex items-center gap-2 border border-white/30 px-6 py-2 tracking-widest text-white/60 transition hover:bg-white/10"

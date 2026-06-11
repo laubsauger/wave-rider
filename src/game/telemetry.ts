@@ -49,6 +49,8 @@ export interface RaceTelemetry {
   /** T173: draw calls + triangles last frame (renderer.info) */
   drawCalls: number
   triangles: number
+  /** T173: track ribbon chunks visible this frame (culling effectiveness) */
+  chunksDrawn: number
 }
 
 export const telemetry: RaceTelemetry = {
@@ -79,4 +81,5 @@ export const telemetry: RaceTelemetry = {
   frameStart: 0,
   drawCalls: 0,
   triangles: 0,
+  chunksDrawn: 0,
 }

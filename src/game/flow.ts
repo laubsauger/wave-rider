@@ -9,6 +9,7 @@ import { pcmToAudioBuffer, renderSong, type SongSpec } from '../lib/audio/builti
 import { generateTrack } from '../lib/track/generate'
 import { audioContext } from '../lib/audio/playback'
 import { computeWaveform, fmtDuration } from '../lib/audio/waveform'
+import { recordRecent } from '../lib/recents'
 
 // B11: rAF never fires in occluded/background tabs — racing a timeout keeps
 // the analysis pipeline moving even when the user tabs away
@@ -103,6 +104,16 @@ export async function startLibraryRace(songId: string): Promise<void> {
   game.setScreen('analyzing')
   game.setAnalysis(0.32) // in-memory bytes — no download stage
   await nextFrame()
+  // T181: replay bumps the song to the top of the persisted recents
+  recordRecent({
+    id: song.id,
+    title: song.title,
+    bpm: song.bpm,
+    mood: song.mood,
+    intensity: song.intensity,
+    durationLabel: song.durationLabel,
+    waveform: song.waveform,
+  })
   await raceFromBytes(song.bytes.slice(0), song.title, false)
 }
 
@@ -121,7 +132,7 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = f
   game.setAnalysis(1)
 
   if (addToLibrary) {
-    useGame.getState().addUserSong({
+    const meta = {
       id: title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
       title,
       bpm: Math.round(features.bpm),
@@ -129,8 +140,11 @@ async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = f
       intensity: Math.round(features.intensity * 100) / 100,
       durationLabel: fmtDuration(features.duration),
       waveform: computeWaveform(pcm),
-      bytes: bytes.slice(0),
-    })
+    }
+    useGame.getState().addUserSong({ ...meta, bytes: bytes.slice(0) })
+    // T181: persist the META record (V26: never the bytes) — covers the
+    // uploader AND the multiplayer joiner (custom transfer lands here too)
+    recordRecent(meta)
   }
   useGame.getState().setupRace({ features, track, songBuffer, songTitle: title })
 }

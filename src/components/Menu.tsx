@@ -9,7 +9,17 @@ import { startBuiltinRace, startBundledRace, startFileRace, startLibraryRace } f
 import { useGame } from '../game/store'
 import { setMuted } from '../lib/audio/playback'
 import { requestFullscreen } from '../lib/fullscreen'
+import { loadRecents } from '../lib/recents'
 import { TrackChips } from './TrackChips'
+
+/** T181: compact relative timestamp for recents cards */
+function fmtAgo(epochMs: number): string {
+  const d = Date.now() - epochMs
+  if (d < 90_000) return 'JUST NOW'
+  if (d < 3_600_000) return `${Math.round(d / 60_000)}M AGO`
+  if (d < 86_400_000) return `${Math.round(d / 3_600_000)}H AGO`
+  return `${Math.round(d / 86_400_000)}D AGO`
+}
 
 /** T34: peak bars rendered as one SVG, used as card background */
 function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
@@ -135,6 +145,10 @@ export function Menu() {
   const settings = useGame((s) => s.settings)
   const setSettings = useGame((s) => s.setSettings)
   const userSongs = useGame((s) => s.userSongs)
+  // T181: persisted recents (meta only, V26) — entries whose bytes are still
+  // in the session library play instantly; the rest need a re-import
+  const [recents] = useState(loadRecents)
+  const staleRecents = recents.filter((r) => !userSongs.some((u) => u.id === r.id))
   const [flashAcked, setFlashAcked] = useState(() => localStorage.getItem(FLASH_ACK_KEY) === '1')
   const ghostPlayback = useGame((s) => s.ghostPlayback)
 
@@ -237,6 +251,32 @@ export function Menu() {
                     {song.durationLabel}
                   </span>
                   <TrackChips bpm={song.bpm} mood={song.mood} intensity={song.intensity} />
+                </button>
+              ))}
+            </div>
+          )}
+
+          {staleRecents.length > 0 && (
+            <div className="flex flex-col gap-2 short:grid short:grid-cols-2 short:gap-1.5">
+              <p className="text-[11px] tracking-[0.4em] text-white/35 short:col-span-2">RECENTS</p>
+              {staleRecents.map((song) => (
+                <button
+                  key={song.id}
+                  className="group relative -skew-x-6 overflow-hidden border border-white/15 bg-black/60 px-6 py-3 text-left transition hover:border-(--color-neon-2)/70 hover:bg-(--color-neon-2)/10 short:px-4 short:py-1.5"
+                  onClick={() => fileInput.current?.click()}
+                  title="Audio stays on your device — pick the file again to race it"
+                >
+                  <Waveform peaks={song.waveform} color="#ff2fd6" />
+                  <span className="relative text-base font-bold tracking-[0.2em] text-white/70 group-hover:text-(--color-neon-2) short:text-sm">
+                    {song.title}
+                  </span>
+                  <span className="relative float-right mt-0.5 text-xs tabular-nums text-white/40">
+                    {song.durationLabel}
+                  </span>
+                  <TrackChips bpm={song.bpm} mood={song.mood} intensity={song.intensity} />
+                  <span className="relative ml-3 text-[9px] tracking-[0.3em] text-white/30">
+                    {fmtAgo(song.playedAt)} · TAP TO RE-IMPORT
+                  </span>
                 </button>
               ))}
             </div>

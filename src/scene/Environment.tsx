@@ -206,16 +206,19 @@ export function WaveformHorizon({
   track,
   energyCurve,
   frameInterval,
+  bars = WF_BARS,
 }: {
   track: TrackData
   energyCurve: Float32Array
   frameInterval: number
+  /** T173: ring resolution per quality tier (low halves it) */
+  bars?: number
 }) {
   const farRef = useRef<THREE.InstancedMesh>(null)
   const nearRef = useRef<THREE.InstancedMesh>(null)
   const capRef = useRef<THREE.InstancedMesh>(null)
   const groupRef = useRef<THREE.Group>(null)
-  const heights = useMemo(() => new Float32Array(WF_BARS * 2).fill(20), [])
+  const heights = useMemo(() => new Float32Array(bars * 2).fill(20), [bars])
   // sit just inside the fog falloff so the silhouette reads
   const radius = Math.min(900, 2.1 / track.theme.fogDensity)
 
@@ -223,13 +226,23 @@ export function WaveformHorizon({
   // skyline, not a uniform EQ. Seeded (render-side but deterministic).
   const barProps = useMemo(() => {
     const rng = mulberry32((track.seed ^ 0x5ca11e) >>> 0)
-    return Array.from({ length: WF_BARS * 2 }, () => ({
+    return Array.from({ length: bars * 2 }, () => ({
       w: rngRange(rng, 0.45, 1.7),
       hMul: rngRange(rng, 0.6, 1.45),
       mixT: rng(),
       bright: rngRange(rng, 0.35, 1.1),
     }))
-  }, [track.seed])
+  }, [track.seed, bars])
+
+  // T173: hoisted — this array was rebuilt (2 objects + array) every frame
+  const layers = useMemo(
+    () => [
+      // T139: far ring drifts SLOWER than the near one — parallax in time
+      { r: radius, hMax: 230, base: 26, phase: 0, slot: 0, kMul: 0.5 },
+      { r: radius * 0.8, hMax: 130, base: 14, phase: Math.PI / bars, slot: 1, kMul: 1.6 },
+    ],
+    [radius, bars],
+  )
 
   // T149: skyline colors EVOLVE — base drifts toward the section palette
   // like the rails do, per-bar mix/shade variation layered on top
@@ -254,8 +267,8 @@ export function WaveformHorizon({
     wfDrift.base.lerp(wfDrift.target, Math.min(1, dt * 0.4))
     const caps = capRef.current
     const near = nearRef.current
-    for (let i = 0; i < WF_BARS; i++) {
-      const p = barProps[WF_BARS + i]
+    for (let i = 0; i < bars; i++) {
+      const p = barProps[bars + i]
       wfDrift.tmp.copy(wfDrift.base).lerp(wfDrift.edge, p.mixT).multiplyScalar(p.bright)
       caps.setColorAt(i, wfDrift.tmp)
       near.setColorAt(i, wfDrift.tmp.multiplyScalar(0.25))
@@ -264,27 +277,24 @@ export function WaveformHorizon({
     if (near.instanceColor) near.instanceColor.needsUpdate = true
 
     const fi = Math.floor(telemetry.songTime / frameInterval)
-    const layers = [
-      // T139: far ring drifts SLOWER than the near one — parallax in time
-      { mesh: farRef.current, r: radius, hMax: 230, base: 26, phase: 0, slot: 0, k: Math.min(1, dt * 0.5) },
-      { mesh: nearRef.current, r: radius * 0.8, hMax: 130, base: 14, phase: Math.PI / WF_BARS, slot: 1, k: Math.min(1, dt * 1.6) },
-    ]
     for (const L of layers) {
-      for (let i = 0; i < WF_BARS; i++) {
-        const off = Math.round((i - WF_BARS / 2) * 14) + L.slot * 7
+      const mesh = L.slot === 0 ? farRef.current : nearRef.current
+      const k = Math.min(1, dt * L.kMul)
+      for (let i = 0; i < bars; i++) {
+        const off = Math.round((i - bars / 2) * 14) + L.slot * 7
         const idx = Math.min(energyCurve.length - 1, Math.max(0, fi + off))
         const e = energyCurve[idx] ?? 0
-        const hi = L.slot * WF_BARS + i
+        const hi = L.slot * bars + i
         const props = barProps[hi]
-        heights[hi] += (L.base + e * L.hMax * props.hMul - heights[hi]) * L.k
-        const a = (i / WF_BARS) * Math.PI * 2 + L.phase
+        heights[hi] += (L.base + e * L.hMax * props.hMul - heights[hi]) * k
+        const a = (i / bars) * Math.PI * 2 + L.phase
         const h = heights[hi]
         wfObj.position.set(Math.cos(a) * L.r, -85 + h / 2, Math.sin(a) * L.r)
         wfObj.rotation.set(0, -a, 0)
         // T139: per-bar width — towers, slivers, gaps
         wfObj.scale.set(L.r * 0.026 * props.w, h, 5 + props.w * 4)
         wfObj.updateMatrix()
-        L.mesh.setMatrixAt(i, wfObj.matrix)
+        mesh!.setMatrixAt(i, wfObj.matrix)
         // glow caps ride the NEAR ring tips only
         if (L.slot === 1) {
           wfObj.position.y = -85 + h
@@ -293,23 +303,23 @@ export function WaveformHorizon({
           capRef.current.setMatrixAt(i, wfObj.matrix)
         }
       }
-      L.mesh.instanceMatrix.needsUpdate = true
+      mesh!.instanceMatrix.needsUpdate = true
     }
     capRef.current.instanceMatrix.needsUpdate = true
   })
 
   return (
     <group ref={groupRef}>
-      <instancedMesh ref={farRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+      <instancedMesh key={`f${bars}`} ref={farRef} args={[undefined, undefined, bars]} frustumCulled={false}>
         <boxGeometry />
         <meshStandardMaterial color="#04060e" metalness={0.2} roughness={0.9} emissive={track.theme.glow} emissiveIntensity={0.03} flatShading />
       </instancedMesh>
-      <instancedMesh ref={nearRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+      <instancedMesh key={`n${bars}`} ref={nearRef} args={[undefined, undefined, bars]} frustumCulled={false}>
         <boxGeometry />
         <meshStandardMaterial color="#070a16" metalness={0.3} roughness={0.8} emissive={track.theme.glow} emissiveIntensity={0.06} flatShading />
       </instancedMesh>
       {/* tip caps — the skyline's faint neon crest (per-bar palette mix) */}
-      <instancedMesh ref={capRef} args={[undefined, undefined, WF_BARS]} frustumCulled={false}>
+      <instancedMesh key={`c${bars}`} ref={capRef} args={[undefined, undefined, bars]} frustumCulled={false}>
         <boxGeometry />
         <meshBasicMaterial color="#ffffff" transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} toneMapped={false} />
       </instancedMesh>
