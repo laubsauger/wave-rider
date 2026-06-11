@@ -24,11 +24,11 @@ const nextFrame = () =>
 export async function startBuiltinRace(spec: SongSpec): Promise<void> {
   const game = useGame.getState()
   game.setScreen('analyzing')
-  game.setAnalysis(0.05)
+  game.setAnalysis(0.32) // no download for synths — skip straight past that stage
   await nextFrame()
 
   const pcm = renderSong(spec)
-  game.setAnalysis(0.4)
+  game.setAnalysis(0.6)
   await nextFrame()
 
   const features = analyzeAudio(pcm, ANALYSIS_SR)
@@ -47,16 +47,48 @@ export async function startBundledRace(url: string, title: string): Promise<void
   game.setAnalysis(0.05)
   await nextFrame()
 
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`could not load bundled song: HTTP ${res.status}`)
-  const bytes = await res.arrayBuffer()
-  await raceFromBytes(bytes, title)
+  try {
+    // streamed download with REAL progress (0.05 → 0.30) — these files run
+    // tens of MB and a frozen bar on mobile reads as "broken"
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`could not load bundled song: HTTP ${res.status}`)
+    let bytes: ArrayBuffer
+    const total = Number(res.headers.get('content-length') || 0)
+    if (res.body && total > 0) {
+      const reader = res.body.getReader()
+      const chunks: Uint8Array[] = []
+      let got = 0
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        chunks.push(value)
+        got += value.byteLength
+        game.setAnalysis(0.05 + (got / total) * 0.25)
+      }
+      const all = new Uint8Array(got)
+      let off = 0
+      for (const c of chunks) {
+        all.set(c, off)
+        off += c.byteLength
+      }
+      bytes = all.buffer
+    } else {
+      game.setAnalysis(0.18)
+      bytes = await res.arrayBuffer()
+    }
+    game.setAnalysis(0.3)
+    await raceFromBytes(bytes, title)
+  } catch (e) {
+    // never strand the user on the analyzing screen
+    console.error('bundled song load failed', e)
+    useGame.getState().setScreen('menu')
+  }
 }
 
 export async function startFileRace(file: File): Promise<void> {
   const game = useGame.getState()
   game.setScreen('analyzing')
-  game.setAnalysis(0.05)
+  game.setAnalysis(0.32) // local file — no download stage
   await nextFrame()
 
   const bytes = await file.arrayBuffer()
@@ -69,7 +101,7 @@ export async function startLibraryRace(songId: string): Promise<void> {
   if (!song) throw new Error(`unknown library song: ${songId}`)
   const game = useGame.getState()
   game.setScreen('analyzing')
-  game.setAnalysis(0.05)
+  game.setAnalysis(0.32) // in-memory bytes — no download stage
   await nextFrame()
   await raceFromBytes(song.bytes.slice(0), song.title, false)
 }
@@ -77,11 +109,11 @@ export async function startLibraryRace(songId: string): Promise<void> {
 async function raceFromBytes(bytes: ArrayBuffer, title: string, addToLibrary = false): Promise<void> {
   const game = useGame.getState()
   const pcm = await decodeForAnalysis(bytes)
-  game.setAnalysis(0.35)
+  game.setAnalysis(0.55)
   await nextFrame()
 
   const features = analyzeAudio(pcm, ANALYSIS_SR)
-  game.setAnalysis(0.75)
+  game.setAnalysis(0.85)
   await nextFrame()
 
   const track = generateTrack(features)

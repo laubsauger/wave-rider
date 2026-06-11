@@ -13,7 +13,7 @@ import { telemetry } from '../game/telemetry'
  * vec4 through outputNode kills the pipeline silently (B23/V21).
  * Everything scales with fxIntensity; 0 → no post at all (V10).
  */
-export function Effects({ fxIntensity }: { fxIntensity: number }) {
+export function Effects({ fxIntensity, dof: dofEnabled = true }: { fxIntensity: number; dof?: boolean }) {
   const renderer = useThree((s) => s.gl) as unknown as THREE.WebGPURenderer
   const scene = useThree((s) => s.scene)
   const camera = useThree((s) => s.camera)
@@ -39,7 +39,9 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     // band ride uniforms: at speed the FOV stretch pushes the aim point
     // deeper into the frame, so the focal plane chases it (uFocus) and the
     // sharp band widens (uRange) — the road you steer at never blurs.
-    const focused = dof(raw, scenePass.getViewZNode(), uFocus, uRange, uBokeh)
+    // T173: DoF is the most expensive post stage at high res — medium tier
+    // skips it entirely (bloom/grade/vignette carry the look)
+    const focused = dofEnabled ? dof(raw, scenePass.getViewZNode(), uFocus, uRange, uBokeh) : raw
     const color = convertToTexture(focused)
     const bloomNode = bloom(color, 1.25 * fxIntensity, 0.6, 0.78)
 
@@ -92,7 +94,7 @@ export function Effects({ fxIntensity }: { fxIntensity: number }) {
     const post = new THREE.PostProcessing(renderer)
     post.outputNode = vec4(heated.add(grain), 1)
     return post
-  }, [renderer, scene, camera, fxIntensity, uBlur, uCa, uBokeh, uFocus, uRange, uVig, uVigStart, uHeat])
+  }, [renderer, scene, camera, fxIntensity, dofEnabled, uBlur, uCa, uBokeh, uFocus, uRange, uVig, uVigStart, uHeat])
 
   useEffect(() => {
     return () => {

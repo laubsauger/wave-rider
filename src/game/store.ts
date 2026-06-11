@@ -56,6 +56,8 @@ interface GameState {
   
   ghostData: import('../lib/network/ghost').GhostData | null
   ghostPlayback: import('../lib/network/ghost').GhostData | null
+  /** one-shot join id captured from ?join= at boot — consumed by the lobby */
+  pendingJoinId: string | null
 
   addUserSong: (song: UserSong) => void
   setScreen: (s: Screen) => void
@@ -74,11 +76,34 @@ interface GameState {
   setOpponentFinish: (timeMs: number) => void
   setGhostData: (ghost: import('../lib/network/ghost').GhostData | null) => void
   setGhostPlayback: (ghost: import('../lib/network/ghost').GhostData | null) => void
+  setPendingJoinId: (id: string | null) => void
+}
+
+const SETTINGS_KEY = 'wave-rider-settings'
+
+/** restore persisted settings (quality especially — per-device tuning) */
+function loadSettings(): Settings {
+  const base: Settings = { fxIntensity: 1, quality: 'high', muted: false }
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (!raw) return base
+    const saved = JSON.parse(raw) as Partial<Settings>
+    return {
+      fxIntensity: typeof saved.fxIntensity === 'number' ? saved.fxIntensity : base.fxIntensity,
+      quality:
+        saved.quality === 'low' || saved.quality === 'medium' || saved.quality === 'high'
+          ? saved.quality
+          : base.quality,
+      muted: base.muted, // mute is session-only — never trap audio off
+    }
+  } catch {
+    return base
+  }
 }
 
 export const useGame = create<GameState>((set) => ({
   screen: 'boot',
-  settings: { fxIntensity: 1, quality: 'high', muted: false },
+  settings: loadSettings(),
   cameraMode: 'chase',
   features: null,
   track: null,
@@ -93,13 +118,26 @@ export const useGame = create<GameState>((set) => ({
   opponentTimeMs: null,
   ghostData: null,
   ghostPlayback: null,
+  pendingJoinId: null,
 
   addUserSong: (song) =>
     set((st) =>
       st.userSongs.some((s) => s.id === song.id) ? st : { userSongs: [...st.userSongs, song] },
     ),
   setScreen: (screen) => set({ screen }),
-  setSettings: (s) => set((st) => ({ settings: { ...st.settings, ...s } })),
+  setSettings: (s) =>
+    set((st) => {
+      const settings = { ...st.settings, ...s }
+      try {
+        localStorage.setItem(
+          SETTINGS_KEY,
+          JSON.stringify({ fxIntensity: settings.fxIntensity, quality: settings.quality }),
+        )
+      } catch {
+        /* private mode etc. — persistence is best-effort */
+      }
+      return { settings }
+    }),
   toggleCamera: () =>
     set((st) => ({ cameraMode: st.cameraMode === 'chase' ? 'cockpit' : 'chase' })),
   setAnalysis: (analysisProgress) => set({ analysisProgress }),
@@ -111,4 +149,5 @@ export const useGame = create<GameState>((set) => ({
   setOpponentFinish: (opponentTimeMs) => set({ opponentFinished: true, opponentTimeMs }),
   setGhostData: (ghostData) => set({ ghostData }),
   setGhostPlayback: (ghostPlayback) => set({ ghostPlayback }),
+  setPendingJoinId: (pendingJoinId) => set({ pendingJoinId }),
 }))

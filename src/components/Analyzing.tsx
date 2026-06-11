@@ -1,9 +1,10 @@
 import { useGame } from '../game/store'
 
 const STAGES = [
-  [0.2, 'DECODING WAVEFORM'],
-  [0.5, 'EXTRACTING RHYTHM'],
-  [0.9, 'SCULPTING TRACK'],
+  [0.31, 'DOWNLOADING FREQUENCY'],
+  [0.56, 'DECODING WAVEFORM'],
+  [0.86, 'EXTRACTING RHYTHM'],
+  [1.0, 'SCULPTING TRACK'],
   [1.01, 'IGNITION'],
 ] as const
 

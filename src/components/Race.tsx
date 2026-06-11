@@ -81,13 +81,14 @@ export function Race() {
   return (
     <div className="relative h-full">
       <GpuCanvas
-        camera={{ fov: 62, near: 0.1, far: 6000, position: [0, 4, 10] }}
+        camera={{ fov: 62, near: 0.1, far: 2800, position: [0, 4, 10] }}
         dpr={quality === 'low' ? 1 : quality === 'medium' ? 1.5 : 2}
         shadows={quality === 'high'}
+        antialias={quality === 'high'}
       >
         <RaceScene key={runId} track={track} paused={paused} quality={quality} />
-        {/* C7: low tier drops the post chain entirely */}
-        <Effects fxIntensity={quality === 'low' ? 0 : fxIntensity} />
+        {/* C7: low tier drops the post chain entirely; medium drops DoF */}
+        <Effects fxIntensity={quality === 'low' ? 0 : fxIntensity} dof={quality === 'high'} />
       </GpuCanvas>
       <Hud accent={track.theme.edge} track={track} />
       {/* master mute — M key or click */}
@@ -102,9 +103,10 @@ export function Race() {
         {muted ? '🔇 MUTED' : '🔊 MUTE'}
       </button>
       <TouchControls />
-      {/* mobile: only way into the pause menu without a keyboard */}
+      {/* pause: top-center under the progress bar — clear of the TIME chip
+          and the touch zones; Esc still works on keyboard */}
       <button
-        className="hud-safe absolute top-3 left-3 z-30 hidden rounded border border-white/20 bg-black/40 px-3 py-1 text-xs tracking-widest text-white/60 [@media(pointer:coarse)]:block"
+        className="absolute top-16 left-1/2 z-30 -translate-x-1/2 rounded border border-white/20 bg-black/40 px-4 py-1.5 text-sm tracking-widest text-white/60 hover:bg-white/10 short:top-11 short:px-3 short:py-1"
         onClick={() => setPaused(true)}
       >
         ❚❚

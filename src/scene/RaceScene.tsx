@@ -881,8 +881,8 @@ function ShadowRig({
         castShadow={enabled}
         intensity={1.7}
         color="#cfe0ff"
-        shadow-mapSize-width={2048}
-        shadow-mapSize-height={2048}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-left={-90}
         shadow-camera-right={90}
         shadow-camera-top={90}
@@ -990,6 +990,7 @@ function NpcShips({
 /** T99: sky v2 — de-banded stars (two depths, twinkle) + nebula glow discs */
 function Starfield({ color, count = 1500 }: { color: string; count?: number }) {
   const nearMat = useRef<THREE.PointsMaterial>(null)
+  const groupRef = useRef<THREE.Group>(null)
   const geos = useMemo(() => {
     const make = (n: number, seedMul: number, rMin: number, rSpan: number) => {
       const pos = new Float32Array(n * 3)
@@ -1010,13 +1011,17 @@ function Starfield({ color, count = 1500 }: { color: string; count?: number }) {
     return { far: make(Math.floor(count * 0.7), 7, 1200, 900), near: make(Math.floor(count * 0.3), 131, 700, 400) }
   }, [count])
 
-  useFrame(() => {
+  useFrame(({ camera }) => {
     // highs make the near layer shimmer; drops flare the whole field
     if (nearMat.current) nearMat.current.opacity = 0.45 + telemetry.centroid * 0.5 + telemetry.dropPulse * 0.45
+    // sky dome FOLLOWS the camera: tracks run kilometers from the origin —
+    // fixed-world stars drifted out of the (now tighter) far plane and the
+    // late-race sky went empty. Also what lets camera.far sit at 2800.
+    groupRef.current?.position.copy(camera.position)
   })
 
   return (
-    <group>
+    <group ref={groupRef}>
       <points geometry={geos.far}>
         <pointsMaterial color="#9fb4d8" size={1.4} sizeAttenuation={false} transparent opacity={0.5} />
       </points>

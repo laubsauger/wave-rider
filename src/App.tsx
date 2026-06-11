@@ -19,6 +19,10 @@ import { MenuBackdrop } from './scene/MenuBackdrop'
  * including the menu — so screen swaps never flash to black */
 const BACKDROP_SCREENS = new Set(['menu', 'track-setup', 'multiplayer-lobby', 'ghost-lobby', 'analyzing', 'results'])
 
+/** boot routing must run ONCE: StrictMode double-fires the effect and the
+ * second pass reads the already-scrubbed URL → stomped the join/ghost route */
+let booted = false
+
 export default function App() {
   const screen = useGame((s) => s.screen)
   const setScreen = useGame((s) => s.setScreen)
@@ -26,16 +30,22 @@ export default function App() {
   useEffect(() => {
     if (screen !== 'boot') return
     detectWebGPU().then((ok) => {
+      if (booted) return
+      booted = true
       if (!ok) {
         setScreen('unsupported')
         return
       }
-      
+
       const params = new URLSearchParams(window.location.search)
       const joinId = params.get('join')
       const ghostData = params.get('ghost')
 
       if (joinId) {
+        // consume-once: a lingering ?join= made every later lobby visit
+        // (e.g. "host multiplayer") silently JOIN the stale peer instead
+        useGame.getState().setPendingJoinId(joinId)
+        window.history.replaceState({}, '', window.location.pathname)
         setScreen('multiplayer-lobby')
       } else if (ghostData) {
         deserializeGhost(ghostData)
@@ -72,7 +82,7 @@ export default function App() {
         </div>
       )}
       {screen === 'menu' && <Menu />}
-      {screen === 'multiplayer-lobby' && <MultiplayerLobby initialJoinId={new URLSearchParams(window.location.search).get('join') || undefined} />}
+      {screen === 'multiplayer-lobby' && <MultiplayerLobby />}
       {screen === 'track-setup' && <TrackSetup />}
       {screen === 'ghost-lobby' && <GhostLobby />}
       {screen === 'analyzing' && <Analyzing />}

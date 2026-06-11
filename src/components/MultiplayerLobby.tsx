@@ -4,7 +4,7 @@ import { network, type NetworkMessage, type P2PState } from '../lib/network/p2p'
 import { BUNDLED_SONGS } from '../lib/audio/bundled'
 import { startBundledRace, startFileRace } from '../game/flow'
 
-export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) {
+export function MultiplayerLobby() {
   const [p2pState, setP2pState] = useState<P2PState>(network.state)
   const [peerId, setPeerId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -52,17 +52,28 @@ export function MultiplayerLobby({ initialJoinId }: { initialJoinId?: string }) 
     network.onStateChange = handleState
     network.onMessage = handleMsg
 
-    if (initialJoinId) {
-      network.join(initialJoinId)
-    } else {
-      network.host().then(setPeerId).catch((e) => setError(String(e)))
+    // one-shot join id from ?join= (captured + URL-scrubbed at boot) — read
+    // AND CLEAR so later lobby visits (hosting) never re-join a stale peer.
+    // The network-state guard makes this StrictMode-safe: the double-mount's
+    // second pass sees 'joining'/'hosting' and doesn't re-init (which used
+    // to flip a fresh join into hosting).
+    if (network.state === 'disconnected') {
+      const joinId = useGame.getState().pendingJoinId
+      if (joinId) {
+        useGame.getState().setPendingJoinId(null)
+        network.join(joinId)
+      } else {
+        network.host().then(setPeerId).catch((e) => setError(String(e)))
+      }
+    } else if (network.isHost && network.peerId) {
+      setPeerId(network.peerId)
     }
 
     return () => {
       if (network.onStateChange === handleState) network.onStateChange = () => {}
       if (network.onMessage === handleMsg) network.onMessage = () => {}
     }
-  }, [initialJoinId])
+  }, [])
 
   const handleNetworkMessage = async (msg: NetworkMessage) => {
     if (msg.type === 'status') {

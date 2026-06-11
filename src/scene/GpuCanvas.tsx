@@ -30,8 +30,9 @@ export function GpuCanvas({
   children,
   alpha = false,
   dpr,
+  antialias = true,
   ...rest
-}: { children: ReactNode; alpha?: boolean; dpr?: number } & Record<string, unknown>) {
+}: { children: ReactNode; alpha?: boolean; dpr?: number; antialias?: boolean } & Record<string, unknown>) {
   return (
     <Canvas
       {...rest}
@@ -39,7 +40,9 @@ export function GpuCanvas({
       gl={async (props) => {
         const renderer = new THREE.WebGPURenderer({
           ...(props as ConstructorParameters<typeof THREE.WebGPURenderer>[0]),
-          antialias: true,
+          // T173: MSAA is a major mobile fill-rate cost — low/medium tiers
+          // drop it (the post chain's blur/CA hides aliasing anyway)
+          antialias,
           forceWebGL: false,
           alpha,
           // T173: GPU timestamp queries — PerfHud reads REAL gpu frame ms,
