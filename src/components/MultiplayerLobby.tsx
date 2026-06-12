@@ -89,18 +89,24 @@ export function MultiplayerLobby() {
       if (song) {
         useGame.getState().setMultiplayer(true, false)
         await startBundledRace(song.url, bundledDisplayTitle(song), song.id)
+        // T186: only launch if setup actually landed (fetch failure → menu)
+        if (useGame.getState().screen === 'track-setup') useGame.getState().startRace()
       }
     } else if (msg.type === 'lobby_song_synth') {
       const spec = BUILTIN_SONGS.find(s => s.id === msg.songId)
       if (spec) {
         useGame.getState().setMultiplayer(true, false)
         await startBuiltinRace(spec)
+        if (useGame.getState().screen === 'track-setup') useGame.getState().startRace()
       }
     } else if (msg.type === 'lobby_song_custom') {
       network.send({ type: 'status', text: 'OPPONENT ANALYZING TRACK…' })
       const file = new File([msg.bytes], msg.title, { type: 'audio/mpeg' })
       useGame.getState().setMultiplayer(true, false)
       await startFileRace(file)
+      // T186: straight into the race — the host is already in-scene waiting
+      // at the T88 handshake; a manual JOIN RACE step here read as "stuck"
+      if (useGame.getState().screen === 'track-setup') useGame.getState().startRace()
     }
   }
 

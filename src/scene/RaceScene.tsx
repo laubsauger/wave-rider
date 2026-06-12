@@ -26,7 +26,8 @@ import {
 } from '../lib/physics/npc'
 import { playSong, type SongHandle } from '../lib/audio/playback'
 import { beep, goChord } from '../lib/audio/sfx'
-import { createGhostRecorder } from '../lib/network/ghost'
+import { createGhostRecorder, serializeGhost } from '../lib/network/ghost'
+import { saveBestGhost, saveRun } from '../lib/records'
 import { network, type NetworkMessage, type OpponentState } from '../lib/network/p2p'
 import { Track } from './Track'
 import { Scenery } from './Scenery'
@@ -112,6 +113,7 @@ export function RaceScene({
   const features = useGame((s) => s.features)!
   const songBuffer = useGame((s) => s.songBuffer)
   const songTitle = useGame((s) => s.songTitle)
+  const songId = useGame((s) => s.songId)
   const cameraMode = useGame((s) => s.cameraMode)
   const fxIntensity = useGame((s) => s.settings.fxIntensity)
   const toggleCamera = useGame((s) => s.toggleCamera)
@@ -193,6 +195,8 @@ export function RaceScene({
     syncStartTime: 0,
     /** T88: epoch ms when both sides agreed to launch; 0 = not yet */
     raceStartAt: 0,
+    /** V30: first lobby_ready seen — bounds the wait for an RTT sample */
+    firstReadyAt: 0,
     readySent: false,
     lastCountInt: 9,
     /** R9e: one-shot landing impact pulse — Sparks consumes + clears */
@@ -277,8 +281,10 @@ export function RaceScene({
     // T35: song starts at GO, not on mount — see countdown in the frame loop
     s.started = true
 
-    if (!isMultiplayer && !ghostPlayback) {
-      s.ghostRecorder = createGhostRecorder(songTitle)
+    // T183: recorder also runs DURING ghost races — beat your ghost and the
+    // record updates. B39: stable songId, never the display title.
+    if (!isMultiplayer) {
+      s.ghostRecorder = createGhostRecorder(songId ?? songTitle)
     }
     
     let handleMsg: ((msg: NetworkMessage) => void) | null = null
@@ -290,16 +296,24 @@ export function RaceScene({
         } else if (msg.type === 'status') {
           telemetry.oppStatus = msg.text
         } else if (msg.type === 'lobby_ready') {
-          // T88: host arbitrates the start once the joiner's scene is live
+          // T88: host arbitrates the start once the joiner's scene is live.
+          // V30: launch delay carries the measured rtt/2 — the old fixed
+          // 400ms guess started the joiner visibly early on fast links.
           if (isHost && sim.current.raceStartAt === 0) {
-            sim.current.raceStartAt = Date.now() + 1500
-            network.send({ type: 'race_start', startTime: 0 })
+            if (sim.current.firstReadyAt === 0) sim.current.firstReadyAt = Date.now()
+            // wait (max 2s) for one ping roundtrip — lobby_ready repeats at
+            // 300ms, so this just defers arbitration one beat
+            if (!Number.isFinite(network.rtt) && Date.now() - sim.current.firstReadyAt < 2000) {
+              network.send({ type: 'ping', t: Date.now() })
+            } else {
+              const half = Number.isFinite(network.rtt) ? Math.min(600, network.rtt / 2) : 400
+              sim.current.raceStartAt = Date.now() + 1500
+              network.send({ type: 'race_start', startTime: 1500 - half })
+            }
           }
         } else if (msg.type === 'race_start') {
           if (!isHost && sim.current.raceStartAt === 0) {
-            // host launches 1500ms after deciding; we got the message ~RTT/2
-            // later, so aim slightly earlier — within ~±300ms is fine for v1
-            sim.current.raceStartAt = Date.now() + 1100
+            sim.current.raceStartAt = Date.now() + (msg.startTime > 0 ? msg.startTime : 1100)
           }
         } else if (msg.type === 'race_finish') {
           useGame.getState().setOpponentFinish(msg.timeMs)
@@ -319,9 +333,11 @@ export function RaceScene({
           type: 'state_update',
           state: { s: ship.s, d: ship.d, v: ship.v, yaw: ship.yaw, finished: ship.finished },
         })
-        // T88: announce scene-ready until launch is agreed
+        // T88: announce scene-ready until launch is agreed; V30: hosts probe
+        // RTT alongside so the race_start delay can compensate for latency
         if (sim.current.raceStartAt === 0) {
           network.send({ type: 'lobby_ready' })
+          if (isHost) network.send({ type: 'ping', t: Date.now() })
         }
       }, 300)
     }
@@ -395,7 +411,8 @@ export function RaceScene({
     for (let i = 0; i < steps; i++) {
       stepShip(s.ship, s.input, track, frames, s.events)
       if (s.events.exploded) explodedEvent = true
-      for (let ni = 0; ni < s.npcs.length; ni++) stepNpc(s.npcs[ni], npcSpecs[ni], track, frames)
+      // V29: NPCs see the player's arc position — mid/back field rubber-bands
+      for (let ni = 0; ni < s.npcs.length; ni++) stepNpc(s.npcs[ni], npcSpecs[ni], track, frames, s.ship.s)
       // T32/T52: bump resolution — impulse once per contact, cooldown-gated
       for (let ci = 0; ci < s.cooldowns.length; ci++) {
         s.cooldowns[ci] = Math.max(0, s.cooldowns[ci] - PHYSICS_DT)
@@ -667,27 +684,48 @@ export function RaceScene({
       s.started = false
       s.song?.stop(1.5)
 
+      const timeMs = ship.time * 1000
+      const place =
+        isMultiplayer && s.opponent
+          ? s.opponent.s > ship.s && !ship.finished
+            ? 2
+            : s.opponent.finished && ship.finished
+              ? 2
+              : 1
+          : racePosition(ship.s - 0.001, s.npcs)
+
       if (s.ghostRecorder) {
-        setGhostData(s.ghostRecorder.finish())
+        const ghost = s.ghostRecorder.finish()
+        ghost.songTitle = songTitle
+        ghost.timeMs = timeMs
+        setGhostData(ghost)
+        // T183/V28: FINISHED runs land on the local leaderboard; the fastest
+        // one keeps its ghost. DNFs (song ran out) record nothing.
+        if (finishedEvent) {
+          const { newBest } = saveRun(songId ?? songTitle, track.seed, songTitle, {
+            timeMs,
+            topSpeed: ship.topSpeed,
+            place,
+            date: Date.now(),
+          })
+          if (newBest) {
+            void serializeGhost(ghost)
+              .then((str) => saveBestGhost(songId ?? songTitle, track.seed, timeMs, str))
+              .catch(() => {})
+          }
+        }
       }
       if (isMultiplayer) {
-        network.send({ type: 'race_finish', timeMs: ship.time * 1000 })
+        network.send({ type: 'race_finish', timeMs })
       }
-      
+
       finishRace({
-        timeMs: ship.time * 1000,
+        timeMs,
         topSpeed: ship.topSpeed,
         boostsHit: ship.boostsHit,
         wallHits: ship.wallHits,
         songTitle,
-        place:
-          isMultiplayer && s.opponent
-            ? s.opponent.s > ship.s && !ship.finished
-              ? 2
-              : s.opponent.finished && ship.finished
-                ? 2
-                : 1
-            : racePosition(ship.s - 0.001, s.npcs),
+        place,
         totalRacers: isMultiplayer ? 2 : (ghostPlayback ? 2 : s.npcs.length + 1),
       })
     }

@@ -1,7 +1,17 @@
+import { useMemo } from 'react'
 import { useGame } from '../game/store'
 import { fmtDuration } from '../lib/audio/waveform'
 import { requestFullscreen } from '../lib/fullscreen'
+import { loadRecord } from '../lib/records'
+import { deserializeGhost } from '../lib/network/ghost'
 import { TrackChips } from './TrackChips'
+
+function fmtTime(ms: number): string {
+  const m = Math.floor(ms / 60000)
+  const s = Math.floor((ms % 60000) / 1000)
+  const cs = Math.floor((ms % 1000) / 10)
+  return `${m}:${String(s).padStart(2, '0')}.${String(cs).padStart(2, '0')}`
+}
 
 /** T34: peak bars rendered as one SVG, used as card background */
 function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
@@ -20,7 +30,13 @@ function Waveform({ peaks, color }: { peaks: number[]; color: string }) {
 }
 
 export function TrackSetup() {
-  const { songTitle, features, startRace, setMultiplayer, setGhostPlayback, track } = useGame()
+  const { songTitle, songId, features, startRace, setMultiplayer, setGhostPlayback, track } = useGame()
+
+  // T183: local leaderboard + best ghost for THIS track (keyed songId:seed, V28)
+  const record = useMemo(
+    () => (songId && track ? loadRecord(songId, track.seed) : null),
+    [songId, track],
+  )
 
   if (!features || !track) return null
 
@@ -62,6 +78,22 @@ export function TrackSetup() {
     useGame.getState().setScreen('menu')
   }
 
+  // T183: race your stored best — deserialize, arm ghost playback, launch
+  const handleRaceOwnGhost = async () => {
+    if (!record?.bestGhost) return
+    try {
+      const ghost = await deserializeGhost(record.bestGhost)
+      ghost.songTitle = songTitle
+      ghost.timeMs = record.bestTimeMs
+      setGhostPlayback(ghost)
+      await requestFullscreen()
+      setMultiplayer(false)
+      startRace()
+    } catch (e) {
+      console.error('stored ghost unreadable', e)
+    }
+  }
+
   return (
     <div className="hud-safe absolute inset-0 flex flex-col items-center justify-center overflow-y-auto p-8 text-white short:justify-start short:p-2">
       <div className="glass-panel my-auto flex w-full max-w-xl flex-col items-center px-8 py-8 short:my-1 short:px-4 short:py-2">
@@ -82,6 +114,24 @@ export function TrackSetup() {
         </div>
       </div>
 
+      {record && record.times.length > 0 && (
+        <div className="mt-4 w-full max-w-lg -skew-x-6 border border-white/15 bg-black/50 px-6 py-3 short:mt-2 short:px-4 short:py-2">
+          <p className="text-[11px] tracking-[0.4em] text-white/35">LOCAL BEST TIMES</p>
+          <div className="mt-2 flex flex-col gap-1 short:mt-1">
+            {record.times.map((t, i) => (
+              <div key={t.date} className="flex items-baseline justify-between text-sm tabular-nums short:text-xs">
+                <span className={i === 0 ? 'font-bold text-[#ffd23d]' : 'text-white/60'}>
+                  {i === 0 ? '★' : ` ${i + 1}`} {fmtTime(t.timeMs)}
+                </span>
+                <span className="text-xs text-white/30">
+                  P{t.place} · {Math.round(t.topSpeed * 3.6)} KPH
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mt-8 flex w-full max-w-lg flex-col gap-4 short:mt-3 short:gap-2">
         {useGame.getState().isMultiplayer ? (
           <button
@@ -101,6 +151,14 @@ export function TrackSetup() {
             >
               {useGame.getState().ghostPlayback ? '▶ RACE GHOST' : '▶ PLAY SOLO'}
             </button>
+            {!useGame.getState().ghostPlayback && record?.bestGhost && record.bestTimeMs !== undefined && (
+              <button
+                className="-skew-x-6 border border-solid border-[#2ff3ff]/40 px-6 py-4 tracking-[0.25em] short:py-2 text-[#2ff3ff]/90 transition hover:bg-[#2ff3ff]/10 hover:shadow-[0_0_30px_rgba(47,243,255,0.2)]"
+                onClick={() => void handleRaceOwnGhost()}
+              >
+                ◇ RACE YOUR GHOST ({fmtTime(record.bestTimeMs)})
+              </button>
+            )}
             {!useGame.getState().ghostPlayback && (
               <button
                 className="-skew-x-6 border border-solid border-[#b4ff39]/60 px-6 py-4 tracking-[0.25em] short:py-2 text-[#b4ff39] transition hover:bg-[#b4ff39]/10 hover:shadow-[0_0_30px_rgba(180,255,57,0.2)]"

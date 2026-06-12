@@ -10,11 +10,19 @@ export function GhostLobby() {
 
   if (!ghost) return null
 
-  // B38-class: ghost records the DISPLAY title — match the composed form
-  // (raw-title fallback keeps pre-T100 ghost links alive)
+  // B39: ghost identity = songId. Legacy links carried the display title in
+  // the songId slot (old recorder bug) — title fallbacks keep them alive.
   const findGhostSong = () =>
-    BUNDLED_SONGS.find((s) => bundledDisplayTitle(s) === ghost.songTitle || s.title === ghost.songTitle)
+    BUNDLED_SONGS.find(
+      (s) =>
+        s.id === ghost.songId ||
+        bundledDisplayTitle(s) === ghost.songId ||
+        s.title === ghost.songId ||
+        (ghost.songTitle !== undefined &&
+          (bundledDisplayTitle(s) === ghost.songTitle || s.title === ghost.songTitle)),
+    )
   const isBuiltin = !!findGhostSong()
+  const ghostTitle = ghost.songTitle ?? (findGhostSong() ? bundledDisplayTitle(findGhostSong()!) : ghost.songId)
 
   const handlePlayGhost = async () => {
     const song = findGhostSong()
@@ -49,7 +57,7 @@ export function GhostLobby() {
 
       <div className="relative w-full max-w-lg border border-(--color-neon-2)/40 bg-white/5 px-6 py-6 text-center shadow-[0_0_30px_rgba(255,47,214,0.15)] short:px-4 short:py-3">
         <p className="text-xs tracking-[0.4em] text-white/50">TARGET TRACK</p>
-        <h2 className="mt-2 text-2xl font-bold tracking-widest text-white short:mt-1 short:text-lg">{ghost.songTitle}</h2>
+        <h2 className="mt-2 text-2xl font-bold tracking-widest text-white short:mt-1 short:text-lg">{ghostTitle}</h2>
 
         <p className="mt-6 text-xs tracking-[0.4em] text-white/50 short:mt-2">OPPONENT TIME</p>
         <p className="mt-1 font-mono text-3xl text-(--color-neon-2) short:text-xl">{formatTime(ghost.timeMs ?? 0)}</p>

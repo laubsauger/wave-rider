@@ -18,6 +18,9 @@ export interface ShipInput {
   brakeRight: boolean
   /** T156: retro brake — hard decel; airborne adds downward sink */
   retro?: boolean
+  /** T187: analog source (touch stick, NPC PD) — skips the progressive
+   * digital-tap lock, gets a flat fast attack instead */
+  analog?: boolean
 }
 
 export interface ShipState {
@@ -269,7 +272,13 @@ export function stepShip(
   state.steerHeld += Math.sign(input.steer) * dt
   const held = Math.abs(state.steerHeld)
   const speedSoft = 1 / (1 + state.v / 900)
-  const attackRate = (1.8 + Math.min(1, held / 0.65) * 5.5) * (0.7 + 0.3 * speedSoft)
+  // T187: competition feedback — initial attack 1.8→3.4 + lock window
+  // 0.65→0.45s (half-lock ~115ms, was ~220ms). Top rate unchanged, release
+  // unchanged: taps still nudge (B7), holds just answer sooner. Analog
+  // sources bypass the digital-tap protection entirely.
+  const attackRate = input.analog
+    ? 9
+    : (3.4 + Math.min(1, held / 0.45) * 4.0) * (0.7 + 0.3 * speedSoft)
   const rate = attacking ? attackRate : 7
   state.steerSmooth += clamp(steerTarget - state.steerSmooth, -rate * dt, rate * dt)
 

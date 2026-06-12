@@ -54,8 +54,11 @@ Browser AG racing game, WipEout 2097 vibe. Twist: track course, look, mood, flow
 - V23: NPCs run stepShip — ONE physics rulebook (vmax, drag, drift, pads, walls, energy). NPC-ness = controller only: steer ff+PD (speed-scaled gains), smoothed throttle ceiling, brake margin ∝ cornerSkill. ⊥ parallel movement model. (V15 determinism unchanged.)
 - V24: corners CAMBER ∝ coordinated-turn angle atan(k·vC²/g)·0.55, cap 0.76 rad (curve/chicane/split/glide; wallride keeps bankAbs). Flat = straights/speedways only. Transitions: smoothstep edge windows (~15%) + chicane/split S-flip through flat.
 - V25: trackside spawns (pylons, biome) must clear the WHOLE course corridor — spatial-hash check, reject when horizontally within objR+34m AND vertically overlapping a non-own track section. Course crosses its own footprint; own-segment clearance is not enough.
-- V26: localStorage = META RECORDS only (settings, recents, acks) — audio bytes ⊥ localStorage (quota blowup). Song bytes live in session memory | on user's disk via explicit save.
+- V26 (amend 2026-06-11): localStorage = COMPACT RECORDS only (settings, recents, acks, track records incl. gzip+base64 ghost frames ~30-60KB) — audio bytes ⊥ localStorage (quota blowup). Song bytes live in session memory | on user's disk via explicit save.
 - V27: song identity = STABLE ID (bundled id | synth id | user slug) carried in store.songId through every flow entry. Display strings ("ARTIST — TITLE") ⊥ lookup keys. MP lobby resolves transfer source by id only.
+- V28: track records keyed `songId:track.seed` (seed disambiguates same-named files, V1 makes it stable). Leaderboard = FINISHED runs only, top-5 sorted asc; bestGhost = ghost of fastest finished run, replaced ONLY when beaten. Record count LRU-capped (quota).
+- V29: RUBBER-BAND — non-elite NPCs modulate target pace ∝ signed gap to player, bounded [-12%, +18%], smooth ramp over ~600m. ELITE tier (top pace) exempt — skill ceiling stays honest. Deterministic given player trace (V15 form preserved, V23 controller-only).
+- V30: MP launch sync: host measures RTT (ping/pong), race_start carries delay minus rtt/2 — countdowns aligned ≤ ~rtt/2 jitter (⊥ fixed 400ms latency guess). Joiner retries peer-unavailable ~30s (host may be app-switched sharing the link, B40).
 
 ## §T tasks
 
@@ -242,6 +245,14 @@ T179|x|UX round: HUD v3 (THRUST=speed story w/ overdrive zone + flush ENERGY bar
 T180|x|scenery clearance vs WHOLE course (B37): spatial hash + corridor rejection for pylons/biome|V25
 T181|x|song keep: SAVE SONG (pause + results) downloads session bytes, ext via magic-byte sniff; RECENTS in menu — localStorage meta records (V26), session bytes → instant replay, post-reload → re-import picker|I.ui,V26
 T182|x|songId plumbing: store.songId set by EVERY flow entry; lobby resolves bundled|synth|user source by id (pure resolver, tested); synth host → lobby_song_synth msg (deterministic re-render joiner-side, V1)|V27,B38
+T183|x|track records: per-track leaderboard (top-5 finished times) + best ghost persisted (V28); TrackSetup shows board + RACE YOUR GHOST; Results flags NEW RECORD; ghost recorder runs during ghost races (beat your ghost → it updates); B39 fix|V28,V26,V27,B39
+T184|x|mobile default quality = medium (coarse pointer @ first run) — high stutters even flagship phones; persisted user choice always wins|C7,C3
+T185|x|film grain OUT — animated seed crawled diagonally (subtle moving noise from race start); third grain complaint = delete, not dial|V10,V21
+T186|x|MP joiner AUTO-enters race once song processed — manual JOIN RACE stall read as "client waiting, host playing"; host already waits in-scene|B22,I.ui
+T187|x|steer latency ↓: digital initial attack 1.8→3.4, lock window 0.65→0.45 (half-lock ~220→~115ms, tap-nudge safety stays); ANALOG input (touch + NPC PD) skips progressive lock — flat fast attack|V18,V23,B7
+T188|x|signaling resilience (B40): peer.reconnect() on 'disconnected' + foreground-return retry; e2e MP harness — scripts/e2e-mp.mjs spawns 2 chrome via puppeteer/CDP, drives host+join full flow to live race, freeze-emulates app-switch|B40,B20,B21
+T189|x|adaptive field (V29): mid/back NPCs rubber-band to player gap (catch-up + hold-back, bounded), elite exempt — race stays close for weak players, ⊥ free wins for strong|V29,V13,V23
+T190|~|launch sync v2 (V30): RTT-measured race_start (ping/pong) replaces 400ms guess; joiner auto-retries peer-unavailable ~30s; e2e freeze reordered — join attempt DURING host freeze (realistic share-link sample)|V30,B40,T88
 
 ## §B bugs
 
@@ -283,3 +294,5 @@ B35|2026-06-11|poseAt CLAMPED s<0 to 0 → every grid ship rendered stacked AT t
 B36|2026-06-11|r3f `dpr` prop LOST during async WebGPU renderer init — canvas at pixelRatio 1 until first window resize, then jumped to 2: render res random per session, quality tiers never controlled startup res, "30fps sometimes"|DprSync child applies dpr post-mount, capped at devicePixelRatio (T178)
 B37|2026-06-11|course crosses own footprint → scenery placed clear of OWN segment sat inside a DIFFERENT track section (towers/pylons through the road)|V25 corridor clearance: spatial hash of whole course, reject overlapping spawns (T180)
 B38|2026-06-11|MP host resolved song by DISPLAY title — T100 "ARTIST — TITLE" compose broke BUNDLED_SONGS title match → bundled-track host: "Could not find track bytes to send!", joiner stuck @ connected|V27 (T182)
+B39|2026-06-11|createGhostRecorder fed DISPLAY TITLE as songId + GhostLobby read never-set ghost.songTitle → shared ghost links for bundled tracks always demanded manual file pick|V27: recorder gets store.songId; lobby resolves ghost.songId by id w/ legacy title fallback (T183)
+B40|2026-06-11|mobile app-switch (share link via messenger) suspends tab → PeerJS signaling socket dies → broker drops peer id; NO 'disconnected' handler → shared join link dead before friend taps it|peer.reconnect() on 'disconnected' + visibility-return retry — same id re-registers (T188)

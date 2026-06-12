@@ -38,6 +38,8 @@ export interface NpcSpec {
   gridRow: number
   /** T145: grid lateral start — formation held early */
   gridD: number
+  /** V29: rubber-band strength 0..1 — 0 = elite, races its own race */
+  rubber: number
 }
 
 /** an NPC IS a ship — full player state, no parallel model */
@@ -68,6 +70,9 @@ export function makeNpcs(track: TrackData, count = 5): NpcSpec[] {
       phase: rngRange(rng, 0, Math.PI * 2),
       gridRow: Math.floor(i / 2),
       gridD: i % 2 === 0 ? -5 : 5,
+      // V29: VEKTOR never adapts (beating him stays earned), NYX barely,
+      // the mid/back field plays Mario Kart — keeps the race a race
+      rubber: i === 0 ? 0 : i === 1 ? 0.35 : 0.85,
     })
   }
   return specs
@@ -89,7 +94,8 @@ export function initialNpc(index: number): NpcState {
 export const NPC_ACCENTS = ACCENTS
 
 // module-level scratch — stepNpc is single-threaded and deterministic (V15)
-const npcInput: ShipInput = { steer: 0, thrust: 0, brakeLeft: false, brakeRight: false }
+// T187: analog — the PD controller outputs graded steer, no tap-lock needed
+const npcInput: ShipInput = { steer: 0, thrust: 0, brakeLeft: false, brakeRight: false, analog: true }
 const npcEvents: StepEvents = {
   wallHit: false,
   wallImpact: 0,
@@ -107,6 +113,8 @@ export function stepNpc(
   spec: NpcSpec,
   track: TrackData,
   frames: TrackFrames,
+  /** player arc position — enables V29 rubber-banding; omit = none */
+  playerS?: number,
 ): void {
   if (state.finished) return
 
@@ -154,8 +162,6 @@ export function stepNpc(
   // ---- speed management: same carve-authority math as track gen. Skilled
   // drivers commit closer to the limit; everyone airbrakes past it.
   const kMax = maxCarveCurvature(v) * (0.55 + 0.5 * spec.cornerSkill)
-  const over = Math.abs(kAhead) > kMax
-  const wayOver = Math.abs(kAhead) > kMax * 1.4
 
   // T159: rows leave WITH the GO, 0.12s ripple — same physics, just throttle
   const launched = state.time >= spec.gridRow * 0.12
@@ -165,9 +171,25 @@ export function stepNpc(
   // at 120Hz when kAhead sat near the brake threshold: visible stutter.
   // corner lift is a LIFT, not a stomp (0.3 → 0.5) — the collective slam to
   // near-idle at the first corner looked like the whole field pulling back
-  const thrustTarget = !launched ? 0 : over ? 0.5 : Math.min(1, 0.87 + spec.pace * 0.14)
+  // V29: rubber-band — signed gap to the player eases the ceiling when this
+  // racer is AHEAD (max -12%) and pushes it when BEHIND (max +18%), ramping
+  // over ~600m. Deterministic given the player trace; elite has rubber 0.
+  let rubber = 0
+  if (playerS !== undefined && spec.rubber > 0) {
+    const gap = Math.max(-1, Math.min(1, (state.s - playerS) / 600))
+    rubber = (gap > 0 ? -0.12 * gap : -0.18 * gap) * spec.rubber
+  }
+  // catching up = DRIVING harder, not different physics (V23): backmarkers
+  // already sit near full throttle, so the push also commits deeper into
+  // corners (brake margin ↑) and lifts less when it does brake
+  const push = Math.max(0, rubber)
+  const kMaxEff = kMax * (1 + push * 1.5)
+  const overPush = Math.abs(kAhead) > kMaxEff
+  const cornerLift = Math.min(0.85, 0.5 + push * 2)
+  const thrustTarget = !launched ? 0 : overPush ? cornerLift : Math.min(1, (0.87 + spec.pace * 0.14) * (1 + rubber))
   state.aiThrottle += (thrustTarget - state.aiThrottle) * Math.min(1, PHYSICS_DT * 4)
   npcInput.thrust = state.aiThrottle
+  const wayOver = Math.abs(kAhead) > kMaxEff * 1.4
   npcInput.brakeLeft = wayOver
   npcInput.brakeRight = wayOver
 

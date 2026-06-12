@@ -199,3 +199,43 @@ describe('collisions (T32, V17)', () => {
     expect(racers[1].v).toBeLessThanOrEqual(100)
   })
 })
+
+describe('rubber-band (T189, V29)', () => {
+  const specs = makeNpcs(track)
+
+  /** run one npc N seconds with a fixed player gap, return DISTANCE covered
+   * (final v samples a random track spot — corners alias it) */
+  const runWithGap = (specIdx: number, gapAhead: number | undefined, secs = 20): number => {
+    const st = initialNpc(specIdx)
+    const steps = Math.round(secs * 120)
+    for (let i = 0; i < steps; i++) {
+      stepNpc(st, specs[specIdx], track, frames, gapAhead === undefined ? undefined : st.s - gapAhead)
+    }
+    return st.s
+  }
+
+  it('mid-field NPC ahead of a struggling player eases off', () => {
+    const base = runWithGap(3, undefined)
+    const eased = runWithGap(3, 700) // npc 700m AHEAD of player
+    expect(eased).toBeLessThan(base * 0.985)
+  })
+
+  it('back-field NPC behind a flying player pushes harder', () => {
+    const base = runWithGap(4, undefined)
+    const pushed = runWithGap(4, -700) // npc 700m BEHIND player
+    expect(pushed).toBeGreaterThan(base * 1.02)
+  })
+
+  it('V29: elite (VEKTOR) ignores the player entirely', () => {
+    expect(specs[0].rubber).toBe(0)
+    const base = runWithGap(0, undefined)
+    const withGap = runWithGap(0, 700)
+    expect(withGap).toBeCloseTo(base, 6)
+  })
+
+  it('V15 form preserved: same inputs → same trace with rubber-banding', () => {
+    const a = runWithGap(2, 400)
+    const b = runWithGap(2, 400)
+    expect(a).toBe(b)
+  })
+})

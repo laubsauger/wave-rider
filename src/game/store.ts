@@ -85,9 +85,19 @@ interface GameState {
 
 const SETTINGS_KEY = 'wave-rider-settings'
 
+/** T184: first-run default — touch devices start at medium; high stutters
+ * even on flagship phones. A persisted choice always wins over this. */
+function defaultQuality(): Settings['quality'] {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches ? 'medium' : 'high'
+  } catch {
+    return 'high'
+  }
+}
+
 /** restore persisted settings (quality especially — per-device tuning) */
 function loadSettings(): Settings {
-  const base: Settings = { fxIntensity: 1, quality: 'high', muted: false }
+  const base: Settings = { fxIntensity: 1, quality: defaultQuality(), muted: false }
   try {
     const raw = localStorage.getItem(SETTINGS_KEY)
     if (!raw) return base

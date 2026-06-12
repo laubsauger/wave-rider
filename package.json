@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:mp": "node scripts/e2e-mp.mjs",
+    "test:mp:freeze": "node scripts/e2e-mp.mjs --freeze"
   },
   "dependencies": {
     "@react-three/fiber": "^9.0.0",

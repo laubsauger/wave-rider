@@ -7,9 +7,9 @@ import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
 import { telemetry } from '../game/telemetry'
 
 /**
- * Post chain v4 (T106): bloom + radial motion blur + speed-linked chromatic
- * aberration, then filmic s-curve, vignette, fine film grain. Per-theme
- * shadow tint removed (read as too much). All color math on rgb only —
+ * Post chain v5 (T106/T185): bloom + radial motion blur + speed-linked
+ * chromatic aberration, then filmic s-curve, vignette, re-entry heat.
+ * Film grain + per-theme shadow tint removed. All color math on rgb only —
  * vec4 through outputNode kills the pipeline silently (B23/V21).
  * Everything scales with fxIntensity; 0 → no post at all (V10).
  */
@@ -85,14 +85,10 @@ export function Effects({ fxIntensity, dof: dofEnabled = true }: { fxIntensity: 
     const heatCol = mix(vec3(1.0, 0.32, 0.08), vec3(1.0, 0.85, 0.55), uHeat)
     const heated = vignetted.add(heatCol.mul(heatMask).mul(heatShimmer).mul(uHeat).mul(0.55))
 
-    // film grain — B25: seed multipliers must exceed pixel pitch or
-    // hash().toUint() quantizes neighbors together → horizontal static
-    // streaks crawling the frame. High-frequency 2D seed + low amplitude.
-    const grainSeed = uv().x.mul(39163.7).add(uv().y.mul(21717.3)).add(time.mul(127.1))
-    const grain = hash(grainSeed).sub(0.5).mul(0.014 * fxIntensity)
-
+    // T185: film grain REMOVED — the time-offset seed slid the noise pattern
+    // diagonally (read as faint crawling static). Third grain complaint; gone.
     const post = new THREE.PostProcessing(renderer)
-    post.outputNode = vec4(heated.add(grain), 1)
+    post.outputNode = vec4(heated, 1)
     return post
   }, [renderer, scene, camera, fxIntensity, dofEnabled, uBlur, uCa, uBokeh, uFocus, uRange, uVig, uVigStart, uHeat])
 

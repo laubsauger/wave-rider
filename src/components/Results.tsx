@@ -3,6 +3,7 @@ import { useGame } from '../game/store'
 import { serializeGhost } from '../lib/network/ghost'
 import { network } from '../lib/network/p2p'
 import { saveSongToDevice } from '../lib/recents'
+import { loadRecord } from '../lib/records'
 
 function fmtTime(ms: number): string {
   const m = Math.floor(ms / 60000)
@@ -22,10 +23,15 @@ export function Results() {
   // T181: keep the track — bytes live in the session library for uploads and
   // for the song the host sent over (the joiner's only copy)
   const songTitle = useGame((s) => s.songTitle)
+  const songId = useGame((s) => s.songId)
   const songBytes = useGame((s) => s.userSongs.find((u) => u.title === s.songTitle)?.bytes)
 
   const [copied, setCopied] = useState(false)
   const [songSaved, setSongSaved] = useState(false)
+
+  // T183: saveRun already ran (sync) before this screen mounted — fresh read
+  const record = songId && track ? loadRecord(songId, track.seed) : null
+  const isNewBest = !!result && record?.bestTimeMs === result.timeMs
 
   if (!result || !track) return null
 
@@ -45,6 +51,16 @@ export function Results() {
         {result.place}
         <span className="text-2xl text-white/40 short:text-lg">/{result.totalRacers}</span>
       </div>
+      {isNewBest && (
+        <p className="-mt-4 text-sm font-bold tracking-[0.4em] text-[#ffd23d] short:-mt-1" style={{ textShadow: '0 0 16px #ffd23d' }}>
+          ★ NEW LOCAL RECORD
+        </p>
+      )}
+      {!isNewBest && record?.bestTimeMs !== undefined && (
+        <p className="-mt-4 text-xs tracking-[0.3em] text-white/40 short:-mt-1">
+          LOCAL BEST {fmtTime(record.bestTimeMs)}
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-x-12 gap-y-3 text-lg short:gap-x-10 short:gap-y-1 short:text-sm">
         <span className="text-white/50">TIME</span>
         <span className="text-right font-bold tabular-nums">{fmtTime(result.timeMs)}</span>

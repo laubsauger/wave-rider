@@ -35,7 +35,10 @@ export function createGhostRecorder(songId: string) {
 }
 
 export async function serializeGhost(data: GhostData): Promise<string> {
-  const metaBytes = new TextEncoder().encode(data.songId + '\n')
+  // T183: meta line is JSON — carries time + title so the ghost lobby can
+  // show them. deserializeGhost still reads the old plain-id meta line.
+  const meta = JSON.stringify({ songId: data.songId, timeMs: data.timeMs, songTitle: data.songTitle })
+  const metaBytes = new TextEncoder().encode(meta + '\n')
   const blob = new Blob([metaBytes, data.frames.buffer as ArrayBuffer])
   
   const ds = new CompressionStream('gzip')
@@ -68,13 +71,24 @@ export async function deserializeGhost(base64Safe: string): Promise<GhostData> {
   const nlIndex = arr.indexOf(10) // '\n'
   if (nlIndex === -1) throw new Error('Invalid ghost data')
   
-  const songId = new TextDecoder().decode(arr.slice(0, nlIndex))
+  const metaLine = new TextDecoder().decode(arr.slice(0, nlIndex))
   const floatBytes = arr.slice(nlIndex + 1)
-  
+
   // To avoid alignment issues, copy to a properly aligned buffer if necessary,
   // or simply create a new Float32Array by passing the byteOffset correctly.
   // slice() on Uint8Array creates a new ArrayBuffer, so byteOffset is 0, which is aligned.
   const frames = new Float32Array(floatBytes.buffer, floatBytes.byteOffset, floatBytes.byteLength / 4)
-  
-  return { songId, frames }
+
+  // new links: JSON meta {songId,timeMs,songTitle}; old links: bare id string
+  if (metaLine.startsWith('{')) {
+    try {
+      const meta = JSON.parse(metaLine) as Partial<GhostData>
+      if (typeof meta.songId === 'string') {
+        return { songId: meta.songId, timeMs: meta.timeMs, songTitle: meta.songTitle, frames }
+      }
+    } catch {
+      /* fall through to legacy read */
+    }
+  }
+  return { songId: metaLine, frames }
 }

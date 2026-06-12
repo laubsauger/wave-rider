@@ -83,3 +83,8 @@ export const telemetry: RaceTelemetry = {
   triangles: 0,
   chunksDrawn: 0,
 }
+
+// T188: e2e harness probe (scripts/e2e-mp.mjs) — dev builds only
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as { __telemetry: RaceTelemetry }).__telemetry = telemetry
+}

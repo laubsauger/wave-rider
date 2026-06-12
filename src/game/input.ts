@@ -122,6 +122,8 @@ export function readShipInput(out: ShipInput): ShipInput {
   out.brakeLeft = raw.brakeLeft
   out.brakeRight = raw.brakeRight
   out.retro = raw.retro || raw.touchRetro
+  // T187: touch stick is analog — no digital-tap ramp needed
+  out.analog = raw.touchSteer !== null
   return out
 }
 
